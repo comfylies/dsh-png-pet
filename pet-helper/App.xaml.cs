@@ -9,6 +9,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        EnsureWindowsDirectoryEnvironment();
         base.OnStartup(e);
         var window = new MainWindow();
         MainWindow = window;
@@ -39,6 +40,20 @@ public partial class App : Application
             shutdownRequested = true;
             await Dispatcher.InvokeAsync(Shutdown);
             return;
+        }
+    }
+
+    private static void EnsureWindowsDirectoryEnvironment()
+    {
+        if (!OperatingSystem.IsWindows() || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WINDIR")))
+        {
+            return;
+        }
+
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+        if (!string.IsNullOrWhiteSpace(systemRoot) && Directory.Exists(systemRoot))
+        {
+            Environment.SetEnvironmentVariable("WINDIR", systemRoot);
         }
     }
 }

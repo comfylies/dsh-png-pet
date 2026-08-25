@@ -10,7 +10,8 @@ public sealed class ProtocolReaderTests
     {
         var message = ProtocolReader.Parse("{\"version\":1,\"kind\":\"shutdown\"}");
 
-        Assert.Equal("shutdown", message.Kind);
+        Assert.NotNull(message);
+        Assert.Equal("shutdown", message!.Kind);
     }
 
     [Fact]
