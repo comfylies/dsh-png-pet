@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperInputMessage, type HelperMessage, type HostOutboundMessage } from './protocol.js'
 
 export type HelperProcessOptions = {
   command?: string
@@ -10,6 +10,7 @@ export type HelperProcessOptions = {
   readyTimeoutMs?: number
   shutdownTimeoutMs?: number
   onSend?: (line: string) => void
+  onMessage?: (message: HelperInputMessage) => void
 }
 
 const defaultCommand = fileURLToPath(
@@ -23,6 +24,7 @@ export class HelperProcess {
   private stopPromise?: Promise<void>
   private exitPromise?: Promise<number | null>
   private closed = false
+  private lastInputRequestId = 0
 
   public isReady = false
   public exitCode: number | null | undefined
@@ -34,6 +36,7 @@ export class HelperProcess {
       readyTimeoutMs: options.readyTimeoutMs ?? 5_000,
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
       onSend: options.onSend ?? (() => {}),
+      onMessage: options.onMessage ?? (() => {}),
     }
   }
 
@@ -72,15 +75,26 @@ export class HelperProcess {
 
       const output = readline.createInterface({ input: child.stdout })
       output.on('line', (line) => {
+        let message: HelperMessage
         try {
-          const message = parseHelperMessage(line)
-          if (message.kind === 'ready' && !this.isReady) {
-            this.isReady = true
-            finishStart()
-          }
-          if (message.kind === 'closed') this.closed = true
+          message = parseHelperMessage(line)
         } catch {
           // Ignore malformed helper output: only validated protocol messages affect lifecycle.
+          return
+        }
+
+        if (message.kind === 'ready' && !this.isReady) {
+          this.isReady = true
+          finishStart()
+        }
+        if (message.kind === 'closed') this.closed = true
+        if (message.kind === 'input' && message.requestId > this.lastInputRequestId) {
+          try {
+            this.options.onMessage(message)
+            this.lastInputRequestId = message.requestId
+          } catch {
+            // Ignore consumer failures so a validated input can be retried.
+          }
         }
       })
     })

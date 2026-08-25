@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 3 as const
+export const PROTOCOL_VERSION = 4 as const
 
 export const displayLabels = {
   idle: '',
@@ -16,29 +16,53 @@ const activityLabels = {
 export type Activity = keyof typeof activityLabels
 export type State = 'active' | keyof typeof displayLabels
 export type CompanionState = State
-export type HelperMessageKind = 'ready' | 'closed'
-export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown'
+export type HelperLifecycleMessageKind = 'ready' | 'closed'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'input'
+export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected'
+export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
+export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview'
 
-export type HelperMessage = {
+export type HelperLifecycleMessage = {
   version: typeof PROTOCOL_VERSION
-  kind: HelperMessageKind
+  kind: HelperLifecycleMessageKind
 }
+
+export type HelperInputMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'input'
+  requestId: number
+  text: string
+}
+
+export type HelperMessage = HelperLifecycleMessage | HelperInputMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
   | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
+  | { version: typeof PROTOCOL_VERSION, kind: 'reply-preview', requestId: number, text: string, completed: boolean }
+  | { version: typeof PROTOCOL_VERSION, kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
   | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
+  | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number }
+  | { kind: 'input-status', requestId: number, status: InputStatus }
+  | { kind: 'reply-preview', requestId: number, text: string, completed: boolean }
+  | { kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
 
-const maxLineLength = 512
-const helperKinds = new Set<HelperMessageKind>(['ready', 'closed'])
-const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown'])
+const maxLineLength = 4_096
+const maxTextLength = 2_000
+const minPreviewMaxChars = 80
+const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
+const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
 const canonicalActivities: readonly Activity[] = ['thinking', 'working']
+const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected'])
+const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
 
 export function labelForPresentation(state: State, activities: readonly Activity[]): string {
   if (state === 'active') {
@@ -55,12 +79,18 @@ export function parseHelperMessage(line: string): HelperMessage {
   const message = parseObject(line, 'helper message')
   assertProtocolVersion(message, 'helper message')
 
-  if (typeof message.kind !== 'string' || !helperKinds.has(message.kind as HelperMessageKind)) {
+  if (typeof message.kind !== 'string' || !isHelperMessageKind(message.kind)) {
     throw new Error('helper message has an unknown kind')
   }
-  assertExactKeys(message, ['version', 'kind'], 'helper message')
+  if (message.kind === 'ready' || message.kind === 'closed') {
+    assertExactKeys(message, ['version', 'kind'], 'helper message')
+    return { version: PROTOCOL_VERSION, kind: message.kind }
+  }
 
-  return { version: PROTOCOL_VERSION, kind: message.kind as HelperMessageKind }
+  assertExactKeys(message, ['version', 'kind', 'requestId', 'text'], 'helper message')
+  assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+  assertInputText(message.text, 'helper message text')
+  return { version: PROTOCOL_VERSION, kind: 'input', requestId: message.requestId, text: message.text }
 }
 
 export function parseHostMessage(line: string): HostMessage {
@@ -124,9 +154,63 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         label: value.label,
         sequence,
       }
+    case 'conversation-config':
+      assertExactKeys(value, ['version', 'kind', 'previewEnabled', 'previewMaxChars'], 'host message', ['kind', 'previewEnabled', 'previewMaxChars'])
+      if (typeof value.previewEnabled !== 'boolean') throw new Error('host message has an invalid previewEnabled')
+      if (!isPreviewMaxChars(value.previewMaxChars)) throw new Error('host message has an invalid previewMaxChars')
+      return { kind: 'conversation-config', previewEnabled: value.previewEnabled, previewMaxChars: value.previewMaxChars }
+    case 'input-status':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'status'], 'host message', ['kind', 'requestId', 'status'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (typeof value.status !== 'string' || !inputStatuses.has(value.status as InputStatus)) {
+        throw new Error('host message has an invalid status')
+      }
+      return { kind: 'input-status', requestId: value.requestId, status: value.status as InputStatus }
+    case 'reply-preview':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'text', 'completed'], 'host message', ['kind', 'requestId', 'text', 'completed'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      assertPreviewText(value.text, 'host message text')
+      if (typeof value.completed !== 'boolean') throw new Error('host message has an invalid completed')
+      return { kind: 'reply-preview', requestId: value.requestId, text: value.text, completed: value.completed }
+    case 'clear-preview':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'reason'], 'host message', ['kind', 'requestId', 'reason'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (typeof value.reason !== 'string' || !clearPreviewReasons.has(value.reason as ClearPreviewReason)) {
+        throw new Error('host message has an invalid reason')
+      }
+      return { kind: 'clear-preview', requestId: value.requestId, reason: value.reason as ClearPreviewReason }
     default:
       throw new Error('host message has an unknown kind')
   }
+}
+
+function isHelperMessageKind(value: string): value is HelperMessageKind {
+  return value === 'input' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+}
+
+function assertPositiveSafeInteger(value: unknown, subject: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${subject} must be a positive safe integer`)
+  }
+}
+
+function assertInputText(value: unknown, subject: string): asserts value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maxTextLength || value !== value.trim()) {
+    throw new Error(`${subject} must be trimmed and between 1 and ${maxTextLength} characters`)
+  }
+}
+
+function assertPreviewText(value: unknown, subject: string): asserts value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maxTextLength) {
+    throw new Error(`${subject} must be between 1 and ${maxTextLength} characters`)
+  }
+}
+
+function isPreviewMaxChars(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= minPreviewMaxChars
+    && value <= maxTextLength
 }
 
 function isCanonicalActivities(state: State, value: unknown): value is readonly Activity[] {
@@ -172,7 +256,7 @@ function assertExactKeys(
   if (Object.keys(message).some((key) => !allowed.has(key))) {
     throw new Error(`${subject} has unexpected fields`)
   }
-  if (requiredKeys.some((key) => !(key in message))) {
+  if (requiredKeys.some((key) => !Object.hasOwn(message, key))) {
     throw new Error(`${subject} is missing required fields`)
   }
 }

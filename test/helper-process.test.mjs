@@ -21,7 +21,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v3 config and state messages', async () => {
+test('sends only typed v4 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -37,7 +37,84 @@ test('sends only typed v3 config and state messages', async () => {
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":3,"kind":"config","scale":1,"reducedMotion":false}\n',
-    '{"version":3,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
+    '{"version":4,"kind":"config","scale":1,"reducedMotion":false}\n',
+    '{"version":4,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
+})
+
+test('forwards only validated helper input messages to onMessage', async () => {
+  const received = []
+  let resolveMessage
+  const messageReceived = new Promise((resolve) => {
+    resolveMessage = resolve
+  })
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--input'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      received.push(message)
+      resolveMessage()
+    },
+  })
+
+  try {
+    await helper.start()
+    await messageReceived
+    assert.deepEqual(received, [{ version: 4, kind: 'input', requestId: 9, text: 'hello' }])
+  } finally {
+    await helper.stop()
+  }
+})
+
+test('forwards helper input request ids only once and in ascending order', async () => {
+  const received = []
+  let resolveSecondMessage
+  const secondMessageReceived = new Promise((resolve) => {
+    resolveSecondMessage = resolve
+  })
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--out-of-order-inputs'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      received.push(message)
+      if (received.length === 2) resolveSecondMessage()
+    },
+  })
+
+  try {
+    await helper.start()
+    await secondMessageReceived
+    assert.deepEqual(
+      received.map((message) => message.requestId),
+      [9, 10],
+    )
+  } finally {
+    await helper.stop()
+  }
+})
+
+test('retries an input callback that throws before advancing its request id', async () => {
+  const requestIds = []
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--retry-input'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      requestIds.push(message.requestId)
+      if (requestIds.length === 1) throw new Error('expected callback failure')
+    },
+  })
+
+  try {
+    await helper.start()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.deepEqual(requestIds, [11, 11, 12])
+  } finally {
+    await helper.stop()
+  }
 })
