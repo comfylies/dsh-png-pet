@@ -20,10 +20,38 @@
     </ContextMenu>
   </Window.ContextMenu>
   <Grid MouseLeftButtonDown="Pet_MouseLeftButtonDown">
-    <Image Source="Assets/placeholder-a.png" Stretch="Uniform" />
+    <Border x:Name="InputBubble" Visibility="Collapsed" Background="#F2254050"
+            BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
+            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8,4,8,0"
+            Panel.ZIndex="3">
+      <StackPanel Width="184">
+        <DockPanel LastChildFill="False">
+          <TextBlock DockPanel.Dock="Left" Foreground="White" FontWeight="SemiBold"
+                     Text="发送到已选会话" />
+          <Button DockPanel.Dock="Right" Content="×" Click="CloseInputButton_Click"
+                  ToolTip="关闭输入" Padding="5,0" />
+        </DockPanel>
+        <TextBox x:Name="InputTextBox" Margin="0,6,0,4" MinHeight="36" MaxHeight="72"
+                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                 KeyDown="InputTextBox_KeyDown" />
+        <Button x:Name="SendButton" Content="发送" HorizontalAlignment="Right"
+                Padding="10,2" Click="SendButton_Click" />
+        <TextBlock x:Name="ConversationStatusLabel" Foreground="White" Margin="0,4,0,0"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+    <Border x:Name="PreviewBubble" Visibility="Collapsed" Background="#E6254050"
+            BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
+            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8,4,8,0"
+            Panel.ZIndex="2">
+      <ScrollViewer MaxHeight="92" VerticalScrollBarVisibility="Auto">
+        <TextBlock x:Name="PreviewText" Foreground="White" TextWrapping="Wrap" />
+      </ScrollViewer>
+    </Border>
+    <Image Source="Assets/placeholder-a.png" Stretch="Uniform" VerticalAlignment="Bottom" />
     <Border x:Name="StateBubble" Visibility="Collapsed" Background="#E62B4B5F"
             CornerRadius="12" Padding="12,6" HorizontalAlignment="Center"
-            VerticalAlignment="Top" Margin="10,2,10,176">
+            VerticalAlignment="Top" Margin="10,106,10,0" Panel.ZIndex="1">
       <TextBlock x:Name="StateLabel" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
     </Border>
   </Grid>

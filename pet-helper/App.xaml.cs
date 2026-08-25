@@ -19,6 +19,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         var window = new MainWindow();
         MainWindow = window;
+        window.InputSubmitted += (_, input) => WriteInput(input);
         var tray = new PetTrayIcon(
             () => Dispatcher.Invoke(ShowMainWindow),
             () => Dispatcher.Invoke(ExitFromTray));
@@ -74,6 +75,9 @@ public partial class App : System.Windows.Application
                     case StateMessage state:
                         await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Activities, state.Label, state.Sequence)));
                         continue;
+                    case ConversationConfigMessage or InputStatusMessage or ReplyPreviewMessage or ClearPreviewMessage:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConversationMessage(message));
+                        continue;
                     case ShutdownMessage:
                         shutdownRequested = true;
                         await Dispatcher.InvokeAsync(Shutdown);
@@ -111,7 +115,13 @@ public partial class App : System.Windows.Application
     }
 
     private static string SerializeHelperMessage(string kind) =>
-        JsonSerializer.Serialize(new { version = 3, kind });
+        JsonSerializer.Serialize(new { version = 4, kind });
+
+    private static void WriteInput(InputSubmittedEventArgs input)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(new { version = 4, kind = "input", requestId = input.RequestId, text = input.Text }));
+        Console.Out.Flush();
+    }
 
     private static void EnsureWindowsDirectoryEnvironment()
     {

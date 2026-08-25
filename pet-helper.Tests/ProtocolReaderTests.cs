@@ -6,9 +6,9 @@ namespace PetHelper.Tests;
 public sealed class ProtocolReaderTests
 {
     [Fact]
-    public void Parses_v3_shutdown_command()
+    public void Parses_v4_shutdown_command()
     {
-        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"shutdown\"}");
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"shutdown\"}");
 
         Assert.Equal(new ShutdownMessage(), message);
     }
@@ -16,7 +16,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parses_a_composite_active_state()
     {
-        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"working\"],\"label\":\"思考中/工作中\",\"sequence\":4}");
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"working\"],\"label\":\"思考中/工作中\",\"sequence\":4}");
 
         var state = Assert.IsType<StateMessage>(message);
         Assert.Equal("active", state.State);
@@ -28,7 +28,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parsed_activities_are_immutable()
     {
-        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}");
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}");
 
         var state = Assert.IsType<StateMessage>(message);
         var activities = Assert.IsAssignableFrom<IList<string>>(state.Activities);
@@ -39,7 +39,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parses_the_largest_safe_sequence()
     {
-        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740991}");
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740991}");
 
         var state = Assert.IsType<StateMessage>(message);
         Assert.Equal(9_007_199_254_740_991, state.Sequence);
@@ -48,7 +48,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parses_a_supported_config()
     {
-        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"config\",\"scale\":1.25,\"reducedMotion\":true}");
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"config\",\"scale\":1.25,\"reducedMotion\":true}");
 
         Assert.Equal(new ConfigMessage(1.25d, true), message);
     }
@@ -56,32 +56,89 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Rejects_a_free_form_state_label()
     {
-        Assert.Null(ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\"],\"label\":\"secret\",\"sequence\":4}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\"],\"label\":\"secret\",\"sequence\":4}"));
     }
 
     [Fact]
     public void Rejects_a_bad_disconnected_label()
     {
-        Assert.Null(ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"disconnected\",\"activities\":[],\"label\":\"secret\",\"sequence\":4}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":4,\"kind\":\"state\",\"state\":\"disconnected\",\"activities\":[],\"label\":\"secret\",\"sequence\":4}"));
     }
 
     [Theory]
-    [InlineData("{\"version\":2,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}")]
-    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"thinking\"],\"label\":\"思考中/思考中\",\"sequence\":4}")]
-    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\",\"thinking\"],\"label\":\"思考中/工作中\",\"sequence\":4}")]
-    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"工作中…\",\"sequence\":4}")]
-    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4,\"extra\":true}")]
-    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740992}")]
-    public void Rejects_an_invalid_v3_state(string line)
+    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}")]
+    [InlineData("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"thinking\"],\"label\":\"思考中/思考中\",\"sequence\":4}")]
+    [InlineData("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\",\"thinking\"],\"label\":\"思考中/工作中\",\"sequence\":4}")]
+    [InlineData("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"工作中…\",\"sequence\":4}")]
+    [InlineData("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4,\"extra\":true}")]
+    [InlineData("{\"version\":4,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740992}")]
+    public void Rejects_an_invalid_v4_state(string line)
     {
         Assert.Null(ProtocolReader.Parse(line));
     }
 
     [Theory]
     [InlineData("{\"version\":1,\"kind\":\"shutdown\"}")]
-    [InlineData("{\"version\":3,\"kind\":\"shutdown\",\"extra\":true}")]
-    [InlineData("{\"version\":3,\"kind\":\"unknown\"}")]
+    [InlineData("{\"version\":4,\"kind\":\"shutdown\",\"extra\":true}")]
+    [InlineData("{\"version\":4,\"kind\":\"unknown\"}")]
     public void Rejects_an_incompatible_command(string line)
+    {
+        Assert.Null(ProtocolReader.Parse(line));
+    }
+
+    [Fact]
+    public void Parses_v4_reply_preview()
+    {
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"reply-preview\",\"requestId\":7,\"text\":\"abcdef\",\"completed\":false}");
+
+        Assert.Equal(new ReplyPreviewMessage(7, "abcdef", false), message);
+    }
+
+    [Theory]
+    [InlineData("{\"version\":4,\"kind\":\"conversation-config\",\"previewEnabled\":true,\"previewMaxChars\":80}", true, 80)]
+    [InlineData("{\"version\":4,\"kind\":\"conversation-config\",\"previewEnabled\":false,\"previewMaxChars\":2000}", false, 2000)]
+    public void Parses_v4_conversation_config_at_both_bounds(string line, bool previewEnabled, int previewMaxChars)
+    {
+        Assert.Equal(new ConversationConfigMessage(previewEnabled, previewMaxChars), ProtocolReader.Parse(line));
+    }
+
+    [Theory]
+    [InlineData("queued")]
+    [InlineData("sent")]
+    [InlineData("rejected")]
+    [InlineData("no-default-session")]
+    [InlineData("session-unavailable")]
+    public void Parses_v4_input_status(string status)
+    {
+        var message = ProtocolReader.Parse($"{{\"version\":4,\"kind\":\"input-status\",\"requestId\":7,\"status\":\"{status}\"}}");
+
+        Assert.Equal(new InputStatusMessage(7, status), message);
+    }
+
+    [Fact]
+    public void Parses_v4_clear_preview()
+    {
+        var message = ProtocolReader.Parse("{\"version\":4,\"kind\":\"clear-preview\",\"requestId\":7,\"reason\":\"next-input\"}");
+
+        Assert.Equal(new ClearPreviewMessage(7, "next-input"), message);
+    }
+
+    [Theory]
+    [InlineData("{\"version\":4,\"kind\":\"conversation-config\",\"previewEnabled\":true,\"previewMaxChars\":79}")]
+    [InlineData("{\"version\":4,\"kind\":\"input-status\",\"requestId\":0,\"status\":\"sent\"}")]
+    [InlineData("{\"version\":4,\"kind\":\"reply-preview\",\"requestId\":1,\"text\":\"\",\"completed\":false}")]
+    [InlineData("{\"version\":4,\"kind\":\"clear-preview\",\"requestId\":1,\"reason\":\"unknown\"}")]
+    public void Rejects_invalid_v4_dialogue_messages(string line)
+    {
+        Assert.Null(ProtocolReader.Parse(line));
+    }
+
+    [Theory]
+    [InlineData("{\"version\":4,\"kind\":\"conversation-config\",\"previewEnabled\":true,\"previewMaxChars\":80,\"extra\":true}")]
+    [InlineData("{\"version\":4,\"kind\":\"input-status\",\"requestId\":1,\"status\":\"queued\",\"extra\":true}")]
+    [InlineData("{\"version\":4,\"kind\":\"clear-preview\",\"requestId\":1,\"reason\":\"closed\",\"extra\":true}")]
+    [InlineData("{\"version\":4,\"kind\":\"reply-preview\",\"requestId\":1,\"text\":\"safe\",\"completed\":false,\"extra\":true}")]
+    public void Rejects_unknown_fields_on_every_v4_dialogue_kind(string line)
     {
         Assert.Null(ProtocolReader.Parse(line));
     }
