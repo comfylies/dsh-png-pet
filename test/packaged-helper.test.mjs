@@ -26,11 +26,11 @@ test('published Helper completes ready and shutdown handshakes', async () => {
       const timeout = setTimeout(() => reject(new Error(`published Helper did not complete its handshake: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":3,"kind":"ready"}' && !shutdownSent) {
+        if (line === '{"version":4,"kind":"ready"}' && !shutdownSent) {
           shutdownSent = true
-          child.stdin.write('{"version":3,"kind":"shutdown"}\n')
+          child.stdin.write('{"version":4,"kind":"shutdown"}\n')
         }
-        if (line === '{"version":3,"kind":"closed"}') {
+        if (line === '{"version":4,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }
@@ -67,16 +67,16 @@ test('published Helper remains alive after a valid composite active state', asyn
       const timeout = setTimeout(() => reject(new Error(`published Helper did not remain alive after a valid state: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":3,"kind":"ready"}') {
-          child.stdin.write('{"version":3,"kind":"hello"}\n')
-          child.stdin.write('{"version":3,"kind":"config","scale":1,"reducedMotion":false}\n')
-          child.stdin.write('{"version":3,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
+        if (line === '{"version":4,"kind":"ready"}') {
+          child.stdin.write('{"version":4,"kind":"hello"}\n')
+          child.stdin.write('{"version":4,"kind":"config","scale":1,"reducedMotion":false}\n')
+          child.stdin.write('{"version":4,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
           setTimeout(() => {
             shutdownSent = true
-            child.stdin.write('{"version":3,"kind":"shutdown"}\n')
+            child.stdin.write('{"version":4,"kind":"shutdown"}\n')
           }, 250)
         }
-        if (line === '{"version":3,"kind":"closed"}') {
+        if (line === '{"version":4,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }
