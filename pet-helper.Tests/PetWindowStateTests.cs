@@ -27,6 +27,14 @@ public sealed class PetWindowStateTests
     }
 
     [Fact]
+    public void Reset_discards_position_and_restores_100_percent_scale()
+    {
+        var state = PetWindowState.Normalize(100d, 200d, 1.5d).Reset();
+
+        Assert.Equal(PetWindowState.Default, state);
+    }
+
+    [Fact]
     public void Load_returns_default_for_malformed_json()
     {
         var path = Path.Combine(Path.GetTempPath(), $"pet-state-{Guid.NewGuid():N}.json");

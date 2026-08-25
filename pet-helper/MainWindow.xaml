@@ -1,10 +1,25 @@
 <Window x:Class="PetHelper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="220" Height="220"
+        Width="220" Height="220" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize">
-  <Grid>
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        LocationChanged="Window_LocationChanged">
+  <Window.ContextMenu>
+    <ContextMenu>
+      <MenuItem Header="隐藏" Click="HideMenuItem_Click" />
+      <MenuItem Header="缩放">
+        <MenuItem Header="75%" Tag="0.75" Click="ScaleMenuItem_Click" />
+        <MenuItem Header="100%" Tag="1" Click="ScaleMenuItem_Click" />
+        <MenuItem Header="125%" Tag="1.25" Click="ScaleMenuItem_Click" />
+        <MenuItem Header="150%" Tag="1.5" Click="ScaleMenuItem_Click" />
+      </MenuItem>
+      <Separator />
+      <MenuItem Header="重置大小与位置" Click="ResetMenuItem_Click" />
+      <MenuItem Header="关闭桌宠" Click="CloseMenuItem_Click" />
+    </ContextMenu>
+  </Window.ContextMenu>
+  <Grid MouseLeftButtonDown="Pet_MouseLeftButtonDown">
     <Image Source="Assets/placeholder-a.png" Stretch="Uniform" />
   </Grid>
 </Window>

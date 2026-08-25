@@ -10,6 +10,8 @@ public sealed record PetWindowState(double? Left, double? Top, double Scale)
 
     public double Height => BaseSize * Scale;
 
+    public PetWindowState Reset() => Default;
+
     public static PetWindowState Normalize(double? left, double? top, double? scale)
     {
         var normalizedScale = scale is 0.75d or 1d or 1.25d or 1.5d ? scale.Value : 1d;
