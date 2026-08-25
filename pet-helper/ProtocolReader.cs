@@ -4,6 +4,8 @@ namespace PetHelper;
 
 public static class ProtocolReader
 {
+    private const long MaxSafeSequence = 9_007_199_254_740_991;
+
     public static ProtocolMessage? Parse(string line)
     {
         if (line.Length > 512) return null;
@@ -59,7 +61,8 @@ public static class ProtocolReader
             || label.ValueKind != JsonValueKind.String
             || sequence.ValueKind != JsonValueKind.Number
             || !sequence.TryGetInt64(out var value)
-            || value < 0)
+            || value < 0
+            || value > MaxSafeSequence)
         {
             return null;
         }
