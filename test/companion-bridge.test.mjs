@@ -34,16 +34,17 @@ test('sends a fixed success state then returns to idle after its terminal timer'
   ])
 })
 
-test('does not let a stale terminal timer overwrite a newer working state', () => {
+test('does not let a stale terminal timer overwrite another session’s active activities', () => {
   const sent = []
   const { clock, timers } = createClock()
   const bridge = new CompanionBridge((message) => sent.push(message), { clock })
 
-  bridge.apply({ sessionId: 's', seq: 1, isSubagent: false, kind: 'success' })
-  bridge.apply({ sessionId: 's', seq: 2, isSubagent: false, kind: 'work-start' })
+  bridge.apply({ sessionId: 'done', seq: 1, isSubagent: false, kind: 'success' })
+  bridge.apply({ sessionId: 'active', seq: 2, isSubagent: false, kind: 'thinking' })
+  bridge.apply({ sessionId: 'active', seq: 3, isSubagent: false, kind: 'work-start' })
   timers[0].callback()
 
-  assert.deepEqual(sent.at(-1), { kind: 'state', state: 'active', label: '工作中', activities: ['working'], sequence: 2 })
+  assert.deepEqual(sent.at(-1), { kind: 'state', state: 'active', label: '思考中/工作中', activities: ['thinking', 'working'], sequence: 3 })
 })
 
 test('publishes composite thinking and working activities with a fixed working label', () => {
