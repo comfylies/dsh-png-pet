@@ -26,11 +26,11 @@ test('published Helper completes ready and shutdown handshakes', async () => {
       const timeout = setTimeout(() => reject(new Error(`published Helper did not complete its handshake: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":1,"kind":"ready"}' && !shutdownSent) {
+        if (line === '{"version":2,"kind":"ready"}' && !shutdownSent) {
           shutdownSent = true
-          child.stdin.write('{"version":1,"kind":"shutdown"}\n')
+          child.stdin.write('{"version":2,"kind":"shutdown"}\n')
         }
-        if (line === '{"version":1,"kind":"closed"}') {
+        if (line === '{"version":2,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }

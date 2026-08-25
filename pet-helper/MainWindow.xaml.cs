@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace PetHelper;
 
@@ -17,6 +18,21 @@ public partial class MainWindow : Window
         InitializeComponent();
         RestoreState();
         restoringState = false;
+    }
+
+    public void ApplyDisplayState(PetDisplayState state)
+    {
+        StateLabel.Text = state.Label;
+        StateBubble.Visibility = state.State == "idle" ? Visibility.Collapsed : Visibility.Visible;
+        StateBubble.Background = state.State == "waiting"
+            ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29))
+            : new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95));
+    }
+
+    public void ApplyConfig(ConfigMessage config)
+    {
+        ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
+        SaveState();
     }
 
     private void RestoreState() => ApplyState(stateStore.Load());
