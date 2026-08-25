@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json;
 
 namespace PetHelper;
@@ -80,11 +81,12 @@ public static class ProtocolReader
 
         var stateText = state.GetString();
         var labelText = label.GetString();
-        var displayState = PetDisplayState.From(stateText, activityItems, labelText, value);
+        var immutableActivities = activityItems.ToImmutableArray();
+        var displayState = PetDisplayState.From(stateText, immutableActivities, labelText, value);
         return displayState.State == stateText
             && displayState.Label == labelText
             && displayState.Sequence == value
-            ? new StateMessage(displayState.State, activityItems, displayState.Label, displayState.Sequence)
+            ? new StateMessage(displayState.State, immutableActivities, displayState.Label, displayState.Sequence)
             : null;
     }
 

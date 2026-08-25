@@ -26,6 +26,26 @@ public sealed class ProtocolReaderTests
     }
 
     [Fact]
+    public void Parsed_activities_are_immutable()
+    {
+        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}");
+
+        var state = Assert.IsType<StateMessage>(message);
+        var activities = Assert.IsAssignableFrom<IList<string>>(state.Activities);
+        Assert.Throws<NotSupportedException>(() => activities.Add("working"));
+        Assert.Equal(new[] { "thinking" }, state.Activities);
+    }
+
+    [Fact]
+    public void Parses_the_largest_safe_sequence()
+    {
+        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740991}");
+
+        var state = Assert.IsType<StateMessage>(message);
+        Assert.Equal(9_007_199_254_740_991, state.Sequence);
+    }
+
+    [Fact]
     public void Parses_a_supported_config()
     {
         var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"config\",\"scale\":1.25,\"reducedMotion\":true}");
