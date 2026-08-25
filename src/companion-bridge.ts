@@ -48,6 +48,10 @@ export class CompanionBridge {
   }
 
   private publish(presentation: Presentation, force = false): void {
+    if (this.lastPresentation?.terminal && !samePresentation(presentation, this.lastPresentation)) {
+      this.reducer.disposeTerminal(this.lastPresentation.sequence)
+      presentation = this.reducer.current()
+    }
     if (!force && samePresentation(presentation, this.lastPresentation)) return
 
     this.clearTerminalTimer()

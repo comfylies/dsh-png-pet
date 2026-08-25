@@ -47,6 +47,18 @@ test('does not let a stale terminal timer overwrite another session’s active a
   assert.deepEqual(sent.at(-1), { kind: 'state', state: 'active', label: '思考中/工作中', activities: ['thinking', 'working'], sequence: 3 })
 })
 
+test('discards a superseded terminal state when another session becomes active', () => {
+  const sent = []
+  const bridge = new CompanionBridge((message) => sent.push(message))
+
+  bridge.apply({ sessionId: 'done', seq: 1, isSubagent: false, kind: 'success' })
+  bridge.apply({ sessionId: 'active', seq: 2, isSubagent: false, kind: 'thinking' })
+  bridge.dispose('active')
+
+  assert.deepEqual(sent.at(-1), { kind: 'state', state: 'idle', label: '', activities: [], sequence: 0 })
+  assert.equal(sent.some((message, index) => index > 0 && message.state === 'success'), false)
+})
+
 test('publishes composite thinking and working activities with a fixed working label', () => {
   const sent = []
   const bridge = new CompanionBridge((message) => sent.push(message))
