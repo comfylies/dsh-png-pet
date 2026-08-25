@@ -2,9 +2,23 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { HelperProcess } from '../lib/helper-process.js'
+import { HelperProcess, withRequiredWindowsEnvironment } from '../lib/helper-process.js'
 
 const fixture = fileURLToPath(new URL('./fixtures/fake-helper.mjs', import.meta.url))
+
+test('adds WINDIR from SystemRoot only when the helper environment lacks it', () => {
+  const environment = withRequiredWindowsEnvironment({ SystemRoot: 'C:\\Windows', KEEP: 'value' })
+
+  assert.deepEqual(environment, { SystemRoot: 'C:\\Windows', WINDIR: 'C:\\Windows', KEEP: 'value' })
+})
+
+test('preserves an existing WINDIR and leaves environments without SystemRoot unchanged', () => {
+  assert.deepEqual(
+    withRequiredWindowsEnvironment({ SystemRoot: 'C:\\Windows', WINDIR: 'D:\\Windows' }),
+    { SystemRoot: 'C:\\Windows', WINDIR: 'D:\\Windows' },
+  )
+  assert.deepEqual(withRequiredWindowsEnvironment({ KEEP: 'value' }), { KEEP: 'value' })
+})
 
 test('starts a helper after a ready handshake and closes it gracefully', async () => {
   const helper = new HelperProcess({

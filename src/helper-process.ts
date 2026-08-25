@@ -19,6 +19,12 @@ const defaultCommand = fileURLToPath(
   new URL('../runtime/bin/win32-x64/pet-helper.exe', import.meta.url),
 )
 
+export function withRequiredWindowsEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (environment.WINDIR !== undefined || !environment.SystemRoot) return { ...environment }
+
+  return { ...environment, WINDIR: environment.SystemRoot }
+}
+
 export class HelperProcess {
   private readonly options: Required<HelperProcessOptions>
   private child?: ChildProcessWithoutNullStreams
@@ -49,6 +55,7 @@ export class HelperProcess {
       const child = spawn(this.options.command, this.options.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        env: withRequiredWindowsEnvironment(process.env),
       })
       this.child = child
 
