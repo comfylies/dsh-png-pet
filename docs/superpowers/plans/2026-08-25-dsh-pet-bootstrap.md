@@ -1,5 +1,7 @@
 # DSH PNG 桌宠第一阶段 Implementation Plan
 
+> **状态：✅ 已完成。** 对应实现位于提交 `e02cad2`、`02b6311` 及其后续发布修复中；项目已通过构建、协议、打包和发布 Helper 回归测试。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 构建可由 DSH 加载的 Windows 桌宠插件骨架，并验证它能启动、握手和关闭自包含 WPF Helper。
@@ -20,7 +22,7 @@
 - `pet-helper/`：WPF 项目、协议读取器、窗口与占位 PNG。
 - `scripts/build-helper.ps1`：发布 WPF 自包含 exe 到 npm 运行时目录。
 
-### Task 1: 建立插件与测试骨架
+### Task 1: 建立插件与测试骨架 ✅ 已完成
 
 **Files:**
 - Create: `.gitignore`, `package.json`, `tsconfig.json`, `cordis.patch.yml`, `src/index.ts`, `test/package-layout.test.mjs`
@@ -63,7 +65,7 @@ Run: `npm run build; npm test`
 
 Expected: PASS。
 
-### Task 2: 实现并测试协议边界
+### Task 2: 实现并测试协议边界 ✅ 已完成
 
 **Files:**
 - Create: `src/protocol.ts`, `test/protocol.test.mjs`
@@ -101,7 +103,7 @@ Run: `npm run build; node --test test/protocol.test.mjs`
 
 Expected: PASS。
 
-### Task 3: 实现 HelperProcess 生命周期
+### Task 3: 实现 HelperProcess 生命周期 ✅ 已完成
 
 **Files:**
 - Create: `src/helper-process.ts`, `test/helper-process.test.mjs`, `test/fixtures/fake-helper.mjs`
@@ -147,7 +149,7 @@ Run: `npm run build; npm test`
 
 Expected: PASS，且 fake Helper 没有残留进程。
 
-### Task 4: 实现 WPF Helper 协议和占位窗口
+### Task 4: 实现 WPF Helper 协议和占位窗口 ✅ 已完成
 
 **Files:**
 - Create: `pet-helper/PetHelper.csproj`, `pet-helper/App.xaml`, `pet-helper/App.xaml.cs`, `pet-helper/MainWindow.xaml`, `pet-helper/MainWindow.xaml.cs`, `pet-helper/ProtocolReader.cs`, `pet-helper/ProtocolMessage.cs`, `pet-helper/Assets/placeholder-a.png`, `pet-helper.Tests/PetHelper.Tests.csproj`, `pet-helper.Tests/ProtocolReaderTests.cs`
@@ -184,7 +186,7 @@ Run: `dotnet test pet-helper.Tests/PetHelper.Tests.csproj; dotnet publish pet-he
 
 Expected: 测试 PASS，发布目录含 `PetHelper.exe`。
 
-### Task 5: 打包、端到端验证与版本管理
+### Task 5: 打包、端到端验证与版本管理 ✅ 已完成
 
 **Files:**
 - Create: `scripts/build-helper.ps1`, `test/packaging.test.mjs`, `README.md`

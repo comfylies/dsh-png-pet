@@ -1,5 +1,7 @@
 # 本机桌宠交互 Implementation Plan
 
+> **状态：✅ 实现、构建、自动回归和发布已完成。** 拖动、缩放、重置、隐藏、托盘恢复、退出和位置保存已落地；最后的视觉手工验收由用户在 Windows 桌面完成。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** 让独立运行的 Windows WPF 桌宠支持拖动、缩放、右键菜单、隐藏恢复、状态记忆和正常退出。
@@ -22,7 +24,7 @@
 | pet-helper.Tests/PetWindowStateTests.cs | 状态和存储单元测试。 |
 | test/packaged-helper.test.mjs | 发布 exe 的 ready/closed 回归测试。 |
 
-### Task 1: 窗口状态模型与读写存储
+### Task 1: 窗口状态模型与读写存储 ✅ 已完成
 
 **Files:**
 - Create: pet-helper/PetWindowState.cs
@@ -190,7 +192,7 @@ git add pet-helper/PetWindowState.cs pet-helper/PetWindowStateStore.cs pet-helpe
 git commit -m "feat: persist pet window state"
 ~~~
 
-### Task 2: WPF 鼠标与右键菜单交互
+### Task 2: WPF 鼠标与右键菜单交互 ✅ 已完成
 
 **Files:**
 - Modify: pet-helper/MainWindow.xaml
@@ -353,7 +355,7 @@ git add pet-helper/MainWindow.xaml pet-helper/MainWindow.xaml.cs pet-helper.Test
 git commit -m "feat: add pet window interactions"
 ~~~
 
-### Task 3: 托盘恢复与退出入口
+### Task 3: 托盘恢复与退出入口 ✅ 已完成
 
 **Files:**
 - Create: pet-helper/PetTrayIcon.cs
@@ -454,7 +456,7 @@ git add pet-helper/PetHelper.csproj pet-helper/PetTrayIcon.cs pet-helper/App.xam
 git commit -m "feat: restore hidden pet from tray"
 ~~~
 
-### Task 4: 发布回归、文档与手工验收
+### Task 4: 发布回归、文档与手工验收 🟡 自动部分已完成
 
 **Files:**
 - Modify: test/packaged-helper.test.mjs
