@@ -68,4 +68,10 @@ public sealed class PetWindowStateTests
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
         }
     }
+
+    [Fact]
+    public void Tray_icon_can_be_disposed_before_being_shown()
+    {
+        using var trayIcon = new PetTrayIcon(() => { }, () => { });
+    }
 }

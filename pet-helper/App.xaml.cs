@@ -3,9 +3,10 @@ using System.Windows;
 
 namespace PetHelper;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private bool shutdownRequested;
+    private PetTrayIcon? trayIcon;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -13,6 +14,11 @@ public partial class App : Application
         base.OnStartup(e);
         var window = new MainWindow();
         MainWindow = window;
+        var tray = new PetTrayIcon(
+            () => Dispatcher.Invoke(ShowMainWindow),
+            () => Dispatcher.Invoke(ExitFromTray));
+        trayIcon = tray;
+        window.HiddenToTray += (_, _) => tray.Show();
         window.Show();
 
         Console.Out.WriteLine("{\"version\":1,\"kind\":\"ready\"}");
@@ -28,8 +34,22 @@ public partial class App : Application
             Console.Out.Flush();
         }
 
+        trayIcon?.Dispose();
         base.OnExit(e);
     }
+
+    private void ShowMainWindow()
+    {
+        if (MainWindow is null)
+        {
+            return;
+        }
+
+        MainWindow.Show();
+        MainWindow.Activate();
+    }
+
+    private void ExitFromTray() => Shutdown();
 
     private async Task ReadProtocolLoop()
     {

@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>pet-helper</AssemblyName>
@@ -12,5 +13,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\placeholder-a.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 </Project>
