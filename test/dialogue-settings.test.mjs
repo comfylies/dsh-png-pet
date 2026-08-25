@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { dialogueSettingsDefaults, dialogueSettingsSchema } from '../lib/dialogue-settings.js'
-import { projectSessionOptions, validateDialogueSettings } from '../lib/client-settings-model.js'
+import { projectSessionOptions } from '../lib/client-settings-model.js'
+import { validateDialogueSettings } from '../lib/dialogue-settings.js'
 
 test('uses the safe dialogue setting defaults', () => {
   assert.deepEqual(dialogueSettingsDefaults, {

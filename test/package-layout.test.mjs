@@ -24,6 +24,17 @@ test('package layout exposes the compiled DSH web client entrypoint', async () =
   assert.equal(existsSync(new URL('../lib/client.js', import.meta.url)), true)
 })
 
+test('wraps the web client in the DSH lazy-CJS module registration', async () => {
+  const clientBundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+
+  assert.match(clientBundle, /^window\.__ModuleLoader__\.load\(\{\s*id:\s*["']dsh-png-pet["']/)
+  assert.match(clientBundle, /factory:\s*\(require\)\s*=>\s*\{[\s\S]*var module = \{ exports: \{\} \}/)
+  assert.match(clientBundle, /return module\.exports;\s*}\s*}\);/)
+  assert.match(clientBundle, /require\(["']react["']\)/)
+  assert.doesNotMatch(clientBundle, /require\(["'](?:\.{1,2}\/|\/)/)
+  assert.doesNotMatch(clientBundle, /^import\s/m)
+})
+
 test('declares React for the DSH client runtime without bundling it', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 

@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import test from 'node:test'
+import vm from 'node:vm'
 import { projectSessionOptions } from '../lib/client-settings-model.js'
+
+const nodeRequire = createRequire(import.meta.url)
+
+async function loadClientBundle() {
+  let registration
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  vm.runInNewContext(bundle, {
+    window: {
+      __ModuleLoader__: {
+        load(candidate) {
+          registration = candidate
+        },
+      },
+    },
+  })
+
+  assert.equal(registration?.id, 'dsh-png-pet')
+  return registration.factory(nodeRequire)
+}
 
 test('uses the DSH session display title and never reads cwd', () => {
   const accessed = []
@@ -19,14 +41,14 @@ test('uses the DSH session display title and never reads cwd', () => {
 })
 
 test('declares the built-in DSH settings transport injections', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
 
-  assert.deepEqual(client.inject, ['sessions', 'settingsScope', 'connection', 'remote', 'slots'])
+  assert.deepEqual([...client.inject], ['sessions', 'settingsScope', 'connection', 'remote', 'slots'])
   assert.equal(typeof client.apply, 'function')
 })
 
 test('binds the standard DSH settings scope through ctx.get', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
   const scope = {
     getSnapshot: () => ({ status: 'ready', value: undefined }),
     subscribe: () => () => {},
@@ -48,7 +70,7 @@ test('binds the standard DSH settings scope through ctx.get', async () => {
 })
 
 test('writes preview settings through the standard scope setter', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
   const writes = []
   const scope = {
     set: async (field, value) => { writes.push([field, value]) },
@@ -66,13 +88,13 @@ test('writes preview settings through the standard scope setter', async () => {
 })
 
 test('preserves a fixed error path when the standard scope rejects a write', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
 
   assert.equal(await client.writeDialogueSetting({ set: async () => { throw new Error('conflict') } }, 'previewEnabled', false), false)
 })
 
 test('shows the fixed unavailable-session error when the configured default disappears', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
   const state = client.projectDialogueSettingsView(
     { ids: ['s-1'], byId: { 's-1': { id: 's-1', displayTitle: '现有会话' } } },
     { status: 'ready', value: { defaultSessionId: 'removed', previewEnabled: false, previewMaxChars: 480 } },
@@ -84,7 +106,7 @@ test('shows the fixed unavailable-session error when the configured default disa
 })
 
 test('keeps fixed list and write errors distinct', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
 
   assert.equal(
     client.projectDialogueSettingsView(
@@ -105,7 +127,7 @@ test('keeps fixed list and write errors distinct', async () => {
 })
 
 test('registers the desktop-pet settings section', async () => {
-  const client = await import('../lib/client.js')
+  const client = await loadClientBundle()
   const registrations = []
   const ctx = {
     sessions: {
@@ -130,7 +152,7 @@ test('registers the desktop-pet settings section', async () => {
 
   client.apply(ctx)
 
-  assert.deepEqual(registrations.map(({ options }) => options), [{
+  assert.deepEqual(registrations.map(({ options }) => ({ ...options })), [{
     name: 'settings.section',
     id: 'dsh-png-pet',
     order: 100,

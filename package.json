@@ -1,6 +1,6 @@
 {
   "name": "dsh-png-pet",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "A Windows desktop pet companion for DeepSeek Harness.",
   "type": "module",
@@ -23,7 +23,7 @@
     "node": ">=22.19"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --esModuleInterop --skipLibCheck --outDir lib src/client.tsx",
+    "build": "tsc -p tsconfig.json && tsdown",
     "test": "npm run build && node --test test/helper-process.test.mjs test/package-layout.test.mjs test/protocol.test.mjs test/companion-reducer.test.mjs test/dsh-event-adapter.test.mjs test/companion-bridge.test.mjs test/index.test.mjs test/wpf-layout.test.mjs test/dialogue-settings.test.mjs test/client-settings-model.test.mjs",
     "test:package": "node --test test/packaging.test.mjs test/packaged-helper.test.mjs",
     "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1"
@@ -47,6 +47,7 @@
     "@types/node": "^24.3.0",
     "@types/react": "^18.3.23",
     "react": "^18.3.1",
+    "tsdown": "^0.22.14",
     "typescript": "^5.9.2"
   },
   "peerDependencies": {
