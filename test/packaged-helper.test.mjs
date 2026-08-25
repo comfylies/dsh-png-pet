@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import test from 'node:test'
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 const helperPath = fileURLToPath(new URL('../runtime/bin/win32-x64/pet-helper.exe', import.meta.url))
 
-test('published Helper completes its ready handshake', async () => {
+test('published Helper completes ready and shutdown handshakes', async () => {
   assert.equal(existsSync(helperPath), true)
 
   const child = spawn(helperPath, [], {
@@ -15,15 +16,21 @@ test('published Helper completes its ready handshake', async () => {
     windowsHide: true,
   })
   let stderr = ''
+  let shutdownSent = false
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk) => { stderr += chunk })
+  const exited = once(child, 'exit')
 
   try {
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('published Helper did not send ready')), 5_000)
+      const timeout = setTimeout(() => reject(new Error(`published Helper did not complete its handshake: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":1,"kind":"ready"}') {
+        if (line === '{"version":1,"kind":"ready"}' && !shutdownSent) {
+          shutdownSent = true
+          child.stdin.write('{"version":1,"kind":"shutdown"}\n')
+        }
+        if (line === '{"version":1,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }
@@ -37,7 +44,9 @@ test('published Helper completes its ready handshake', async () => {
         reject(new Error(`published Helper exited with ${code}: ${stderr}`))
       })
     })
+    const [code] = await exited
+    assert.equal(code, 0)
   } finally {
-    if (!child.killed) child.kill()
+    if (child.exitCode === null) child.kill()
   }
 })
