@@ -6,25 +6,29 @@ namespace PetHelper.Tests;
 public sealed class ProtocolReaderTests
 {
     [Fact]
-    public void Parses_v2_shutdown_command()
+    public void Parses_v3_shutdown_command()
     {
-        var message = ProtocolReader.Parse("{\"version\":2,\"kind\":\"shutdown\"}");
+        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"shutdown\"}");
 
         Assert.Equal(new ShutdownMessage(), message);
     }
 
     [Fact]
-    public void Parses_a_fixed_working_state()
+    public void Parses_a_composite_active_state()
     {
-        var message = ProtocolReader.Parse("{\"version\":2,\"kind\":\"state\",\"state\":\"working\",\"label\":\"工作中…\",\"sequence\":4}");
+        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"working\"],\"label\":\"思考中/工作中\",\"sequence\":4}");
 
-        Assert.Equal(new StateMessage("working", "工作中…", 4), message);
+        var state = Assert.IsType<StateMessage>(message);
+        Assert.Equal("active", state.State);
+        Assert.Equal(new[] { "thinking", "working" }, state.Activities);
+        Assert.Equal("思考中/工作中", state.Label);
+        Assert.Equal(4, state.Sequence);
     }
 
     [Fact]
     public void Parses_a_supported_config()
     {
-        var message = ProtocolReader.Parse("{\"version\":2,\"kind\":\"config\",\"scale\":1.25,\"reducedMotion\":true}");
+        var message = ProtocolReader.Parse("{\"version\":3,\"kind\":\"config\",\"scale\":1.25,\"reducedMotion\":true}");
 
         Assert.Equal(new ConfigMessage(1.25d, true), message);
     }
@@ -32,19 +36,30 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Rejects_a_free_form_state_label()
     {
-        Assert.Null(ProtocolReader.Parse("{\"version\":2,\"kind\":\"state\",\"state\":\"working\",\"label\":\"secret\",\"sequence\":4}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\"],\"label\":\"secret\",\"sequence\":4}"));
     }
 
     [Fact]
     public void Rejects_a_bad_disconnected_label()
     {
-        Assert.Null(ProtocolReader.Parse("{\"version\":2,\"kind\":\"state\",\"state\":\"disconnected\",\"label\":\"secret\",\"sequence\":4}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":3,\"kind\":\"state\",\"state\":\"disconnected\",\"activities\":[],\"label\":\"secret\",\"sequence\":4}"));
+    }
+
+    [Theory]
+    [InlineData("{\"version\":2,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}")]
+    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"thinking\"],\"label\":\"思考中/思考中\",\"sequence\":4}")]
+    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\",\"thinking\"],\"label\":\"思考中/工作中\",\"sequence\":4}")]
+    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"工作中…\",\"sequence\":4}")]
+    [InlineData("{\"version\":3,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4,\"extra\":true}")]
+    public void Rejects_an_invalid_v3_state(string line)
+    {
+        Assert.Null(ProtocolReader.Parse(line));
     }
 
     [Theory]
     [InlineData("{\"version\":1,\"kind\":\"shutdown\"}")]
-    [InlineData("{\"version\":2,\"kind\":\"shutdown\",\"extra\":true}")]
-    [InlineData("{\"version\":2,\"kind\":\"unknown\"}")]
+    [InlineData("{\"version\":3,\"kind\":\"shutdown\",\"extra\":true}")]
+    [InlineData("{\"version\":3,\"kind\":\"unknown\"}")]
     public void Rejects_an_incompatible_command(string line)
     {
         Assert.Null(ProtocolReader.Parse(line));

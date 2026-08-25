@@ -22,7 +22,7 @@ test('registers both DSH observers and contains malformed event input', () => {
   listeners.get('session/disposed')({ id: 'root' })
 
   assert.deepEqual(sent, [
-    { kind: 'state', state: 'waiting', label: '等待你的操作', sequence: 2 },
-    { kind: 'state', state: 'idle', label: '', sequence: 0 },
+    { kind: 'state', state: 'waiting', activities: [], label: '等待你的操作', sequence: 2 },
+    { kind: 'state', state: 'idle', activities: [], label: '', sequence: 0 },
   ])
 })

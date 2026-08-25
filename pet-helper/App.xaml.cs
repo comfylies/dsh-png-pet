@@ -72,7 +72,7 @@ public partial class App : System.Windows.Application
                         await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConfig(config));
                         continue;
                     case StateMessage state:
-                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Label, state.Sequence)));
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Activities, state.Label, state.Sequence)));
                         continue;
                     case ShutdownMessage:
                         shutdownRequested = true;
@@ -111,7 +111,7 @@ public partial class App : System.Windows.Application
     }
 
     private static string SerializeHelperMessage(string kind) =>
-        JsonSerializer.Serialize(new { version = 2, kind });
+        JsonSerializer.Serialize(new { version = 3, kind });
 
     private static void EnsureWindowsDirectoryEnvironment()
     {

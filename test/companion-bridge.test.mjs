@@ -67,7 +67,7 @@ test('publishes composite thinking and working activities with a fixed working l
   bridge.apply({ sessionId: 's', seq: 2, isSubagent: false, kind: 'work-start' })
 
   assert.deepEqual(sent, [
-    { kind: 'state', state: 'active', label: '思考中', activities: ['thinking'], sequence: 1 },
+    { kind: 'state', state: 'active', label: '思考中…', activities: ['thinking'], sequence: 1 },
     { kind: 'state', state: 'active', label: '思考中/工作中', activities: ['thinking', 'working'], sequence: 2 },
   ])
 })
@@ -84,7 +84,7 @@ test('adapts events through observers without forwarding their data', () => {
   observers.sessionDisposed({ id: 'root' })
 
   assert.deepEqual(sent, [
-    { kind: 'state', state: 'active', label: '工作中', activities: ['working'], sequence: 1 },
+    { kind: 'state', state: 'active', label: '工作中…', activities: ['working'], sequence: 1 },
     { kind: 'state', state: 'idle', label: '', activities: [], sequence: 0 },
   ])
   assert.equal(JSON.stringify(sent).includes('ignored'), false)

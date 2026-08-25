@@ -21,7 +21,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v2 config and state messages', async () => {
+test('sends only typed v3 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -33,11 +33,11 @@ test('sends only typed v2 config and state messages', async () => {
 
   await helper.start()
   helper.send({ kind: 'config', scale: 1, reducedMotion: false })
-  helper.send({ kind: 'state', state: 'idle', label: '', sequence: 0 })
+  helper.send({ kind: 'state', state: 'idle', activities: [], label: '', sequence: 0 })
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":2,"kind":"config","scale":1,"reducedMotion":false}\n',
-    '{"version":2,"kind":"state","state":"idle","label":"","sequence":0}\n',
+    '{"version":3,"kind":"config","scale":1,"reducedMotion":false}\n',
+    '{"version":3,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
 })

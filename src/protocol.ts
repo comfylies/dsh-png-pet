@@ -1,16 +1,21 @@
-export const PROTOCOL_VERSION = 2 as const
+export const PROTOCOL_VERSION = 3 as const
 
 export const displayLabels = {
   idle: '',
-  thinking: '思考中…',
-  working: '工作中…',
   waiting: '等待你的操作',
   success: '已完成',
   error: '发生错误',
   disconnected: '未连接',
 } as const
 
-export type CompanionState = keyof typeof displayLabels
+const activityLabels = {
+  thinking: '思考中…',
+  working: '工作中…',
+} as const
+
+export type Activity = keyof typeof activityLabels
+export type State = 'active' | keyof typeof displayLabels
+export type CompanionState = State
 export type HelperMessageKind = 'ready' | 'closed'
 export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown'
 
@@ -22,17 +27,29 @@ export type HelperMessage = {
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
   | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
-  | { version: typeof PROTOCOL_VERSION, kind: 'state', state: CompanionState, label: string, sequence: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
   | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
-  | { kind: 'state', state: CompanionState, label: string, sequence: number }
+  | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
 
 const maxLineLength = 512
 const helperKinds = new Set<HelperMessageKind>(['ready', 'closed'])
 const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
+const canonicalActivities: readonly Activity[] = ['thinking', 'working']
+
+export function labelForPresentation(state: State, activities: readonly Activity[]): string {
+  if (state === 'active') {
+    if (activities.length === 0) throw new Error('active presentation requires activities')
+    return activities.length === 2
+      ? '思考中/工作中'
+      : activityLabels[activities[0]]
+  }
+  if (activities.length !== 0) throw new Error('exclusive presentation cannot have activities')
+  return displayLabels[state]
+}
 
 export function parseHelperMessage(line: string): HelperMessage {
   const message = parseObject(line, 'helper message')
@@ -86,11 +103,14 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       }
       return { kind: 'config', scale: value.scale as 0.75 | 1 | 1.25 | 1.5, reducedMotion: value.reducedMotion }
     case 'state':
-      assertExactKeys(value, ['version', 'kind', 'state', 'label', 'sequence'], 'host message', ['kind', 'state', 'label', 'sequence'])
-      if (typeof value.state !== 'string' || !Object.hasOwn(displayLabels, value.state)) {
+      assertExactKeys(value, ['version', 'kind', 'state', 'activities', 'label', 'sequence'], 'host message', ['kind', 'state', 'activities', 'label', 'sequence'])
+      if (typeof value.state !== 'string' || (value.state !== 'active' && !Object.hasOwn(displayLabels, value.state))) {
         throw new Error('host message has an unknown state')
       }
-      if (typeof value.label !== 'string' || value.label !== displayLabels[value.state as CompanionState]) {
+      if (!isCanonicalActivities(value.state as State, value.activities)) {
+        throw new Error('host message has invalid activities')
+      }
+      if (typeof value.label !== 'string' || value.label !== labelForPresentation(value.state as State, value.activities as readonly Activity[])) {
         throw new Error('host message has an invalid label')
       }
       const sequence = value.sequence
@@ -99,13 +119,25 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       }
       return {
         kind: 'state',
-        state: value.state as CompanionState,
+        state: value.state as State,
+        activities: [...value.activities as Activity[]],
         label: value.label,
         sequence,
       }
     default:
       throw new Error('host message has an unknown kind')
   }
+}
+
+function isCanonicalActivities(state: State, value: unknown): value is readonly Activity[] {
+  if (!Array.isArray(value) || !value.every((activity): activity is Activity => typeof activity === 'string' && Object.hasOwn(activityLabels, activity))) {
+    return false
+  }
+
+  if (state !== 'active') return value.length === 0
+
+  const expected = canonicalActivities.filter((activity) => value.includes(activity))
+  return value.length === expected.length && value.every((activity, index) => activity === expected[index])
 }
 
 function parseObject(line: string, subject: string): Record<string, unknown> {

@@ -12,7 +12,7 @@ public static class ProtocolReader
         {
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !HasVersionTwo(root)) return null;
+            if (root.ValueKind != JsonValueKind.Object || !HasVersionThree(root)) return null;
 
             return root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
                 ? kind.GetString() switch
@@ -49,11 +49,13 @@ public static class ProtocolReader
 
     private static StateMessage? ParseState(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "state", "label", "sequence")
+        if (!HasExactlyProperties(root, "version", "kind", "state", "activities", "label", "sequence")
             || !root.TryGetProperty("state", out var state)
+            || !root.TryGetProperty("activities", out var activities)
             || !root.TryGetProperty("label", out var label)
             || !root.TryGetProperty("sequence", out var sequence)
             || state.ValueKind != JsonValueKind.String
+            || activities.ValueKind != JsonValueKind.Array
             || label.ValueKind != JsonValueKind.String
             || sequence.ValueKind != JsonValueKind.Number
             || !sequence.TryGetInt64(out var value)
@@ -62,21 +64,32 @@ public static class ProtocolReader
             return null;
         }
 
+        var activityItems = new List<string>();
+        foreach (var activity in activities.EnumerateArray())
+        {
+            if (activity.ValueKind != JsonValueKind.String || activity.GetString() is not { } activityText)
+            {
+                return null;
+            }
+
+            activityItems.Add(activityText);
+        }
+
         var stateText = state.GetString();
         var labelText = label.GetString();
-        var displayState = PetDisplayState.From(stateText, labelText, value);
+        var displayState = PetDisplayState.From(stateText, activityItems, labelText, value);
         return displayState.State == stateText
             && displayState.Label == labelText
             && displayState.Sequence == value
-            ? new StateMessage(displayState.State, displayState.Label, displayState.Sequence)
+            ? new StateMessage(displayState.State, activityItems, displayState.Label, displayState.Sequence)
             : null;
     }
 
-    private static bool HasVersionTwo(JsonElement root) =>
+    private static bool HasVersionThree(JsonElement root) =>
         root.TryGetProperty("version", out var version)
         && version.ValueKind == JsonValueKind.Number
         && version.TryGetInt32(out var value)
-        && value == 2;
+        && value == 3;
 
     private static bool HasExactlyProperties(JsonElement root, params string[] expected)
     {
