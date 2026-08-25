@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/helper-process.test.mjs test/package-layout.test.mjs test/protocol.test.mjs test/companion-reducer.test.mjs test/dsh-event-adapter.test.mjs test/companion-bridge.test.mjs test/index.test.mjs",
+    "test": "npm run build && node --test test/helper-process.test.mjs test/package-layout.test.mjs test/protocol.test.mjs test/companion-reducer.test.mjs test/dsh-event-adapter.test.mjs test/companion-bridge.test.mjs test/index.test.mjs test/wpf-layout.test.mjs",
     "test:package": "node --test test/packaging.test.mjs test/packaged-helper.test.mjs",
     "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1"
   },

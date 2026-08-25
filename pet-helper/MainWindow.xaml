@@ -20,11 +20,11 @@
     </ContextMenu>
   </Window.ContextMenu>
   <Grid MouseLeftButtonDown="Pet_MouseLeftButtonDown">
+    <Image Source="Assets/placeholder-a.png" Stretch="Uniform" />
     <Border x:Name="StateBubble" Visibility="Collapsed" Background="#E62B4B5F"
             CornerRadius="12" Padding="12,6" HorizontalAlignment="Center"
             VerticalAlignment="Top" Margin="10,2,10,176">
       <TextBlock x:Name="StateLabel" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
     </Border>
-    <Image Source="Assets/placeholder-a.png" Stretch="Uniform" />
   </Grid>
 </Window>

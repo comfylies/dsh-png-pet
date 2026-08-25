@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -13,6 +14,8 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         EnsureWindowsDirectoryEnvironment();
+        Console.InputEncoding = Encoding.UTF8;
+        Console.OutputEncoding = Encoding.UTF8;
         base.OnStartup(e);
         var window = new MainWindow();
         MainWindow = window;
@@ -55,27 +58,39 @@ public partial class App : System.Windows.Application
 
     private async Task ReadProtocolLoop()
     {
-        using var reader = Console.In;
-        while (await reader.ReadLineAsync() is { } line)
+        try
         {
-            switch (ProtocolReader.Parse(line))
+            using var reader = Console.In;
+            while (await reader.ReadLineAsync() is { } line)
             {
-                case HelloMessage:
-                    continue;
-                case ConfigMessage config:
-                    await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConfig(config));
-                    continue;
-                case StateMessage state:
-                    await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Label, state.Sequence)));
-                    continue;
-                case ShutdownMessage:
-                    shutdownRequested = true;
-                    await Dispatcher.InvokeAsync(Shutdown);
-                    return;
-                default:
-                    await Dispatcher.InvokeAsync(ShowDisconnectedThenShutdown);
-                    return;
+                var message = ProtocolReader.Parse(line);
+                switch (message)
+                {
+                    case HelloMessage:
+                        continue;
+                    case ConfigMessage config:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConfig(config));
+                        continue;
+                    case StateMessage state:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Label, state.Sequence)));
+                        continue;
+                    case ShutdownMessage:
+                        shutdownRequested = true;
+                        await Dispatcher.InvokeAsync(Shutdown);
+                        return;
+                    default:
+                        shutdownRequested = true;
+                        await Dispatcher.InvokeAsync(ShowDisconnectedThenShutdown);
+                        return;
+                }
             }
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine($"pet-helper protocol loop fault: {error.GetType().Name}");
+            Console.Error.Flush();
+            shutdownRequested = true;
+            await Dispatcher.InvokeAsync(ShowDisconnectedThenShutdown);
         }
     }
 

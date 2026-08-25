@@ -44,14 +44,17 @@ public partial class MainWindow : Window
 
         if (state.Left is { } left && state.Top is { } top)
         {
-            WindowStartupLocation = WindowStartupLocation.Manual;
+            if (!IsLoaded) WindowStartupLocation = WindowStartupLocation.Manual;
             Left = left;
             Top = top;
             return;
         }
 
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        if (IsLoaded)
+        if (!IsLoaded)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        }
+        else
         {
             var workArea = SystemParameters.WorkArea;
             Left = workArea.Left + (workArea.Width - Width) / 2d;

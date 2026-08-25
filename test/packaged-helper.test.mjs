@@ -50,3 +50,45 @@ test('published Helper completes ready and shutdown handshakes', async () => {
     if (child.exitCode === null) child.kill()
   }
 })
+
+test('published Helper remains alive after a valid working state', async () => {
+  const child = spawn(helperPath, [], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+  const exited = once(child, 'exit')
+  let shutdownSent = false
+  let stderr = ''
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => { stderr += chunk })
+
+  try {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`published Helper did not remain alive after a valid state: ${stderr}`)), 5_000)
+      const output = createInterface({ input: child.stdout })
+      output.on('line', (line) => {
+        if (line === '{"version":2,"kind":"ready"}') {
+          child.stdin.write('{"version":2,"kind":"hello"}\n')
+          child.stdin.write('{"version":2,"kind":"config","scale":1,"reducedMotion":false}\n')
+          child.stdin.write('{"version":2,"kind":"state","state":"working","label":"工作中…","sequence":1}\n')
+          setTimeout(() => {
+            shutdownSent = true
+            child.stdin.write('{"version":2,"kind":"shutdown"}\n')
+          }, 250)
+        }
+        if (line === '{"version":2,"kind":"closed"}') {
+          clearTimeout(timeout)
+          resolve()
+        }
+      })
+      child.once('error', reject)
+      child.once('exit', (code) => {
+        if (!shutdownSent) reject(new Error(`published Helper exited before shutdown with ${code}`))
+      })
+    })
+    const [code] = await exited
+    assert.equal(code, 0)
+  } finally {
+    if (child.exitCode === null) child.kill()
+  }
+})
