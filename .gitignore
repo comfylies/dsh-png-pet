@@ -1,0 +1,11 @@
+node_modules/
+lib/
+runtime/bin/
+pet-helper/bin/
+pet-helper/obj/
+pet-helper.Tests/bin/
+pet-helper.Tests/obj/
+.superpowers/
+.dsh-test/
+*.user
+*.tgz

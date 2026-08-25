@@ -1,0 +1,5 @@
+- insert:
+  - id: dsh-png-pet
+    name: dsh-png-pet
+    config:
+      enabled: true
