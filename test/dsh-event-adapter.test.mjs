@@ -12,10 +12,10 @@ test('maps whitelisted DSH event types to safe facts', () => {
     ['assistant/chunk', 'thinking'],
     ['assistant/message', 'thinking'],
     ['step/end', 'thinking'],
-    ['tool/call', 'working'],
-    ['tool/code-dispatch-start', 'working'],
-    ['tool/result', 'thinking'],
-    ['tool/code-dispatch', 'thinking'],
+    ['tool/call', 'work-start'],
+    ['tool/code-dispatch-start', 'work-start'],
+    ['tool/result', 'work-finish'],
+    ['tool/code-dispatch', 'work-finish'],
     ['approval/asked', 'waiting'],
     ['approval/decided', 'thinking'],
   ]
@@ -25,6 +25,19 @@ test('maps whitelisted DSH event types to safe facts', () => {
       adaptSessionEvent(topLevelSession, { type, seq: 7, data: { ignored: true } }),
       { sessionId: 'root', seq: 7, isSubagent: false, kind },
     )
+  }
+})
+
+test('does not retain tool payload data in tool facts', () => {
+  for (const type of ['tool/call', 'tool/code-dispatch-start', 'tool/result', 'tool/code-dispatch']) {
+    const fact = adaptSessionEvent(topLevelSession, {
+      type,
+      seq: 9,
+      data: { arguments: { apiKey: 'secret', path: 'C:\\private' }, result: 'sensitive output' },
+    })
+    assert.equal(JSON.stringify(fact).includes('secret'), false)
+    assert.equal(JSON.stringify(fact).includes('private'), false)
+    assert.equal(JSON.stringify(fact).includes('sensitive output'), false)
   }
 })
 

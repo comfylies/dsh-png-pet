@@ -1,6 +1,6 @@
 import { CompanionReducer, type CompanionReducerOptions, type Presentation, type SessionFact } from './companion-reducer.js'
 import { adaptSessionDisposed, adaptSessionEvent } from './dsh-event-adapter.js'
-import { displayLabels, type HostOutboundMessage } from './protocol.js'
+import { labelForPresentation, type HostOutboundMessage } from './protocol.js'
 
 type BridgeClock = {
   setTimeout(callback: () => void, delayMs: number): unknown
@@ -55,7 +55,8 @@ export class CompanionBridge {
     this.send({
       kind: 'state',
       state: presentation.state,
-      label: displayLabels[presentation.state],
+      activities: [...presentation.activities],
+      label: labelForPresentation(presentation.state, presentation.activities),
       sequence: presentation.sequence,
     })
     if (presentation.terminal) this.scheduleIdle(presentation.sequence)
@@ -95,4 +96,6 @@ function samePresentation(first: Presentation, second: Presentation | undefined)
     && first.state === second.state
     && first.sequence === second.sequence
     && first.terminal === second.terminal
+    && first.activities.length === second.activities.length
+    && first.activities.every((activity, index) => activity === second.activities[index])
 }
