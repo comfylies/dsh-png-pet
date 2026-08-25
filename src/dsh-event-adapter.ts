@@ -31,6 +31,10 @@ export function adaptSessionEvent(session: unknown, event: unknown): SessionFact
   }
 }
 
+export function adaptSessionDisposed(session: unknown): string | undefined {
+  return readNonEmptyString(session, 'id')
+}
+
 function mapTurnEnd(event: unknown): ReducibleState | undefined {
   const kind = readString(readRecord(readRecord(event, 'data'), 'reason'), 'kind')
   if (kind === undefined) return undefined

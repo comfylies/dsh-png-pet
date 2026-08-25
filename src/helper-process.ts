@@ -2,13 +2,14 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HostOutboundMessage } from './protocol.js'
 
 export type HelperProcessOptions = {
   command?: string
   args?: string[]
   readyTimeoutMs?: number
   shutdownTimeoutMs?: number
+  onSend?: (line: string) => void
 }
 
 const defaultCommand = fileURLToPath(
@@ -32,6 +33,7 @@ export class HelperProcess {
       args: options.args ?? [],
       readyTimeoutMs: options.readyTimeoutMs ?? 5_000,
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
+      onSend: options.onSend ?? (() => {}),
     }
   }
 
@@ -86,9 +88,11 @@ export class HelperProcess {
     return this.readyPromise
   }
 
-  public send(kind: 'hello' | 'config' | 'state' | 'shutdown'): void {
+  public send(message: HostOutboundMessage): void {
     if (!this.child || this.child.stdin.destroyed) return
-    this.child.stdin.write(encodeHostMessage(kind))
+    const line = encodeHostMessage(message)
+    this.options.onSend(line)
+    this.child.stdin.write(line)
   }
 
   public stop(): Promise<void> {
@@ -99,7 +103,7 @@ export class HelperProcess {
       const exited = this.exitPromise
       if (!child || !exited) return
 
-      this.send('shutdown')
+      this.send({ kind: 'shutdown' })
       await Promise.race([
         exited,
         new Promise<void>((resolve) => {
