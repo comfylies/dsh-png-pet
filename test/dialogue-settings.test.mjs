@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { dialogueSettingsDefaults } from '../lib/dialogue-settings.js'
+import { dialogueSettingsDefaults, dialogueSettingsSchema } from '../lib/dialogue-settings.js'
 import { projectSessionOptions, validateDialogueSettings } from '../lib/client-settings-model.js'
 
 test('uses the safe dialogue setting defaults', () => {
@@ -10,6 +10,26 @@ test('uses the safe dialogue setting defaults', () => {
     previewEnabled: false,
     previewMaxChars: 480,
   })
+})
+
+test('exposes the dialogue settings as a serializable schemastery schema', () => {
+  assert.equal(typeof dialogueSettingsSchema, 'function')
+  assert.equal(typeof dialogueSettingsSchema.toJSON, 'function')
+  assert.deepEqual(dialogueSettingsSchema({}), {
+    defaultSessionId: null,
+    previewEnabled: false,
+    previewMaxChars: 480,
+  })
+  assert.deepEqual(
+    dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
+    { defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 },
+  )
+  assert.throws(
+    () => dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: true, previewMaxChars: 80.5 }),
+  )
+  assert.throws(
+    () => dialogueSettingsSchema({ defaultSessionId: '', previewEnabled: true, previewMaxChars: 80 }),
+  )
 })
 
 test('projects only a session id and its DSH display title', () => {

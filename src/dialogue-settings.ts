@@ -1,3 +1,5 @@
+import z from '@deepseek-ai/schemastery'
+
 export type DialogueSettings = {
   defaultSessionId: string | null
   previewEnabled: boolean
@@ -10,19 +12,19 @@ export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freez
   previewMaxChars: 480,
 })
 
-export const dialogueSettingsSchema = {
-  defaults: dialogueSettingsDefaults,
-  parse: validateDialogueSettings,
-} as const
+export const dialogueSettingsSchema = z.transform(
+  z.object({
+    defaultSessionId: z.union([z.string().min(1), z.const(null)]).default(null),
+    previewEnabled: z.boolean().default(false),
+    previewMaxChars: z.number().step(1).min(80).max(2000).default(480),
+  }),
+  (settings) => ({
+    defaultSessionId: settings.defaultSessionId ?? null,
+    previewEnabled: settings.previewEnabled ?? false,
+    previewMaxChars: settings.previewMaxChars ?? 480,
+  }),
+)
 
 export function validateDialogueSettings(value: unknown): DialogueSettings {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('dialogueSettings')
-
-  const settings = value as Record<string, unknown>
-  const { defaultSessionId, previewEnabled, previewMaxChars } = settings
-  if (defaultSessionId !== null && (typeof defaultSessionId !== 'string' || defaultSessionId.length === 0)) throw new Error('defaultSessionId')
-  if (typeof previewEnabled !== 'boolean') throw new Error('previewEnabled')
-  if (typeof previewMaxChars !== 'number' || !Number.isInteger(previewMaxChars) || previewMaxChars < 80 || previewMaxChars > 2000) throw new Error('previewMaxChars')
-
-  return { defaultSessionId, previewEnabled, previewMaxChars }
+  return dialogueSettingsSchema(value as never)
 }

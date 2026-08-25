@@ -31,3 +31,14 @@ test('declares React for the DSH client runtime without bundling it', async () =
   assert.equal(packageJson.devDependencies.react, '^18.3.1')
   assert.equal(packageJson.dependencies?.react, undefined)
 })
+
+test('uses the Harness settings ABI as an external peer instead of bundling a settings runtime', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+
+  assert.equal(packageJson.peerDependencies['@deepseek-ai/dsh-settings'], '^0.1.1-rc.2')
+  assert.equal(packageJson.peerDependencies['@deepseek-ai/schemastery'], '^3.18.1')
+  assert.equal(packageJson.devDependencies['@deepseek-ai/dsh-settings'], '^0.1.1-rc.2')
+  assert.equal(packageJson.devDependencies['@deepseek-ai/schemastery'], '^3.18.1')
+  assert.equal(packageJson.dependencies?.['@deepseek-ai/dsh-settings'], undefined)
+  assert.equal(packageJson.dependencies?.['@deepseek-ai/schemastery'], undefined)
+})

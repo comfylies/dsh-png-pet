@@ -4,13 +4,15 @@ import readline from 'node:readline'
 
 import { encodeHostMessage, parseHelperMessage, type HelperInputMessage, type HelperMessage, type HostOutboundMessage } from './protocol.js'
 
+export type HelperProcessMessage = HelperInputMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+
 export type HelperProcessOptions = {
   command?: string
   args?: string[]
   readyTimeoutMs?: number
   shutdownTimeoutMs?: number
   onSend?: (line: string) => void
-  onMessage?: (message: HelperInputMessage) => void
+  onMessage?: (message: HelperProcessMessage) => void
 }
 
 const defaultCommand = fileURLToPath(
@@ -87,7 +89,15 @@ export class HelperProcess {
           this.isReady = true
           finishStart()
         }
-        if (message.kind === 'closed') this.closed = true
+        if (message.kind === 'closed') {
+          this.closed = true
+          try {
+            this.options.onMessage({ version: message.version, kind: 'closed' })
+          } catch {
+            // A lifecycle consumer must not break a validated helper shutdown.
+          }
+          return
+        }
         if (message.kind === 'input' && message.requestId > this.lastInputRequestId) {
           try {
             this.options.onMessage(message)

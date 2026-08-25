@@ -97,6 +97,22 @@ test('forwards helper input request ids only once and in ascending order', async
   }
 })
 
+test('forwards a validated closed lifecycle message without an input body', async () => {
+  const received = []
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => received.push(message),
+  })
+
+  await helper.start()
+  await helper.stop()
+
+  assert.deepEqual(received, [{ version: 4, kind: 'closed' }])
+})
+
 test('retries an input callback that throws before advancing its request id', async () => {
   const requestIds = []
   const helper = new HelperProcess({
