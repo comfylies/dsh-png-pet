@@ -7,7 +7,10 @@
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./protocol": "./lib/protocol.js"
+    "./protocol": "./lib/protocol.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
   },
   "files": [
     "lib/",
@@ -20,18 +23,31 @@
     "node": ">=22.19"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/helper-process.test.mjs test/package-layout.test.mjs test/protocol.test.mjs test/companion-reducer.test.mjs test/dsh-event-adapter.test.mjs test/companion-bridge.test.mjs test/index.test.mjs test/wpf-layout.test.mjs test/dialogue-settings.test.mjs",
+    "build": "tsc -p tsconfig.json && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --esModuleInterop --skipLibCheck --outDir lib src/client.tsx",
+    "test": "npm run build && node --test test/helper-process.test.mjs test/package-layout.test.mjs test/protocol.test.mjs test/companion-reducer.test.mjs test/dsh-event-adapter.test.mjs test/companion-bridge.test.mjs test/index.test.mjs test/wpf-layout.test.mjs test/dialogue-settings.test.mjs test/client-settings-model.test.mjs",
     "test:package": "node --test test/packaging.test.mjs test/packaged-helper.test.mjs",
     "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@types/react": "^18.3.23",
+    "react": "^18.3.1",
     "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
   }
 }
