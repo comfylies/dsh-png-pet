@@ -92,6 +92,19 @@ test('starts a helper even when settings are not injected', () => {
   assert.deepEqual(calls, ['helper-created', 'effect', ['inject', ['settings']]])
 })
 
+test('routes a request-history helper message to the controller', () => {
+  const calls = []
+  const controller = {
+    acceptInput: () => calls.push('input'),
+    requestHistory: (requestId) => calls.push(['history', requestId]),
+    helperClosed: () => calls.push('closed'),
+  }
+
+  routeHelperMessage({ version: 5, kind: 'request-history', requestId: 6 }, controller)
+
+  assert.deepEqual(calls, [['history', 6]])
+})
+
 test('routes a closed helper lifecycle message directly to preview cleanup', () => {
   const calls = []
   const controller = {
@@ -99,7 +112,7 @@ test('routes a closed helper lifecycle message directly to preview cleanup', () 
     helperClosed: () => calls.push('closed'),
   }
 
-  routeHelperMessage({ version: 4, kind: 'closed' }, controller)
+  routeHelperMessage({ version: 5, kind: 'closed' }, controller)
 
   assert.deepEqual(calls, ['closed'])
 })
@@ -113,7 +126,7 @@ test('does not leave a rejected helper input promise unhandled', async () => {
     helperClosed: () => {},
   }
 
-  routeHelperMessage({ version: 4, kind: 'input', requestId: 1, text: 'input omitted' }, controller)
+  routeHelperMessage({ version: 5, kind: 'input', requestId: 1, text: 'input omitted' }, controller)
   await new Promise((resolve) => setImmediate(resolve))
   process.removeListener('unhandledRejection', onUnhandledRejection)
 

@@ -89,11 +89,14 @@ export function createDialogueContext(
 
 export function routeHelperMessage(
   message: HelperProcessMessage,
-  controller: Pick<DialogueController, 'acceptInput' | 'helperClosed'> | undefined,
+  controller: Pick<DialogueController, 'acceptInput' | 'requestHistory' | 'helperClosed'> | undefined,
 ): Promise<void> {
-  if (message.kind === 'input') {
+  if (message.kind === 'input' || message.kind === 'request-history') {
     try {
-      return Promise.resolve(controller?.acceptInput(message)).catch(() => {})
+      const handled = message.kind === 'input'
+        ? controller?.acceptInput(message)
+        : controller?.requestHistory(message.requestId)
+      return Promise.resolve(handled).catch(() => {})
     } catch {
       return Promise.resolve()
     }

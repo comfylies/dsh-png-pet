@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
@@ -35,7 +35,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v4 config and state messages', async () => {
+test('sends only typed v5 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -51,8 +51,8 @@ test('sends only typed v4 config and state messages', async () => {
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":4,"kind":"config","scale":1,"reducedMotion":false}\n',
-    '{"version":4,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
+    '{"version":5,"kind":"config","scale":1,"reducedMotion":false}\n',
+    '{"version":5,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
 })
 
@@ -76,7 +76,7 @@ test('forwards only validated helper input messages to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 4, kind: 'input', requestId: 9, text: 'hello' }])
+    assert.deepEqual(received, [{ version: 5, kind: 'input', requestId: 9, text: 'hello' }])
   } finally {
     await helper.stop()
   }
@@ -124,7 +124,7 @@ test('forwards a validated closed lifecycle message without an input body', asyn
   await helper.start()
   await helper.stop()
 
-  assert.deepEqual(received, [{ version: 4, kind: 'closed' }])
+  assert.deepEqual(received, [{ version: 5, kind: 'closed' }])
 })
 
 test('retries an input callback that throws before advancing its request id', async () => {

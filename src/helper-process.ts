@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HelperInputMessage, type HelperMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperInputMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperInputMessage | HelperHistoryRequest | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
 
 export type HelperProcessOptions = {
   command?: string
@@ -105,7 +105,7 @@ export class HelperProcess {
           }
           return
         }
-        if (message.kind === 'input' && message.requestId > this.lastInputRequestId) {
+        if ((message.kind === 'input' || message.kind === 'request-history') && message.requestId > this.lastInputRequestId) {
           try {
             this.options.onMessage(message)
             this.lastInputRequestId = message.requestId
