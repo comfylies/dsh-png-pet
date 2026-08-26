@@ -1,5 +1,12 @@
 export const PROTOCOL_VERSION = 4 as const
 
+export const HISTORY_LIMIT = 20
+export const HISTORY_MESSAGE_MAX_CHARS = 2000
+export const REPLY_MAX_CHARS = 8000
+
+export type HistoryRole = 'user' | 'assistant'
+export type HistoryMessage = { role: HistoryRole, text: string }
+
 export const displayLabels = {
   idle: '',
   waiting: '等待你的操作',
