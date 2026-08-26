@@ -323,3 +323,64 @@ test('does not follow up a resume that completes after its default session chang
   assert.equal(followups.length, 0)
   assert.equal(sent.filter((message) => message.kind === 'input-status').length, 0)
 })
+
+test('publishes the final reply text after a turn ends', async () => {
+  const sent = []
+  const followups = []
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'reasoning', text: 'hidden' }, { type: 'text', text: '答复' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: (message) => followups.push(message), session: { events } } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 3, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'user/message', data: { id: followups[0].id } })
+  controller.observeEvent('s-1', { type: 'turn/start', data: { turn: 4 } })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 4 } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'reply'), [
+    { kind: 'reply', requestId: 3, text: '答复', completed: true },
+  ])
+})
+
+test('answers a history request with the extracted dialogue', async () => {
+  const sent = []
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'hello' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 5, text: 'hi' })
+  controller.requestHistory(8)
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-history'), [
+    { kind: 'conversation-history', requestId: 8, available: true, messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }] },
+  ])
+})
+
+test('reports an unavailable session in a history answer', async () => {
+  const sent = []
+  const dsh = createDsh({ resumeFails: true })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  controller.requestHistory(8)
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-history'), [
+    { kind: 'conversation-history', requestId: 8, available: false, messages: [] },
+  ])
+})
+
+test('publishes the default session id with the conversation config', () => {
+  const sent = []
+  const dsh = createDsh()
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  controller.publishConversationConfig()
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-config'), [
+    { kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: 's-1' },
+  ])
+})

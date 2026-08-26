@@ -1,5 +1,6 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 
+import { extractDialogueHistory } from './dialogue-history.js'
 import type { DialogueSettings } from './dialogue-settings.js'
 import type { DshDialogueContext, DshSessionEvent } from './dsh-dialogue-types.js'
 import type { HelperInputMessage, HostOutboundMessage } from './protocol.js'
@@ -175,11 +176,48 @@ export class DialogueController {
       }
       this.requestsByTurn.delete(key)
       this.removeRequest(request)
+      this.publishReply(sessionId, request.requestId)
+    }
+  }
+
+  private publishReply(sessionId: string, requestId: number): void {
+    try {
+      const agent = this.ctx.agents.get(sessionId)
+      const events = agent?.session?.events
+      if (events === undefined) return
+      const history = extractDialogueHistory(events)
+      for (let index = history.length - 1; index >= 0; index--) {
+        if (history[index].role !== 'assistant') continue
+        this.send({ kind: 'reply', requestId, text: history[index].text, completed: true })
+        return
+      }
+    } catch {
+      // Best effort: a failed reply read never breaks the event pipeline.
     }
   }
 
   public disablePreview(): void {
     this.clearAll('disabled')
+  }
+
+  public requestHistory(requestId: number): void {
+    const settings = this.ctx.settings.get()
+    const sessionId = this.currentInputSessionId ?? settings.defaultSessionId
+    if (sessionId === null || sessionId === undefined) {
+      this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
+      return
+    }
+    let agent = this.ctx.agents.get(sessionId)
+    if (agent === undefined) {
+      this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
+      return
+    }
+    try {
+      const messages = extractDialogueHistory(agent.session?.events ?? [])
+      this.send({ kind: 'conversation-history', requestId, available: true, messages })
+    } catch {
+      this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
+    }
   }
 
   public sessionUnavailable(sessionId: string): void {

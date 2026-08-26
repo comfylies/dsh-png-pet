@@ -6,6 +6,7 @@ import type { DialogueSettings } from './dialogue-settings.js'
 export type DshAgent = {
   status: string
   followup(message: UserMessage): void | Promise<void>
+  session?: { events: readonly unknown[] }
 }
 
 export type DshResumedAgent = {
