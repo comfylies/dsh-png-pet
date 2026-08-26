@@ -35,6 +35,7 @@ export class DialogueController {
       kind: 'conversation-config',
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
+      defaultSessionId: settings.defaultSessionId,
     })
     if (!settings.previewEnabled) this.clearAll('disabled')
   }
@@ -45,6 +46,7 @@ export class DialogueController {
       kind: 'conversation-config',
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
+      defaultSessionId: settings.defaultSessionId,
     })
 
     if (previous.previewEnabled && !settings.previewEnabled) {

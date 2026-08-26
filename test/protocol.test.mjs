@@ -3,70 +3,70 @@ import test from 'node:test'
 
 import { encodeHostMessage, parseHelperMessage, parseHostMessage } from '../lib/protocol.js'
 
-test('accepts a v4 ready message', () => {
+test('accepts a v5 ready message', () => {
   assert.deepEqual(
-    parseHelperMessage('{"version":4,"kind":"ready"}'),
-    { version: 4, kind: 'ready' },
+    parseHelperMessage('{"version":5,"kind":"ready"}'),
+    { version: 5, kind: 'ready' },
   )
 })
 
-test('encodes a v4 canonical composite active state presentation', () => {
+test('encodes a v5 canonical composite active state presentation', () => {
   assert.equal(
     encodeHostMessage({ kind: 'state', state: 'active', activities: ['thinking', 'working'], label: '思考中/工作中', sequence: 42 }),
-    '{"version":4,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":42}\n',
+    '{"version":5,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":42}\n',
   )
 })
 
 test('accepts a bounded helper input and encodes bounded dialogue messages', () => {
   assert.deepEqual(
-    parseHelperMessage('{"version":4,"kind":"input","requestId":7,"text":"hello"}'),
-    { version: 4, kind: 'input', requestId: 7, text: 'hello' },
+    parseHelperMessage('{"version":5,"kind":"input","requestId":7,"text":"hello"}'),
+    { version: 5, kind: 'input', requestId: 7, text: 'hello' },
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480 }),
-    '{"version":4,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":480}\n',
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null }),
+    '{"version":5,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":480,"defaultSessionId":null}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'input-status', requestId: 7, status: 'queued' }),
-    '{"version":4,"kind":"input-status","requestId":7,"status":"queued"}\n',
+    '{"version":5,"kind":"input-status","requestId":7,"status":"queued"}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'reply-preview', requestId: 7, text: 'ok', completed: false }),
-    '{"version":4,"kind":"reply-preview","requestId":7,"text":"ok","completed":false}\n',
+    '{"version":5,"kind":"reply-preview","requestId":7,"text":"ok","completed":false}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'clear-preview', requestId: 7, reason: 'next-input' }),
-    '{"version":4,"kind":"clear-preview","requestId":7,"reason":"next-input"}\n',
+    '{"version":5,"kind":"clear-preview","requestId":7,"reason":"next-input"}\n',
   )
 })
 
-test('rejects invalid v4 dialogue payloads', () => {
+test('rejects invalid v5 dialogue payloads', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":4,"kind":"input","requestId":1,"text":"x","extra":true}'),
+    () => parseHelperMessage('{"version":5,"kind":"input","requestId":1,"text":"x","extra":true}'),
     /fields/,
   )
   assert.throws(
-    () => parseHelperMessage(JSON.stringify({ version: 4, kind: 'input', requestId: 1, text: 'x'.repeat(2001) })),
+    () => parseHelperMessage(JSON.stringify({ version: 5, kind: 'input', requestId: 1, text: 'x'.repeat(2001) })),
     /text/,
   )
   assert.throws(
-    () => parseHelperMessage('{"version":4,"kind":"input","requestId":0,"text":"hello"}'),
+    () => parseHelperMessage('{"version":5,"kind":"input","requestId":0,"text":"hello"}'),
     /requestId/,
   )
   assert.throws(
-    () => parseHelperMessage('{"version":4,"kind":"input","requestId":1,"text":" hello"}'),
+    () => parseHelperMessage('{"version":5,"kind":"input","requestId":1,"text":" hello"}'),
     /text/,
   )
   assert.throws(
-    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 79 }),
+    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 79, defaultSessionId: null }),
     /previewMaxChars/,
   )
   assert.throws(
-    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2001 }),
+    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2001, defaultSessionId: null }),
     /previewMaxChars/,
   )
   assert.throws(
-    () => parseHostMessage('{"version":4,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":2001}'),
+    () => parseHostMessage('{"version":5,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":2001,"defaultSessionId":null}'),
     /previewMaxChars/,
   )
   assert.throws(
@@ -91,12 +91,12 @@ test('rejects a required host field inherited from the prototype', () => {
   assert.throws(() => encodeHostMessage(message), /missing required fields/)
 })
 
-test('parseHostMessage rejects extra fields for every v4 dialogue message kind', () => {
+test('parseHostMessage rejects extra fields for every v5 dialogue message kind', () => {
   const messages = [
-    { version: 4, kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480 },
-    { version: 4, kind: 'input-status', requestId: 7, status: 'queued' },
-    { version: 4, kind: 'reply-preview', requestId: 7, text: 'ok', completed: false },
-    { version: 4, kind: 'clear-preview', requestId: 7, reason: 'next-input' },
+    { version: 5, kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null },
+    { version: 5, kind: 'input-status', requestId: 7, status: 'queued' },
+    { version: 5, kind: 'reply-preview', requestId: 7, text: 'ok', completed: false },
+    { version: 5, kind: 'clear-preview', requestId: 7, reason: 'next-input' },
   ]
 
   for (const message of messages) {
@@ -104,25 +104,25 @@ test('parseHostMessage rejects extra fields for every v4 dialogue message kind',
   }
 })
 
-test('accepts v4 dialogue boundaries and rejects 2001-character text', () => {
+test('accepts v5 dialogue boundaries and rejects 2001-character text', () => {
   const maximumText = 'x'.repeat(2000)
-  const ready = '{"version":4,"kind":"ready"}'
+  const ready = '{"version":5,"kind":"ready"}'
 
   assert.deepEqual(
-    parseHelperMessage(JSON.stringify({ version: 4, kind: 'input', requestId: 1, text: maximumText })),
-    { version: 4, kind: 'input', requestId: 1, text: maximumText },
+    parseHelperMessage(JSON.stringify({ version: 5, kind: 'input', requestId: 1, text: maximumText })),
+    { version: 5, kind: 'input', requestId: 1, text: maximumText },
   )
   assert.equal(encodeHostMessage({ kind: 'reply-preview', requestId: 1, text: maximumText, completed: false }).endsWith('\n'), true)
   assert.deepEqual(
     parseHelperMessage(`${ready}${' '.repeat(4096 - ready.length)}`),
-    { version: 4, kind: 'ready' },
+    { version: 5, kind: 'ready' },
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80 }).includes('"previewMaxChars":80'),
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: null }).includes('"previewMaxChars":80'),
     true,
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2000 }).includes('"previewMaxChars":2000'),
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2000, defaultSessionId: null }).includes('"previewMaxChars":2000'),
     true,
   )
   assert.throws(
@@ -133,21 +133,21 @@ test('accepts v4 dialogue boundaries and rejects 2001-character text', () => {
 
 test('rejects a state message with a free-form label', () => {
   assert.throws(
-    () => parseHostMessage('{"version":4,"kind":"state","state":"active","activities":["working"],"label":"C:\\\\secret","sequence":1}'),
+    () => parseHostMessage('{"version":5,"kind":"state","state":"active","activities":["working"],"label":"C:\\\\secret","sequence":1}'),
     /label/,
   )
 })
 
 test('rejects non-canonical composite activities', () => {
   assert.throws(
-    () => parseHostMessage('{"version":4,"kind":"state","state":"active","activities":["working","thinking"],"label":"思考中/工作中","sequence":1}'),
+    () => parseHostMessage('{"version":5,"kind":"state","state":"active","activities":["working","thinking"],"label":"思考中/工作中","sequence":1}'),
     /activities/,
   )
 })
 
 test('rejects activities for an exclusive state', () => {
   assert.throws(
-    () => parseHostMessage('{"version":4,"kind":"state","state":"waiting","activities":["thinking"],"label":"等待你的操作","sequence":1}'),
+    () => parseHostMessage('{"version":5,"kind":"state","state":"waiting","activities":["thinking"],"label":"等待你的操作","sequence":1}'),
     /activities/,
   )
 })
@@ -158,18 +158,53 @@ test('rejects an old Helper handshake', () => {
 
 test('rejects an unknown helper message kind', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":4,"kind":"secret"}'),
+    () => parseHelperMessage('{"version":5,"kind":"secret"}'),
     /kind/,
   )
 })
 
 test('rejects a message with an unsupported protocol version', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":5,"kind":"ready"}'),
+    () => parseHelperMessage('{"version":6,"kind":"ready"}'),
     /version/,
   )
 })
 
-test('rejects a line longer than 4096 characters', () => {
-  assert.throws(() => parseHelperMessage(' '.repeat(4097)), /long/)
+test('rejects a line longer than 65536 characters', () => {
+  assert.throws(() => parseHelperMessage(' '.repeat(65537)), /long/)
+})
+
+test('round-trips a request-history helper message', () => {
+  const parsed = parseHelperMessage('{"version":5,"kind":"request-history","requestId":9}\n')
+  assert.deepEqual(parsed, { version: 5, kind: 'request-history', requestId: 9 })
+})
+
+test('round-trips a reply host message with the extended limit', () => {
+  const text = 'a'.repeat(8000)
+  const line = encodeHostMessage({ kind: 'reply', requestId: 3, text, completed: true })
+  const parsed = parseHostMessage(line)
+  assert.deepEqual(parsed, { version: 5, kind: 'reply', requestId: 3, text, completed: true })
+})
+
+test('rejects an over-limit reply text', () => {
+  assert.throws(() => encodeHostMessage({ kind: 'reply', requestId: 3, text: 'a'.repeat(8001), completed: true }))
+})
+
+test('round-trips a conversation-history message with bounded entries', () => {
+  const messages = [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }]
+  const parsed = parseHostMessage(encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages }))
+  assert.deepEqual(parsed, { version: 5, kind: 'conversation-history', requestId: 4, available: true, messages })
+})
+
+test('rejects history entries beyond the limit or with unknown roles', () => {
+  const tooMany = Array.from({ length: 21 }, (_, i) => ({ role: 'user', text: `m${i}` }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: tooMany }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'system', text: 'x' }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', text: '' }] }))
+})
+
+test('requires defaultSessionId on conversation-config', () => {
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480 }))
+  const parsed = parseHostMessage(encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: 's-1' }))
+  assert.equal(parsed.defaultSessionId, 's-1')
 })

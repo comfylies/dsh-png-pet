@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 4 as const
+export const PROTOCOL_VERSION = 5 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -24,10 +24,10 @@ export type Activity = keyof typeof activityLabels
 export type State = 'active' | keyof typeof displayLabels
 export type CompanionState = State
 export type HelperLifecycleMessageKind = 'ready' | 'closed'
-export type HelperMessageKind = HelperLifecycleMessageKind | 'input'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'request-history'
 export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected'
 export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
-export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview'
+export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history'
 
 export type HelperLifecycleMessage = {
   version: typeof PROTOCOL_VERSION
@@ -41,31 +41,41 @@ export type HelperInputMessage = {
   text: string
 }
 
-export type HelperMessage = HelperLifecycleMessage | HelperInputMessage
+export type HelperHistoryRequest = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'request-history'
+  requestId: number
+}
+
+export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperHistoryRequest
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
   | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
-  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null }
   | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
   | { version: typeof PROTOCOL_VERSION, kind: 'reply-preview', requestId: number, text: string, completed: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
+  | { version: typeof PROTOCOL_VERSION, kind: 'reply', requestId: number, text: string, completed: boolean }
+  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
   | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
-  | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number }
+  | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null }
   | { kind: 'input-status', requestId: number, status: InputStatus }
   | { kind: 'reply-preview', requestId: number, text: string, completed: boolean }
   | { kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
+  | { kind: 'reply', requestId: number, text: string, completed: boolean }
+  | { kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
 
-const maxLineLength = 4_096
+const maxLineLength = 65_536
 const maxTextLength = 2_000
 const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
-const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview'])
+const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
 const canonicalActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected'])
@@ -92,6 +102,11 @@ export function parseHelperMessage(line: string): HelperMessage {
   if (message.kind === 'ready' || message.kind === 'closed') {
     assertExactKeys(message, ['version', 'kind'], 'helper message')
     return { version: PROTOCOL_VERSION, kind: message.kind }
+  }
+  if (message.kind === 'request-history') {
+    assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
+    assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+    return { version: PROTOCOL_VERSION, kind: 'request-history', requestId: message.requestId }
   }
 
   assertExactKeys(message, ['version', 'kind', 'requestId', 'text'], 'helper message')
@@ -162,10 +177,13 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         sequence,
       }
     case 'conversation-config':
-      assertExactKeys(value, ['version', 'kind', 'previewEnabled', 'previewMaxChars'], 'host message', ['kind', 'previewEnabled', 'previewMaxChars'])
+      assertExactKeys(value, ['version', 'kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId'], 'host message', ['kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId'])
       if (typeof value.previewEnabled !== 'boolean') throw new Error('host message has an invalid previewEnabled')
       if (!isPreviewMaxChars(value.previewMaxChars)) throw new Error('host message has an invalid previewMaxChars')
-      return { kind: 'conversation-config', previewEnabled: value.previewEnabled, previewMaxChars: value.previewMaxChars }
+      if (value.defaultSessionId !== null && (typeof value.defaultSessionId !== 'string' || value.defaultSessionId.length === 0)) {
+        throw new Error('host message has an invalid defaultSessionId')
+      }
+      return { kind: 'conversation-config', previewEnabled: value.previewEnabled, previewMaxChars: value.previewMaxChars, defaultSessionId: value.defaultSessionId as string | null }
     case 'input-status':
       assertExactKeys(value, ['version', 'kind', 'requestId', 'status'], 'host message', ['kind', 'requestId', 'status'])
       assertPositiveSafeInteger(value.requestId, 'host message requestId')
@@ -186,13 +204,39 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         throw new Error('host message has an invalid reason')
       }
       return { kind: 'clear-preview', requestId: value.requestId, reason: value.reason as ClearPreviewReason }
+    case 'reply':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'text', 'completed'], 'host message', ['kind', 'requestId', 'text', 'completed'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (typeof value.text !== 'string' || value.text.length === 0 || value.text.length > REPLY_MAX_CHARS) {
+        throw new Error('host message has an invalid reply text')
+      }
+      if (typeof value.completed !== 'boolean') throw new Error('host message has an invalid completed')
+      return { kind: 'reply', requestId: value.requestId, text: value.text, completed: value.completed }
+    case 'conversation-history':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'available', 'messages'], 'host message', ['kind', 'requestId', 'available', 'messages'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (typeof value.available !== 'boolean') throw new Error('host message has an invalid available')
+      if (!isHistoryMessages(value.messages)) throw new Error('host message has invalid history messages')
+      return { kind: 'conversation-history', requestId: value.requestId, available: value.available, messages: [...value.messages as HistoryMessage[]] }
     default:
       throw new Error('host message has an unknown kind')
   }
 }
 
 function isHelperMessageKind(value: string): value is HelperMessageKind {
-  return value === 'input' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+  return value === 'input' || value === 'request-history' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+}
+
+function isHistoryMessages(value: unknown): value is readonly HistoryMessage[] {
+  if (!Array.isArray(value) || value.length > HISTORY_LIMIT) return false
+  return value.every((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return false
+    const record = entry as Record<string, unknown>
+    return (record.role === 'user' || record.role === 'assistant')
+      && typeof record.text === 'string'
+      && record.text.length > 0
+      && record.text.length <= HISTORY_MESSAGE_MAX_CHARS
+  })
 }
 
 function assertPositiveSafeInteger(value: unknown, subject: string): asserts value is number {
