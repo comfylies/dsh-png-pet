@@ -22,7 +22,7 @@ public sealed class ConversationStateTests
         var state = new ConversationState(previewEnabled: true, previewMaxChars: 80);
         state.Apply(new ReplyPreviewMessage(1, "visible", false));
 
-        state.Apply(new ConversationConfigMessage(false, 80));
+        state.Apply(new ConversationConfigMessage(false, 80, null));
 
         Assert.Equal(string.Empty, state.PreviewText);
     }
@@ -84,8 +84,8 @@ public sealed class ConversationStateTests
         var initialPreview = new string('a', 100) + "tail";
         state.Apply(new ReplyPreviewMessage(3, initialPreview, false));
 
-        state.Apply(new ConversationConfigMessage(false, 80));
-        state.Apply(new ConversationConfigMessage(true, 80));
+        state.Apply(new ConversationConfigMessage(false, 80, null));
+        state.Apply(new ConversationConfigMessage(true, 80, null));
         state.Apply(new ReplyPreviewMessage(3, initialPreview, false));
 
         Assert.Equal("tail", state.PreviewText[^4..]);
@@ -98,7 +98,7 @@ public sealed class ConversationStateTests
         var state = new ConversationState(previewEnabled: true, previewMaxChars: 2000);
         state.Apply(new ReplyPreviewMessage(3, new string('a', 100) + "tail", false));
 
-        state.Apply(new ConversationConfigMessage(true, 80));
+        state.Apply(new ConversationConfigMessage(true, 80, null));
 
         Assert.Equal(80, state.PreviewText.Length);
         Assert.Equal("tail", state.PreviewText[^4..]);
