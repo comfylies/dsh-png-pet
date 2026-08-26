@@ -18,6 +18,13 @@ npm run test:package
 
 构建结果位于 `runtime/bin/win32-x64/pet-helper.exe`，并以 .NET 自包含单文件形式发布。
 
+## 动画资源
+
+- 动作清单位于 `pet-helper/Assets/pet-animations.json`。
+- 用户提供的透明 PNG 帧放入 `pet-helper/Assets/Animations/<动作键>/`，并在清单中按顺序引用；动作在对应状态持续时只在本地循环播放。
+- 缺少动作素材时会回退到 `idle`；开启减少动态效果时固定显示动作的第一帧。
+- 仓库当前仅包含默认 `idle` 素材，尚未提供其他动作帧。
+
 ## 本机桌宠交互
 
 直接运行 `runtime/bin/win32-x64/pet-helper.exe` 后：
