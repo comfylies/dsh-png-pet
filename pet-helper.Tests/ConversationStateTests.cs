@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using PetHelper;
 using Xunit;
 
@@ -116,6 +117,60 @@ public sealed class ConversationStateTests
         state.Apply(new InputStatusMessage(1, status));
 
         Assert.Equal(expectedText, state.StatusText);
+    }
+
+    [Fact]
+    public void Marks_the_reply_pending_after_sending_and_resolves_on_reply()
+    {
+        var state = new ConversationState(previewEnabled: false, previewMaxChars: 80);
+
+        state.Apply(new InputStatusMessage(4, "sent"));
+        Assert.True(state.ReplyPending);
+        Assert.Equal(string.Empty, state.ReplyText);
+
+        state.Apply(new ReplyMessage(4, "最终回复", true));
+        Assert.False(state.ReplyPending);
+        Assert.Equal("最终回复", state.ReplyText);
+    }
+
+    [Fact]
+    public void Clears_reply_pending_on_rejection()
+    {
+        var state = new ConversationState(previewEnabled: false, previewMaxChars: 80);
+        state.Apply(new InputStatusMessage(4, "sent"));
+
+        state.Apply(new InputStatusMessage(4, "rejected"));
+
+        Assert.False(state.ReplyPending);
+        Assert.Equal(string.Empty, state.ReplyText);
+    }
+
+    [Fact]
+    public void Stores_history_messages_and_availability()
+    {
+        var state = new ConversationState(previewEnabled: false, previewMaxChars: 80);
+        var messages = ImmutableArray.Create(new HistoryItem("user", "hi"), new HistoryItem("assistant", "hello"));
+
+        state.Apply(new HistoryMessage(9, true, messages));
+
+        Assert.True(state.HistoryAvailable);
+        Assert.Equal(2, state.HistoryMessages.Length);
+    }
+
+    [Fact]
+    public void Clears_reply_and_history_when_the_default_session_changes()
+    {
+        var state = new ConversationState(previewEnabled: false, previewMaxChars: 80);
+        state.Apply(new ConversationConfigMessage(false, 80, "s-1"));
+        state.Apply(new InputStatusMessage(4, "sent"));
+        state.Apply(new ReplyMessage(4, "回复", true));
+        state.Apply(new HistoryMessage(9, true, ImmutableArray.Create(new HistoryItem("user", "hi"))));
+
+        state.Apply(new ConversationConfigMessage(false, 80, "s-2"));
+
+        Assert.Equal(string.Empty, state.ReplyText);
+        Assert.False(state.ReplyPending);
+        Assert.Equal(0, state.HistoryMessages.Length);
     }
 
 }

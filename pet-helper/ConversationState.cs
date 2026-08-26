@@ -1,8 +1,12 @@
+using System.Collections.Immutable;
+
 namespace PetHelper;
 
 public sealed class ConversationState
 {
     private const int MaxPreviewChars = 2000;
+
+    private string? lastDefaultSessionId;
 
     public ConversationState(bool previewEnabled, int previewMaxChars)
     {
@@ -20,6 +24,14 @@ public sealed class ConversationState
 
     public string PreviewText { get; private set; } = string.Empty;
 
+    public string ReplyText { get; private set; } = string.Empty;
+
+    public bool ReplyPending { get; private set; }
+
+    public ImmutableArray<HistoryItem> HistoryMessages { get; private set; } = [];
+
+    public bool HistoryAvailable { get; private set; }
+
     public void Apply(ProtocolMessage message)
     {
         switch (message)
@@ -28,6 +40,14 @@ public sealed class ConversationState
                 PreviewEnabled = config.PreviewEnabled;
                 PreviewMaxChars = ValidatePreviewMaxChars(config.PreviewMaxChars);
                 PreviewText = PreviewEnabled ? KeepLatest(PreviewText) : string.Empty;
+                if (config.DefaultSessionId != lastDefaultSessionId)
+                {
+                    lastDefaultSessionId = config.DefaultSessionId;
+                    ReplyText = string.Empty;
+                    ReplyPending = false;
+                    HistoryMessages = [];
+                    HistoryAvailable = false;
+                }
                 break;
             case InputStatusMessage status:
                 if (status.RequestId < RequestId)
@@ -42,6 +62,24 @@ public sealed class ConversationState
                     PreviewText = string.Empty;
                 }
                 StatusText = StatusTextFor(status.Status);
+                if (status.Status is "sent" or "queued")
+                {
+                    ReplyPending = true;
+                    ReplyText = string.Empty;
+                }
+                else
+                {
+                    ReplyPending = false;
+                }
+                break;
+            case ReplyMessage reply when IsCurrentOrFirst(reply.RequestId):
+                SetFirstRequestId(reply.RequestId);
+                ReplyText = reply.Text;
+                ReplyPending = false;
+                break;
+            case HistoryMessage history:
+                HistoryMessages = history.Messages;
+                HistoryAvailable = history.Available;
                 break;
             case ReplyPreviewMessage preview when PreviewEnabled && IsCurrentOrFirst(preview.RequestId):
                 SetFirstRequestId(preview.RequestId);
@@ -69,6 +107,8 @@ public sealed class ConversationState
         RequestId = requestId;
         PreviewText = string.Empty;
         StatusText = string.Empty;
+        ReplyText = string.Empty;
+        ReplyPending = false;
     }
 
     private bool IsCurrentOrFirst(long requestId) => RequestId == 0 || RequestId == requestId;
