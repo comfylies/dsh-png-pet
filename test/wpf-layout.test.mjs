@@ -29,9 +29,10 @@ test('scales every bubble with the window so the send button stays inside small 
   const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 
   assert.match(code, /new\s+ScaleTransform\(scale,\s*scale\)/)
-  assert.match(code, /InputBubble\.LayoutTransform\s*=\s*bubbleScale/)
+  assert.match(code, /DialogueStack\.LayoutTransform\s*=\s*bubbleScale/)
   assert.match(code, /PreviewBubble\.LayoutTransform\s*=\s*bubbleScale/)
   assert.match(code, /StateBubble\.LayoutTransform\s*=\s*bubbleScale/)
+  assert.match(code, /HistoryPanel\.LayoutTransform\s*=\s*bubbleScale/)
 })
 
 test('hides the state bubble while an input or preview bubble is open', () => {
@@ -40,4 +41,23 @@ test('hides the state bubble while an input or preview bubble is open', () => {
   assert.match(code, /StateBubble\.Visibility\s*=\s*lastDisplayState\.State\s*==\s*"idle"/)
   assert.match(code, /InputBubble\.Visibility\s*==\s*Visibility\.Visible/)
   assert.match(code, /PreviewBubble\.Visibility\s*==\s*Visibility\.Visible/)
+})
+
+test('renders the history button, reply bubble and history overlay', () => {
+  const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /HistoryButton/)
+  assert.match(xaml, /x:Name="ReplyBubble"/)
+  assert.match(xaml, /x:Name="HistoryPanel"/)
+  assert.match(xaml, /x:Name="HistoryList"/)
+  assert.match(code, /HistoryRequested/)
+})
+
+test('scales the dialogue stack with the window', () => {
+  const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Name="DialogueStack"/)
+  assert.match(code, /DialogueStack\.LayoutTransform\s*=\s*bubbleScale/)
 })

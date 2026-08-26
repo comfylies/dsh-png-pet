@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application
         var window = new MainWindow();
         MainWindow = window;
         window.InputSubmitted += (_, input) => WriteInput(input);
+        window.HistoryRequested += (_, request) => WriteHistoryRequest(request);
         var tray = new PetTrayIcon(
             () => Dispatcher.Invoke(ShowMainWindow),
             () => Dispatcher.Invoke(ExitFromTray));
@@ -120,6 +121,12 @@ public partial class App : System.Windows.Application
     private static void WriteInput(InputSubmittedEventArgs input)
     {
         Console.Out.WriteLine(JsonSerializer.Serialize(new { version = 5, kind = "input", requestId = input.RequestId, text = input.Text }));
+        Console.Out.Flush();
+    }
+
+    private static void WriteHistoryRequest(HistoryRequestedEventArgs request)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(new { version = 5, kind = "request-history", requestId = request.RequestId }));
         Console.Out.Flush();
     }
 

@@ -20,26 +20,37 @@
     </ContextMenu>
   </Window.ContextMenu>
   <Grid MouseLeftButtonDown="Pet_MouseLeftButtonDown">
-    <Border x:Name="InputBubble" Visibility="Collapsed" Background="#F2254050"
-            BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
-            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8,4,8,0"
-            Panel.ZIndex="3">
-      <StackPanel Width="184">
-        <DockPanel LastChildFill="False">
-          <TextBlock DockPanel.Dock="Left" Foreground="White" FontWeight="SemiBold"
-                     Text="发送到已选会话" />
-          <Button DockPanel.Dock="Right" Content="×" Click="CloseInputButton_Click"
-                  ToolTip="关闭输入" Padding="5,0" />
-        </DockPanel>
-        <TextBox x:Name="InputTextBox" Margin="0,6,0,4" MinHeight="36" MaxHeight="72"
-                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                 KeyDown="InputTextBox_KeyDown" />
-        <Button x:Name="SendButton" Content="发送" HorizontalAlignment="Right"
-                Padding="10,2" Click="SendButton_Click" />
-        <TextBlock x:Name="ConversationStatusLabel" Foreground="White" Margin="0,4,0,0"
-                   TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
+    <StackPanel x:Name="DialogueStack" HorizontalAlignment="Center" VerticalAlignment="Top"
+                Margin="8,4,8,0" Panel.ZIndex="3">
+      <Border x:Name="InputBubble" Visibility="Collapsed" Background="#F2254050"
+              BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10">
+        <StackPanel Width="184">
+          <DockPanel LastChildFill="False">
+            <Button DockPanel.Dock="Left" x:Name="HistoryButton" Content="历史"
+                    Click="HistoryButton_Click" Padding="6,0" Margin="0,0,6,0"
+                    ToolTip="查看对话历史" />
+            <Button DockPanel.Dock="Right" Content="×" Click="CloseInputButton_Click"
+                    ToolTip="关闭输入" Padding="5,0" />
+            <TextBlock Foreground="White" FontWeight="SemiBold" Text="发送到已选会话"
+                       HorizontalAlignment="Center" />
+          </DockPanel>
+          <TextBox x:Name="InputTextBox" Margin="0,6,0,4" MinHeight="36" MaxHeight="72"
+                   AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                   KeyDown="InputTextBox_KeyDown" />
+          <Button x:Name="SendButton" Content="发送" HorizontalAlignment="Right"
+                  Padding="10,2" Click="SendButton_Click" />
+          <TextBlock x:Name="ConversationStatusLabel" Foreground="White" Margin="0,4,0,0"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <Border x:Name="ReplyBubble" Visibility="Collapsed" Background="#E6203A4A"
+              BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
+              Margin="0,4,0,0">
+        <ScrollViewer MaxHeight="76" VerticalScrollBarVisibility="Auto">
+          <TextBlock x:Name="ReplyTextBlock" Foreground="White" TextWrapping="Wrap" />
+        </ScrollViewer>
+      </Border>
+    </StackPanel>
     <Border x:Name="PreviewBubble" Visibility="Collapsed" Background="#E6254050"
             BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
             HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8,4,8,0"
@@ -53,6 +64,27 @@
             CornerRadius="12" Padding="12,6" HorizontalAlignment="Center"
             VerticalAlignment="Top" Margin="10,106,10,0" Panel.ZIndex="1">
       <TextBlock x:Name="StateLabel" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
+    </Border>
+    <Border x:Name="HistoryPanel" Visibility="Collapsed" Background="#F21B2A35"
+            BorderBrush="#B3FFFFFF" BorderThickness="1" CornerRadius="12" Padding="10"
+            Margin="8,8,8,8" Panel.ZIndex="10">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <DockPanel Grid.Row="0">
+          <TextBlock DockPanel.Dock="Left" Text="对话历史" Foreground="White" FontWeight="SemiBold" />
+          <Button DockPanel.Dock="Right" Content="×" Click="CloseHistoryButton_Click"
+                  Padding="5,0" />
+          <TextBlock x:Name="HistoryStatus" Foreground="#CCFFFFFF" Text="加载中…"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </DockPanel>
+        <ScrollViewer Grid.Row="1" x:Name="HistoryScroll" Margin="0,6,0,0"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="HistoryList" />
+        </ScrollViewer>
+      </Grid>
     </Border>
   </Grid>
 </Window>

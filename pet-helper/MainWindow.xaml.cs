@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private static readonly Thickness InputBubbleMargin = new(8d, 4d, 8d, 0d);
     private static readonly Thickness StateBubbleMargin = new(10d, 106d, 10d, 0d);
+    private static readonly Thickness HistoryPanelMargin = new(8d, 8d, 8d, 8d);
     private readonly PetWindowStateStore stateStore = new();
     private readonly ConversationState conversationState = new(previewEnabled: false, previewMaxChars: 480);
     private readonly PetAnimationPlayer animationPlayer;
@@ -17,9 +18,11 @@ public partial class MainWindow : Window
     private bool reducedMotion;
     private bool restoringState = true;
     private long nextRequestId;
+    private long historyRequestId;
 
     public event EventHandler? HiddenToTray;
     public event EventHandler<InputSubmittedEventArgs>? InputSubmitted;
+    public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
 
     public MainWindow()
     {
@@ -62,6 +65,16 @@ public partial class MainWindow : Window
         {
             InputBubble.Visibility = Visibility.Collapsed;
         }
+        ReplyTextBlock.Text = conversationState.ReplyPending && conversationState.ReplyText.Length == 0
+            ? "正在生成回复…"
+            : conversationState.ReplyText;
+        ReplyBubble.Visibility = conversationState.ReplyPending || conversationState.ReplyText.Length != 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (message is HistoryMessage)
+        {
+            RenderHistory(conversationState);
+        }
         UpdateStateBubbleVisibility();
     }
 
@@ -73,12 +86,14 @@ public partial class MainWindow : Window
         Height = state.Height;
         var scale = state.Scale;
         var bubbleScale = new ScaleTransform(scale, scale);
-        InputBubble.LayoutTransform = bubbleScale;
+        DialogueStack.LayoutTransform = bubbleScale;
         PreviewBubble.LayoutTransform = bubbleScale;
         StateBubble.LayoutTransform = bubbleScale;
-        InputBubble.Margin = ScaleMargin(InputBubbleMargin, scale);
+        HistoryPanel.LayoutTransform = bubbleScale;
+        DialogueStack.Margin = ScaleMargin(InputBubbleMargin, scale);
         PreviewBubble.Margin = ScaleMargin(InputBubbleMargin, scale);
         StateBubble.Margin = ScaleMargin(StateBubbleMargin, scale);
+        HistoryPanel.Margin = ScaleMargin(HistoryPanelMargin, scale);
 
         if (state.Left is { } left && state.Top is { } top)
         {
@@ -107,7 +122,9 @@ public partial class MainWindow : Window
     private void UpdateStateBubbleVisibility() =>
         StateBubble.Visibility = lastDisplayState.State == "idle"
             || InputBubble.Visibility == Visibility.Visible
+            || ReplyBubble.Visibility == Visibility.Visible
             || PreviewBubble.Visibility == Visibility.Visible
+            || HistoryPanel.Visibility == Visibility.Visible
             ? Visibility.Collapsed
             : Visibility.Visible;
 
@@ -174,6 +191,64 @@ public partial class MainWindow : Window
 
     private void CloseInputButton_Click(object sender, RoutedEventArgs e) => ClearAndHideInput();
 
+    private void HistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        historyRequestId++;
+        HistoryRequested?.Invoke(this, new HistoryRequestedEventArgs(historyRequestId));
+        HistoryPanel.Visibility = Visibility.Visible;
+        HistoryStatus.Text = "加载中…";
+        HistoryList.Children.Clear();
+        HistoryStatus.Visibility = Visibility.Visible;
+        HistoryScroll.Visibility = Visibility.Collapsed;
+        UpdateStateBubbleVisibility();
+    }
+
+    private void CloseHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        HistoryPanel.Visibility = Visibility.Collapsed;
+        UpdateStateBubbleVisibility();
+    }
+
+    private void RenderHistory(ConversationState state)
+    {
+        HistoryList.Children.Clear();
+        HistoryScroll.Visibility = Visibility.Collapsed;
+        HistoryStatus.Visibility = Visibility.Visible;
+        if (!state.HistoryAvailable)
+        {
+            HistoryStatus.Text = "会话不可用";
+            return;
+        }
+        if (state.HistoryMessages.Length == 0)
+        {
+            HistoryStatus.Text = "暂无对话历史";
+            return;
+        }
+
+        HistoryStatus.Visibility = Visibility.Collapsed;
+        HistoryScroll.Visibility = Visibility.Visible;
+        foreach (var item in state.HistoryMessages)
+        {
+            var isUser = item.Role == "user";
+            var bubble = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 2, 0, 2),
+                MaxWidth = 150,
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(210, isUser ? (byte)46 : (byte)64, isUser ? (byte)92 : (byte)68, isUser ? (byte)122 : (byte)84)),
+            };
+            bubble.Child = new TextBlock
+            {
+                Text = item.Text,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = System.Windows.Media.Brushes.White,
+            };
+            HistoryList.Children.Add(bubble);
+        }
+    }
+
     private void ClearAndHideInput()
     {
         InputTextBox.Clear();
@@ -233,4 +308,9 @@ public sealed class InputSubmittedEventArgs(long requestId, string text) : Event
 {
     public long RequestId { get; } = requestId;
     public string Text { get; } = text;
+}
+
+public sealed class HistoryRequestedEventArgs(long requestId) : EventArgs
+{
+    public long RequestId { get; } = requestId;
 }
