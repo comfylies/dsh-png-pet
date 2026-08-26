@@ -10,9 +10,7 @@ namespace PetHelper;
 public sealed class PetAnimationPlayer
 {
     private const string ManifestResourceName = "PetHelper.Assets.pet-animations.json";
-    private const string DefaultManifest = """
-        { "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 } }
-        """;
+    private const string ManifestUnavailableMessage = "The pet animation manifest is unavailable.";
 
     private readonly WpfImage image;
     private readonly PetAnimationPlayback playback;
@@ -23,7 +21,7 @@ public sealed class PetAnimationPlayer
     public PetAnimationPlayer(WpfImage image)
     {
         this.image = image ?? throw new ArgumentNullException(nameof(image));
-        playback = new PetAnimationPlayback(LoadManifest(), IsFrameAvailable);
+        playback = new PetAnimationPlayback(LoadManifest(typeof(PetAnimationPlayer).Assembly), IsFrameAvailable);
         timer = new DispatcherTimer();
         timer.Tick += Timer_Tick;
     }
@@ -92,21 +90,20 @@ public sealed class PetAnimationPlayer
         }
     }
 
-    private static PetAnimationManifest LoadManifest()
+    private static PetAnimationManifest LoadManifest(Assembly assembly)
     {
+        ArgumentNullException.ThrowIfNull(assembly);
+
         try
         {
-            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(ManifestResourceName);
-            if (stream is not null)
-            {
-                using var reader = new StreamReader(stream);
-                return PetAnimationManifest.Parse(reader.ReadToEnd());
-            }
+            using var stream = assembly.GetManifestResourceStream(ManifestResourceName)
+                ?? throw new InvalidOperationException(ManifestUnavailableMessage);
+            using var reader = new StreamReader(stream);
+            return PetAnimationManifest.Parse(reader.ReadToEnd());
         }
-        catch
+        catch (FormatException)
         {
+            throw new InvalidOperationException(ManifestUnavailableMessage);
         }
-
-        return PetAnimationManifest.Parse(DefaultManifest);
     }
 }
