@@ -344,6 +344,23 @@ test('publishes the final reply text after a turn ends', async () => {
   ])
 })
 
+test('publishes the final reply even when the turn was never associated with an input', async () => {
+  const sent = []
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '答复' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 3, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 4 } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'reply'), [
+    { kind: 'reply', requestId: 3, text: '答复', completed: true },
+  ])
+})
+
 test('answers a history request with the extracted dialogue', async () => {
   const sent = []
   const events = [

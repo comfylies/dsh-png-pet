@@ -1,9 +1,25 @@
+import { appendFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 
 import { extractDialogueHistory } from './dialogue-history.js'
 import type { DialogueSettings } from './dialogue-settings.js'
 import type { DshDialogueContext, DshSessionEvent } from './dsh-dialogue-types.js'
 import type { HelperInputMessage, HostOutboundMessage } from './protocol.js'
+
+// TEMP-DIAG: reply delivery diagnostics for the "stuck on generating" investigation.
+// Records only error categories and step outcomes — never input text. Remove after verification.
+const diagPath = join(tmpdir(), 'dsh-png-pet-reply-diag.log')
+
+function diag(entry: string): void {
+  try {
+    appendFileSync(diagPath, `${new Date().toISOString()} ${entry}\n`)
+  } catch {
+    // diagnostics must never break the input pipeline
+  }
+}
 
 type Request = {
   requestId: number
@@ -159,8 +175,8 @@ export class DialogueController {
     }
 
     const request = this.requestsByTurn.get(key)
-    if (request === undefined) return
     if (event.type === 'assistant/chunk') {
+      if (request === undefined) return
       const text = readTextDelta(event.data)
       if (text === undefined || !request.previewEnabled) return
       request.preview = retainTail(request.preview + text, request.previewMaxChars)
@@ -171,28 +187,40 @@ export class DialogueController {
     }
 
     if (event.type === 'turn/end') {
-      if (request.previewEnabled && request.preview.length > 0) {
-        this.send({ kind: 'reply-preview', requestId: request.requestId, text: request.preview, completed: true })
+      if (request !== undefined) {
+        if (request.previewEnabled && request.preview.length > 0) {
+          this.send({ kind: 'reply-preview', requestId: request.requestId, text: request.preview, completed: true })
+        }
+        this.requestsByTurn.delete(key)
+        this.removeRequest(request)
       }
-      this.requestsByTurn.delete(key)
-      this.removeRequest(request)
-      this.publishReply(sessionId, request.requestId)
+      if (this.currentInputRequestId !== undefined) {
+        this.publishReply(sessionId, this.currentInputRequestId)
+      }
     }
   }
 
   private publishReply(sessionId: string, requestId: number): void {
     try {
       const agent = this.ctx.agents.get(sessionId)
+      diag(`publishReply requestId=${requestId} agent=${agent === undefined ? 'undefined' : 'live'}`)
       const events = agent?.session?.events
-      if (events === undefined) return
+      if (events === undefined) {
+        diag('publishReply events=undefined')
+        return
+      }
+      diag(`publishReply events=${events.length}`)
       const history = extractDialogueHistory(events)
+      diag(`publishReply history=${history.length} last=${history.at(-1)?.role ?? 'none'}`)
       for (let index = history.length - 1; index >= 0; index--) {
         if (history[index].role !== 'assistant') continue
         this.send({ kind: 'reply', requestId, text: history[index].text, completed: true })
+        diag('publishReply sent')
         return
       }
-    } catch {
-      // Best effort: a failed reply read never breaks the event pipeline.
+      diag('publishReply no-assistant-found')
+    } catch (error) {
+      diag(`publishReply threw ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
