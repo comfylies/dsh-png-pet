@@ -209,6 +209,7 @@ public sealed class PetAnimationManifest
             identifier.Contains('\\') ||
             identifier.StartsWith("/", StringComparison.Ordinal) ||
             identifier.Contains(':') ||
+            identifier.Contains('%') ||
             !identifier.EndsWith(".png", StringComparison.Ordinal))
         {
             return false;

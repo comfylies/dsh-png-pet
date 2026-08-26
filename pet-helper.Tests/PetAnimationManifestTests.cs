@@ -53,6 +53,9 @@ public sealed class PetAnimationManifestTests
     [InlineData("Animations//working.png")]
     [InlineData("Animations/ /working.png")]
     [InlineData("Animations/working/001.jpg")]
+    [InlineData("Animations/%2e%2e/secret.png")]
+    [InlineData("Animations/%2E%2E/secret.png")]
+    [InlineData("Animations%2f%2e%2e%2fsecret.png")]
     public void Rejects_unsafe_frame_identifiers(string frame)
     {
         Assert.Throws<FormatException>(() => PetAnimationManifest.Parse($$"""
@@ -74,5 +77,21 @@ public sealed class PetAnimationManifestTests
     public void Rejects_invalid_manifest_configuration(string json)
     {
         Assert.Throws<FormatException>(() => PetAnimationManifest.Parse(json));
+    }
+
+    [Fact]
+    public void Embeds_and_resolves_the_default_idle_manifest()
+    {
+        var assembly = typeof(PetAnimationManifest).Assembly;
+        using var stream = assembly.GetManifestResourceStream("PetHelper.Assets.pet-animations.json");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream!);
+
+        var manifest = PetAnimationManifest.Parse(reader.ReadToEnd());
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, frame => frame == "placeholder-a.png");
+
+        Assert.Equal(PetAnimationKey.Idle, resolved.Key);
+        Assert.Equal(new[] { "placeholder-a.png" }, resolved.Frames);
+        Assert.Equal(1000, resolved.IntervalMs);
     }
 }
