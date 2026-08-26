@@ -2,6 +2,19 @@ namespace PetHelper;
 
 public sealed record PetDisplayState(string State, string Label, long Sequence)
 {
+    public PetAnimationKey AnimationKey => (State, Label) switch
+    {
+        ("idle", "") => PetAnimationKey.Idle,
+        ("active", "思考中…") => PetAnimationKey.Thinking,
+        ("active", "工作中…") => PetAnimationKey.Working,
+        ("active", "思考中/工作中") => PetAnimationKey.ThinkingWorking,
+        ("waiting", "等待你的操作") => PetAnimationKey.Waiting,
+        ("success", "已完成") => PetAnimationKey.Success,
+        ("error", "发生错误") => PetAnimationKey.Error,
+        ("disconnected", "未连接") => PetAnimationKey.Disconnected,
+        _ => PetAnimationKey.Disconnected,
+    };
+
     private static readonly IReadOnlyDictionary<string, string> ExclusiveLabels =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
