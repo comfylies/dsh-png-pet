@@ -17,6 +17,7 @@ test('source includes a local animation manifest and default idle asset', () => 
 
 test('packed archive includes the helper executable and default idle asset', () => {
   const packageDirectory = mkdtempSync(join(tmpdir(), 'dsh-png-pet-package-'))
+  const packageCache = join(packageDirectory, 'npm-cache')
   const npmCommand = process.platform === 'win32'
     ? ['powershell.exe', [
       '-NoProfile',
@@ -30,8 +31,13 @@ test('packed archive includes the helper executable and default idle asset', () 
     const packed = JSON.parse(execFileSync(
       npmCommand[0],
       npmCommand[1],
-      { cwd: process.cwd(), encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, npm_config_cache: packageCache },
+      },
     ))
+    assert.equal(existsSync(packageCache), true)
     const archiveEntries = execFileSync(
       'tar',
       ['-tzf', join(packageDirectory, packed[0].filename)],
@@ -43,4 +49,6 @@ test('packed archive includes the helper executable and default idle asset', () 
   } finally {
     rmSync(packageDirectory, { recursive: true, force: true })
   }
+
+  assert.equal(existsSync(packageDirectory), false)
 })
