@@ -46,6 +46,26 @@ public sealed class PetAnimationManifestTests
     }
 
     [Theory]
+    [InlineData(PetAnimationKey.Thinking)]
+    [InlineData(PetAnimationKey.Working)]
+    [InlineData(PetAnimationKey.ThinkingWorking)]
+    [InlineData(PetAnimationKey.Waiting)]
+    [InlineData(PetAnimationKey.Success)]
+    [InlineData(PetAnimationKey.Error)]
+    [InlineData(PetAnimationKey.Disconnected)]
+    public void Resolves_each_missing_non_idle_action_to_the_available_idle_action(PetAnimationKey requested)
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            { "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 } }
+            """);
+
+        var resolved = manifest.Resolve(requested, frame => frame == "placeholder-a.png");
+
+        Assert.Equal(PetAnimationKey.Idle, resolved.Key);
+        Assert.Equal(new[] { "placeholder-a.png" }, resolved.Frames);
+    }
+
+    [Theory]
     [InlineData("../secret.png")]
     [InlineData("Animations\\working\\001.png")]
     [InlineData("C:/secret.png")]

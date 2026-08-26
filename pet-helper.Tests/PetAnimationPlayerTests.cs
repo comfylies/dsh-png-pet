@@ -22,6 +22,25 @@ public sealed class PetAnimationPlayerTests
     }
 
     [Fact]
+    public void Uses_the_static_placeholder_without_animation_when_the_manifest_reader_throws()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var staticPlaceholder = new DrawingImage();
+            var player = new PetAnimationPlayer(
+                image,
+                static () => new MemoryStream(Encoding.UTF8.GetBytes("{}")),
+                static _ => new ThrowingManifestReader(),
+                () => staticPlaceholder);
+
+            Assert.Same(staticPlaceholder, image.Source);
+            Assert.False(player.IsTimerRunning);
+            player.Stop();
+        });
+    }
+
+    [Fact]
     public void Uses_the_static_placeholder_without_animation_when_the_idle_frame_is_unavailable()
     {
         RunOnSta(() =>
@@ -89,5 +108,11 @@ public sealed class PetAnimationPlayerTests
         {
             throw new Xunit.Sdk.XunitException(failure.ToString());
         }
+    }
+
+    private sealed class ThrowingManifestReader : TextReader
+    {
+        public override string ReadToEnd() =>
+            throw new IOException("The injected manifest reader failed.");
     }
 }

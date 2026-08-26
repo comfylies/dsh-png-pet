@@ -30,6 +30,15 @@ public sealed class PetAnimationPlayer
         WpfImage image,
         Func<Stream?> manifestStreamReader,
         Func<ImageSource?> staticPlaceholderLoader)
+        : this(image, manifestStreamReader, static stream => new StreamReader(stream), staticPlaceholderLoader)
+    {
+    }
+
+    internal PetAnimationPlayer(
+        WpfImage image,
+        Func<Stream?> manifestStreamReader,
+        Func<Stream, TextReader> manifestReaderFactory,
+        Func<ImageSource?> staticPlaceholderLoader)
     {
         this.image = image ?? throw new ArgumentNullException(nameof(image));
         this.staticPlaceholderLoader = staticPlaceholderLoader
@@ -40,7 +49,7 @@ public sealed class PetAnimationPlayer
         try
         {
             playback = new PetAnimationPlayback(
-                LoadManifest(manifestStreamReader ?? throw new ArgumentNullException(nameof(manifestStreamReader))),
+                LoadManifest(manifestStreamReader, manifestReaderFactory),
                 IsFrameAvailable);
         }
         catch (InvalidOperationException)
@@ -176,18 +185,21 @@ public sealed class PetAnimationPlayer
         return bitmap;
     }
 
-    private static PetAnimationManifest LoadManifest(Func<Stream?> manifestStreamReader)
+    private static PetAnimationManifest LoadManifest(
+        Func<Stream?> manifestStreamReader,
+        Func<Stream, TextReader> manifestReaderFactory)
     {
-        ArgumentNullException.ThrowIfNull(manifestStreamReader);
-
         try
         {
+            ArgumentNullException.ThrowIfNull(manifestStreamReader);
+            ArgumentNullException.ThrowIfNull(manifestReaderFactory);
             using var stream = manifestStreamReader()
                 ?? throw new InvalidOperationException(ManifestUnavailableMessage);
-            using var reader = new StreamReader(stream);
+            using var reader = manifestReaderFactory(stream)
+                ?? throw new InvalidOperationException(ManifestUnavailableMessage);
             return PetAnimationManifest.Parse(reader.ReadToEnd());
         }
-        catch (FormatException)
+        catch (Exception)
         {
             throw new InvalidOperationException(ManifestUnavailableMessage);
         }

@@ -90,7 +90,9 @@ public sealed class PetAnimationManifest
         ArgumentNullException.ThrowIfNull(isFrameAvailable);
 
         var visited = new HashSet<PetAnimationKey>();
-        var current = requested;
+        var current = definitions.ContainsKey(requested)
+            ? requested
+            : PetAnimationKey.Idle;
 
         while (visited.Add(current))
         {
