@@ -53,3 +53,10 @@ test('uses the Harness settings ABI as an external peer instead of bundling a se
   assert.equal(packageJson.dependencies?.['@deepseek-ai/dsh-settings'], undefined)
   assert.equal(packageJson.dependencies?.['@deepseek-ai/schemastery'], undefined)
 })
+
+test('ships the LLM message factory required by the dialogue host', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+
+  assert.equal(packageJson.dependencies?.['@deepseek-ai/dsh-llm'], '^0.1.1-rc.2')
+  assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-llm'], undefined)
+})

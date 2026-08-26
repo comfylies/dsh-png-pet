@@ -12,7 +12,6 @@ test('keeps prototype-backed DSH services reachable through the dialogue context
   const agents = { get: () => undefined, resume: async () => undefined }
   const source = Object.create({
     agents,
-    createUserMessage: () => ({ id: 'message-id' }),
   })
   const accessed = []
   const context = new Proxy(source, {
@@ -26,16 +25,13 @@ test('keeps prototype-backed DSH services reachable through the dialogue context
   const dialogue = createDialogueContext(context, settings)
 
   assert.equal(dialogue.agents, agents)
-  assert.deepEqual(dialogue.createUserMessage({ content: [{ type: 'text', text: 'input omitted' }], source: { kind: 'user' } }), { id: 'message-id' })
   assert.equal(accessed.includes('agents'), true)
-  assert.equal(accessed.includes('createUserMessage'), true)
 })
 
 function createHostContext(calls, register) {
   const listeners = new Map()
   return {
     agents: { get: () => undefined, resume: async () => undefined },
-    createUserMessage: () => ({ id: 'message-id' }),
     on(name, listener) { listeners.set(name, listener) },
     effect(factory) { calls.push('effect'); this.cleanup = factory() },
     inject(services, callback) {

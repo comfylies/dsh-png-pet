@@ -1,3 +1,5 @@
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+
 import type { DialogueSettings } from './dialogue-settings.js'
 import type { DshDialogueContext, DshSessionEvent } from './dsh-dialogue-types.js'
 import type { HelperInputMessage, HostOutboundMessage } from './protocol.js'
@@ -95,7 +97,7 @@ export class DialogueController {
     let agent = this.ctx.agents.get(sessionId)
     if (agent === undefined) {
       try {
-        agent = await this.ctx.agents.resume({ resumeSessionId: sessionId })
+        agent = (await this.ctx.agents.resume({ resumeSessionId: sessionId }))?.agent
       } catch {
         agent = undefined
       }
@@ -107,7 +109,7 @@ export class DialogueController {
       return
     }
 
-    const message = this.ctx.createUserMessage({
+    const message = createUserMessage({
       content: [{ type: 'text', text: input.text }],
       source: { kind: 'user' },
     })

@@ -7,7 +7,7 @@ import { projectSessionOptions } from '../lib/client-settings-model.js'
 
 const nodeRequire = createRequire(import.meta.url)
 
-async function loadClientBundle() {
+async function loadClientBundle(overrides = {}) {
   let registration
   const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   vm.runInNewContext(bundle, {
@@ -21,7 +21,7 @@ async function loadClientBundle() {
   })
 
   assert.equal(registration?.id, 'dsh-png-pet')
-  return registration.factory(nodeRequire)
+  return registration.factory((name) => overrides[name] ?? nodeRequire(name))
 }
 
 test('uses the DSH session display title and never reads cwd', () => {
@@ -159,4 +159,40 @@ test('registers the desktop-pet settings section', async () => {
     label: '桌宠',
   }])
   assert.equal(typeof registrations[0].component, 'function')
+})
+
+test('keeps SettingsScope snapshot methods bound to the scope', async () => {
+  const react = {
+    createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+    useState: (value) => [value, () => {}],
+    useSyncExternalStore: (subscribe, getSnapshot) => {
+      const unsubscribe = subscribe(() => {})
+      unsubscribe()
+      return getSnapshot()
+    },
+  }
+  const client = await loadClientBundle({ react })
+  const registrations = []
+  const scope = {
+    store: { status: 'ready', value: undefined },
+    getSnapshot() { return this.store },
+    subscribe(listener) {
+      this.store.listener = listener
+      return () => { this.store.listener = undefined }
+    },
+    set: async () => {},
+  }
+  const ctx = {
+    sessions: { list: { getSnapshot: () => ({ ids: [], byId: {} }), subscribe: () => () => {} } },
+    get: () => ({ bind: () => scope }),
+    slots: {
+      inject: (_name, factory) => factory(),
+      register: (_options, component) => registrations.push(component),
+    },
+  }
+
+  client.apply(ctx)
+  const element = registrations[0]()
+
+  assert.doesNotThrow(() => element.type(element.props))
 })

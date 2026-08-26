@@ -138,8 +138,14 @@ function DesktopPetSettingsSection({
   sessions: ClientContext['sessions']['list']
   settings: SettingsScope<DialogueSettings>
 }): ReactElement {
-  const sessionSnapshot = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
-  const settingsSnapshot = useSyncExternalStore(settings.subscribe, settings.getSnapshot)
+  const sessionSnapshot = useSyncExternalStore(
+    (listener) => sessions.subscribe(listener),
+    () => sessions.getSnapshot(),
+  )
+  const settingsSnapshot = useSyncExternalStore(
+    (listener) => settings.subscribe(listener),
+    () => settings.getSnapshot(),
+  )
   const [writeFailed, setWriteFailed] = useState(false)
   const { options, value, listUnavailable, selectedSessionUnavailable, error } = projectDialogueSettingsView(
     sessionSnapshot,

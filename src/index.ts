@@ -69,15 +69,12 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
 }
 
 export function createDialogueContext(
-  ctx: Pick<DshDialogueContext, 'agents' | 'createUserMessage'>,
+  ctx: Pick<DshDialogueContext, 'agents'>,
   settings: DshDialogueSettingsScope,
 ): DshDialogueContext {
   return {
     get agents() {
       return ctx.agents
-    },
-    createUserMessage(message) {
-      return ctx.createUserMessage(message)
     },
     settings,
   }
