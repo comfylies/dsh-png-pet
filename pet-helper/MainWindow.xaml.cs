@@ -10,6 +10,9 @@ public partial class MainWindow : Window
 {
     private readonly PetWindowStateStore stateStore = new();
     private readonly ConversationState conversationState = new(previewEnabled: false, previewMaxChars: 480);
+    private readonly PetAnimationPlayer animationPlayer;
+    private PetDisplayState lastDisplayState = new("idle", string.Empty, 0);
+    private bool reducedMotion;
     private bool restoringState = true;
     private long nextRequestId;
 
@@ -19,21 +22,28 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        animationPlayer = new PetAnimationPlayer(PetImage);
+        animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion: false);
         RestoreState();
         restoringState = false;
+        Closed += (_, _) => animationPlayer.Stop();
     }
 
     public void ApplyDisplayState(PetDisplayState state)
     {
+        lastDisplayState = state;
         StateLabel.Text = state.Label;
         StateBubble.Visibility = state.State == "idle" ? Visibility.Collapsed : Visibility.Visible;
         StateBubble.Background = state.State == "waiting"
             ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29))
             : new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95));
+        animationPlayer.Apply(state.AnimationKey, reducedMotion);
     }
 
     public void ApplyConfig(ConfigMessage config)
     {
+        reducedMotion = config.ReducedMotion;
+        animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
         SaveState();
     }

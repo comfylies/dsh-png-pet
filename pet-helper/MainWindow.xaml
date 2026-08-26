@@ -48,7 +48,7 @@
         <TextBlock x:Name="PreviewText" Foreground="White" TextWrapping="Wrap" />
       </ScrollViewer>
     </Border>
-    <Image Source="Assets/placeholder-a.png" Stretch="Uniform" VerticalAlignment="Bottom" />
+    <Image x:Name="PetImage" Stretch="Uniform" VerticalAlignment="Bottom" />
     <Border x:Name="StateBubble" Visibility="Collapsed" Background="#E62B4B5F"
             CornerRadius="12" Padding="12,6" HorizontalAlignment="Center"
             VerticalAlignment="Top" Margin="10,106,10,0" Panel.ZIndex="1">
