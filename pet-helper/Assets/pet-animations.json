@@ -1,0 +1,10 @@
+{
+  "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 },
+  "thinking": { "frames": [], "intervalMs": 120, "fallback": "idle" },
+  "working": { "frames": [], "intervalMs": 100, "fallback": "idle" },
+  "thinking-working": { "frames": [], "intervalMs": 100, "fallback": "working" },
+  "waiting": { "frames": [], "intervalMs": 160, "fallback": "idle" },
+  "success": { "frames": [], "intervalMs": 120, "fallback": "idle" },
+  "error": { "frames": [], "intervalMs": 120, "fallback": "idle" },
+  "disconnected": { "frames": [], "intervalMs": 350, "fallback": "idle" }
+}

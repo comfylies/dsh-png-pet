@@ -13,6 +13,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\placeholder-a.png" />
+    <Resource Include="Assets\Animations\**\*.png" />
+    <EmbeddedResource Include="Assets\pet-animations.json" />
   </ItemGroup>
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
