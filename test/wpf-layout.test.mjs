@@ -24,3 +24,20 @@ test('renders an input bubble with a bounded preview above the pet image', () =>
   assert.match(xaml, /ScrollViewer[^>]*MaxHeight/)
   assert.ok(xaml.indexOf('x:Name="InputBubble"') < xaml.indexOf('<Image'))
 })
+
+test('scales every bubble with the window so the send button stays inside small windows', () => {
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(code, /new\s+ScaleTransform\(scale,\s*scale\)/)
+  assert.match(code, /InputBubble\.LayoutTransform\s*=\s*bubbleScale/)
+  assert.match(code, /PreviewBubble\.LayoutTransform\s*=\s*bubbleScale/)
+  assert.match(code, /StateBubble\.LayoutTransform\s*=\s*bubbleScale/)
+})
+
+test('hides the state bubble while an input or preview bubble is open', () => {
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(code, /StateBubble\.Visibility\s*=\s*lastDisplayState\.State\s*==\s*"idle"/)
+  assert.match(code, /InputBubble\.Visibility\s*==\s*Visibility\.Visible/)
+  assert.match(code, /PreviewBubble\.Visibility\s*==\s*Visibility\.Visible/)
+})

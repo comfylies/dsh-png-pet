@@ -8,6 +8,8 @@ namespace PetHelper;
 
 public partial class MainWindow : Window
 {
+    private static readonly Thickness InputBubbleMargin = new(8d, 4d, 8d, 0d);
+    private static readonly Thickness StateBubbleMargin = new(10d, 106d, 10d, 0d);
     private readonly PetWindowStateStore stateStore = new();
     private readonly ConversationState conversationState = new(previewEnabled: false, previewMaxChars: 480);
     private readonly PetAnimationPlayer animationPlayer;
@@ -33,10 +35,10 @@ public partial class MainWindow : Window
     {
         lastDisplayState = state;
         StateLabel.Text = state.Label;
-        StateBubble.Visibility = state.State == "idle" ? Visibility.Collapsed : Visibility.Visible;
         StateBubble.Background = state.State == "waiting"
             ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29))
             : new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95));
+        UpdateStateBubbleVisibility();
         animationPlayer.Apply(state.AnimationKey, reducedMotion);
     }
 
@@ -60,6 +62,7 @@ public partial class MainWindow : Window
         {
             InputBubble.Visibility = Visibility.Collapsed;
         }
+        UpdateStateBubbleVisibility();
     }
 
     private void RestoreState() => ApplyState(stateStore.Load());
@@ -68,6 +71,14 @@ public partial class MainWindow : Window
     {
         Width = state.Width;
         Height = state.Height;
+        var scale = state.Scale;
+        var bubbleScale = new ScaleTransform(scale, scale);
+        InputBubble.LayoutTransform = bubbleScale;
+        PreviewBubble.LayoutTransform = bubbleScale;
+        StateBubble.LayoutTransform = bubbleScale;
+        InputBubble.Margin = ScaleMargin(InputBubbleMargin, scale);
+        PreviewBubble.Margin = ScaleMargin(InputBubbleMargin, scale);
+        StateBubble.Margin = ScaleMargin(StateBubbleMargin, scale);
 
         if (state.Left is { } left && state.Top is { } top)
         {
@@ -88,6 +99,17 @@ public partial class MainWindow : Window
             Top = workArea.Top + (workArea.Height - Height) / 2d;
         }
     }
+
+    private static Thickness ScaleMargin(Thickness margin, double scale) =>
+        new(margin.Left * scale, margin.Top * scale, margin.Right * scale, margin.Bottom * scale);
+
+    /// <summary>The state bubble hides while an input or preview bubble is open so scaled layouts never overlap.</summary>
+    private void UpdateStateBubbleVisibility() =>
+        StateBubble.Visibility = lastDisplayState.State == "idle"
+            || InputBubble.Visibility == Visibility.Visible
+            || PreviewBubble.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
     private PetWindowState CurrentState() =>
         PetWindowState.Normalize(Left, Top, Width / PetWindowState.BaseSize);
@@ -113,6 +135,7 @@ public partial class MainWindow : Window
     {
         InputBubble.Visibility = Visibility.Visible;
         PreviewBubble.Visibility = Visibility.Collapsed;
+        UpdateStateBubbleVisibility();
         InputTextBox.Focus();
     }
 
@@ -158,6 +181,7 @@ public partial class MainWindow : Window
         PreviewText.Text = string.Empty;
         PreviewBubble.Visibility = Visibility.Collapsed;
         InputBubble.Visibility = Visibility.Collapsed;
+        UpdateStateBubbleVisibility();
     }
 
     private static bool IsInteractiveTarget(DependencyObject? target)
