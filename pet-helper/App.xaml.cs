@@ -10,6 +10,7 @@ public partial class App : System.Windows.Application
 {
     private bool shutdownRequested;
     private PetTrayIcon? trayIcon;
+    private DialogueWindow? dialogue;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -19,13 +20,17 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         var window = new MainWindow();
         MainWindow = window;
-        window.InputSubmitted += (_, input) => WriteInput(input);
-        window.HistoryRequested += (_, request) => WriteHistoryRequest(request);
+        var dialogueWindow = new DialogueWindow();
+        dialogue = dialogueWindow;
+        dialogueWindow.InputSubmitted += (_, input) => WriteInput(input);
+        dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
+        window.AttachDialogueWindow(dialogueWindow);
         var tray = new PetTrayIcon(
             () => Dispatcher.Invoke(ShowMainWindow),
             () => Dispatcher.Invoke(ExitFromTray));
         trayIcon = tray;
         window.HiddenToTray += (_, _) => tray.Show();
+        dialogueWindow.HiddenToTray += (_, _) => tray.Show();
         window.Show();
 
         Console.Out.WriteLine(SerializeHelperMessage("ready"));
@@ -56,7 +61,11 @@ public partial class App : System.Windows.Application
         MainWindow.Activate();
     }
 
-    private void ExitFromTray() => Shutdown();
+    private void ExitFromTray()
+    {
+        if (dialogue is { IsVisible: true }) dialogue.SaveState();
+        Shutdown();
+    }
 
     private async Task ReadProtocolLoop()
     {
@@ -77,7 +86,7 @@ public partial class App : System.Windows.Application
                         await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyDisplayState(PetDisplayState.From(state.State, state.Activities, state.Label, state.Sequence)));
                         continue;
                     case ConversationConfigMessage or InputStatusMessage or ReplyPreviewMessage or ClearPreviewMessage or ReplyMessage or HistoryMessage:
-                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConversationMessage(message));
+                        await Dispatcher.InvokeAsync(() => dialogue?.ApplyConversationMessage(message));
                         continue;
                     case ShutdownMessage:
                         shutdownRequested = true;
