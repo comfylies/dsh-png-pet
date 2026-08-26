@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
@@ -144,6 +144,35 @@ test('retries an input callback that throws before advancing its request id', as
     await helper.start()
     await new Promise((resolve) => setTimeout(resolve, 100))
     assert.deepEqual(requestIds, [11, 11, 12])
+  } finally {
+    await helper.stop()
+  }
+})
+
+test('forwards history and input requests with independent request ids', async () => {
+  const received = []
+  let resolveSecond
+  const secondReceived = new Promise((resolve) => {
+    resolveSecond = resolve
+  })
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--history-then-input'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      received.push(message)
+      if (received.length === 2) resolveSecond()
+    },
+  })
+
+  try {
+    await helper.start()
+    await secondReceived
+    assert.deepEqual(
+      received.map((message) => [message.kind, message.requestId]),
+      [['request-history', 1], ['input', 1]],
+    )
   } finally {
     await helper.stop()
   }

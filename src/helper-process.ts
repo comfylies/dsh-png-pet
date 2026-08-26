@@ -33,6 +33,7 @@ export class HelperProcess {
   private exitPromise?: Promise<number | null>
   private closed = false
   private lastInputRequestId = 0
+  private lastHistoryRequestId = 0
 
   public isReady = false
   public exitCode: number | null | undefined
@@ -105,12 +106,20 @@ export class HelperProcess {
           }
           return
         }
-        if ((message.kind === 'input' || message.kind === 'request-history') && message.requestId > this.lastInputRequestId) {
+        if (message.kind === 'input' && message.requestId > this.lastInputRequestId) {
           try {
             this.options.onMessage(message)
             this.lastInputRequestId = message.requestId
           } catch {
             // Ignore consumer failures so a validated input can be retried.
+          }
+        }
+        if (message.kind === 'request-history' && message.requestId > this.lastHistoryRequestId) {
+          try {
+            this.options.onMessage(message)
+            this.lastHistoryRequestId = message.requestId
+          } catch {
+            // Ignore consumer failures so a validated history request can be retried.
           }
         }
       })

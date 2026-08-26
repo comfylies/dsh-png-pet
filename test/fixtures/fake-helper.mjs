@@ -19,6 +19,11 @@ if (process.argv.includes('--retry-input')) {
   process.stdout.write('{"version":5,"kind":"input","requestId":12,"text":"later"}\n')
 }
 
+if (process.argv.includes('--history-then-input')) {
+  process.stdout.write('{"version":5,"kind":"request-history","requestId":1}\n')
+  process.stdout.write('{"version":5,"kind":"input","requestId":1,"text":"hello"}\n')
+}
+
 const input = readline.createInterface({ input: process.stdin })
 input.on('line', (line) => {
   const message = JSON.parse(line)
