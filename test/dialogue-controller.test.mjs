@@ -163,7 +163,7 @@ test('contains a missing settings snapshot as a fixed rejected input status', as
   assert.deepEqual(sent, [{ kind: 'input-status', requestId: 1, status: 'rejected' }])
 })
 
-test('rejects input without a configured session and clears an unavailable session', async () => {
+test('rejects input without a configured session and reports an unavailable session', async () => {
   const withoutDefault = createDsh({ settings: { defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 } })
   const unavailable = createDsh({ resumeFails: true })
   const noDefaultSent = []
@@ -173,8 +173,18 @@ test('rejects input without a configured session and clears an unavailable sessi
   await new DialogueController(unavailable.context, (message) => unavailableSent.push(message)).acceptInput({ requestId: 8, text: 'input omitted' })
 
   assert.deepEqual(noDefaultSent, [{ kind: 'input-status', requestId: 7, status: 'no-default-session' }])
-  assert.deepEqual(unavailable.writes, [{ defaultSessionId: null }])
   assert.deepEqual(unavailableSent, [{ kind: 'input-status', requestId: 8, status: 'session-unavailable' }])
+})
+
+test('keeps the selected session after a resume failure so the user can choose another one', async () => {
+  const sent = []
+  const dsh = createDsh({ resumeFails: true })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 9, text: 'input omitted' })
+
+  assert.deepEqual(dsh.writes, [])
+  assert.deepEqual(sent, [{ kind: 'input-status', requestId: 9, status: 'session-unavailable' }])
 })
 
 test('clears previews on disabled settings, next input, session loss, helper close and disposal', async () => {

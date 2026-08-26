@@ -104,7 +104,6 @@ export class DialogueController {
     }
     if (!this.isCurrentInput(input.requestId)) return
     if (agent === undefined) {
-      this.clearConfiguredSession(sessionId, settings)
       this.send({ kind: 'input-status', requestId: input.requestId, status: 'session-unavailable' })
       return
     }
