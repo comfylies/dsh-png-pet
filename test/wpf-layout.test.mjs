@@ -71,7 +71,8 @@ test('lets the dialogue window drag and remember its position', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
   const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
 
-  assert.match(code, /DragMove\(\)/)
+  assert.match(code, /CaptureMouse\(\)/)
+  assert.match(code, /Mouse\.GetPosition\(null\)/)
   assert.match(code, /stateStore\.Save\(/)
   assert.match(code, /stateStore\.Load\(\)/)
   assert.match(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)

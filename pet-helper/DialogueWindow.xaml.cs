@@ -94,12 +94,35 @@ public partial class DialogueWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => CloseToHidden();
 
+    private bool draggingWindow;
+    private System.Windows.Point dragStartCursor;
+    private System.Windows.Point dragStartWindowPos;
+
     private void DragHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left && !IsInteractiveTarget(e.OriginalSource as DependencyObject))
-        {
-            DragMove();
-        }
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (IsInteractiveTarget(e.OriginalSource as DependencyObject)) return;
+
+        draggingWindow = true;
+        dragStartCursor = Mouse.GetPosition(null);
+        dragStartWindowPos = new System.Windows.Point(Left, Top);
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void Window_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!draggingWindow) return;
+        var current = Mouse.GetPosition(null);
+        Left = dragStartWindowPos.X + (current.X - dragStartCursor.X);
+        Top = dragStartWindowPos.Y + (current.Y - dragStartCursor.Y);
+    }
+
+    private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        draggingWindow = false;
+        ReleaseMouseCapture();
     }
 
     private void HistoryButton_Click(object sender, RoutedEventArgs e)

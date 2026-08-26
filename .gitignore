@@ -7,5 +7,6 @@ pet-helper.Tests/bin/
 pet-helper.Tests/obj/
 .superpowers/
 .dsh-test/
+.npm-cache/
 *.user
 *.tgz
