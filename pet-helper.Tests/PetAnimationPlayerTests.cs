@@ -21,6 +21,28 @@ public sealed class PetAnimationPlayerTests
         AssertStaticFallback(static () => new MemoryStream(Encoding.UTF8.GetBytes("{")));
     }
 
+    [Fact]
+    public void Uses_the_static_placeholder_without_animation_when_the_idle_frame_is_unavailable()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var staticPlaceholder = new DrawingImage();
+            var player = new PetAnimationPlayer(
+                image,
+                static () => new MemoryStream(Encoding.UTF8.GetBytes("""
+                    { "idle": { "frames": ["Animations/missing/001.png"], "intervalMs": 1000 } }
+                    """)),
+                () => staticPlaceholder);
+
+            player.Apply(PetAnimationKey.Idle, reducedMotion: false);
+
+            Assert.Same(staticPlaceholder, image.Source);
+            Assert.False(player.IsTimerRunning);
+            player.Stop();
+        });
+    }
+
     private static void AssertStaticFallback(Func<Stream?> manifestStreamReader)
     {
         RunOnSta(() =>

@@ -12,7 +12,8 @@ public sealed class PetAnimationPlayer
     private const string ManifestUnavailableMessage = "The pet animation manifest is unavailable.";
 
     private readonly WpfImage image;
-    private readonly PetAnimationPlayback? playback;
+    private readonly Func<ImageSource?> staticPlaceholderLoader;
+    private PetAnimationPlayback? playback;
     private readonly DispatcherTimer timer;
     private readonly Dictionary<string, BitmapImage> imagesByFrame = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
@@ -31,6 +32,8 @@ public sealed class PetAnimationPlayer
         Func<ImageSource?> staticPlaceholderLoader)
     {
         this.image = image ?? throw new ArgumentNullException(nameof(image));
+        this.staticPlaceholderLoader = staticPlaceholderLoader
+            ?? throw new ArgumentNullException(nameof(staticPlaceholderLoader));
         timer = new DispatcherTimer();
         timer.Tick += Timer_Tick;
 
@@ -42,8 +45,7 @@ public sealed class PetAnimationPlayer
         }
         catch (InvalidOperationException)
         {
-            image.Source = TryLoadStaticPlaceholder(
-                staticPlaceholderLoader ?? throw new ArgumentNullException(nameof(staticPlaceholderLoader)));
+            ActivateStaticFallback();
         }
     }
 
@@ -55,17 +57,24 @@ public sealed class PetAnimationPlayer
             return;
         }
 
-        playback.Apply(key, reducedMotion);
-        UpdateImage();
-
-        if (playback.IsAnimating)
+        try
         {
-            timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
-            timer.Start();
-            return;
-        }
+            playback.Apply(key, reducedMotion);
+            UpdateImage();
 
-        timer.Stop();
+            if (playback.IsAnimating)
+            {
+                timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
+                timer.Start();
+                return;
+            }
+
+            timer.Stop();
+        }
+        catch (InvalidOperationException)
+        {
+            ActivateStaticFallback();
+        }
     }
 
     public void Stop()
@@ -123,6 +132,13 @@ public sealed class PetAnimationPlayer
             unavailableFrames.Add(frame);
             return false;
         }
+    }
+
+    private void ActivateStaticFallback()
+    {
+        timer.Stop();
+        playback = null;
+        image.Source = TryLoadStaticPlaceholder(staticPlaceholderLoader);
     }
 
     private static ImageSource? TryLoadStaticPlaceholder(Func<ImageSource?> staticPlaceholderLoader)
