@@ -2,10 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CompanionBridge } from '../lib/companion-bridge.js'
-import { apply, applyWithHelper, createDialogueContext, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
+import { apply, applyWithHelper, createDialogueContext, inject, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
 
 test('keeps the production plugin entrypoint to one context argument', () => {
   assert.equal(apply.length, 1)
+})
+
+test('declares the agents service so DSH exposes it on the restricted plugin context', () => {
+  assert.deepEqual(inject, ['agents'])
 })
 
 test('keeps prototype-backed DSH services reachable through the dialogue context adapter', () => {

@@ -7,6 +7,13 @@ import { HelperProcess, type HelperProcessMessage, type HelperProcessOptions } f
 
 export const name = 'dsh-png-pet'
 
+/**
+ * Cordis service dependencies declared by this plugin. DSH mounts bundles on a
+ * restricted context: services used through `ctx.*` MUST be declared here or
+ * property access throws "cannot get property ... without inject".
+ */
+export const inject = ['agents'] as const
+
 export type SessionObserverContext = {
   on(name: 'session/event', listener: (session: unknown, event: unknown) => void): unknown
   on(name: 'session/disposed', listener: (session: unknown) => void): unknown
