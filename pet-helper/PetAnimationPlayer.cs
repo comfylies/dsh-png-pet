@@ -1,6 +1,5 @@
 using System.IO;
-using System.Reflection;
-using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WpfImage = System.Windows.Controls.Image;
@@ -13,21 +12,49 @@ public sealed class PetAnimationPlayer
     private const string ManifestUnavailableMessage = "The pet animation manifest is unavailable.";
 
     private readonly WpfImage image;
-    private readonly PetAnimationPlayback playback;
+    private readonly PetAnimationPlayback? playback;
     private readonly DispatcherTimer timer;
     private readonly Dictionary<string, BitmapImage> imagesByFrame = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
 
     public PetAnimationPlayer(WpfImage image)
+        : this(
+            image,
+            () => typeof(PetAnimationPlayer).Assembly.GetManifestResourceStream(ManifestResourceName),
+            LoadStaticPlaceholder)
+    {
+    }
+
+    internal PetAnimationPlayer(
+        WpfImage image,
+        Func<Stream?> manifestStreamReader,
+        Func<ImageSource?> staticPlaceholderLoader)
     {
         this.image = image ?? throw new ArgumentNullException(nameof(image));
-        playback = new PetAnimationPlayback(LoadManifest(typeof(PetAnimationPlayer).Assembly), IsFrameAvailable);
         timer = new DispatcherTimer();
         timer.Tick += Timer_Tick;
+
+        try
+        {
+            playback = new PetAnimationPlayback(
+                LoadManifest(manifestStreamReader ?? throw new ArgumentNullException(nameof(manifestStreamReader))),
+                IsFrameAvailable);
+        }
+        catch (InvalidOperationException)
+        {
+            image.Source = TryLoadStaticPlaceholder(
+                staticPlaceholderLoader ?? throw new ArgumentNullException(nameof(staticPlaceholderLoader)));
+        }
     }
 
     public void Apply(PetAnimationKey key, bool reducedMotion)
     {
+        if (playback is null)
+        {
+            timer.Stop();
+            return;
+        }
+
         playback.Apply(key, reducedMotion);
         UpdateImage();
 
@@ -47,14 +74,27 @@ public sealed class PetAnimationPlayer
         timer.Tick -= Timer_Tick;
     }
 
+    internal bool IsTimerRunning => timer.IsEnabled;
+
     private void Timer_Tick(object? sender, EventArgs e)
     {
+        if (playback is null)
+        {
+            timer.Stop();
+            return;
+        }
+
         playback.Advance();
         UpdateImage();
     }
 
     private void UpdateImage()
     {
+        if (playback is null)
+        {
+            return;
+        }
+
         image.Source = imagesByFrame.TryGetValue(playback.Frame, out var bitmap)
             ? bitmap
             : null;
@@ -74,12 +114,7 @@ public sealed class PetAnimationPlayer
 
         try
         {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri($"pack://application:,,,/Assets/{frame}", UriKind.Absolute);
-            bitmap.EndInit();
-            bitmap.Freeze();
+            var bitmap = LoadBitmap(new Uri($"pack://application:,,,/Assets/{frame}", UriKind.Absolute));
             imagesByFrame.Add(frame, bitmap);
             return true;
         }
@@ -90,13 +125,48 @@ public sealed class PetAnimationPlayer
         }
     }
 
-    private static PetAnimationManifest LoadManifest(Assembly assembly)
+    private static ImageSource? TryLoadStaticPlaceholder(Func<ImageSource?> staticPlaceholderLoader)
     {
-        ArgumentNullException.ThrowIfNull(assembly);
+        try
+        {
+            return staticPlaceholderLoader();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static BitmapImage? LoadStaticPlaceholder()
+    {
+        try
+        {
+            return LoadBitmap(new Uri("pack://application:,,,/Assets/placeholder-a.png", UriKind.Absolute));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static BitmapImage LoadBitmap(Uri uri)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = uri;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static PetAnimationManifest LoadManifest(Func<Stream?> manifestStreamReader)
+    {
+        ArgumentNullException.ThrowIfNull(manifestStreamReader);
 
         try
         {
-            using var stream = assembly.GetManifestResourceStream(ManifestResourceName)
+            using var stream = manifestStreamReader()
                 ?? throw new InvalidOperationException(ManifestUnavailableMessage);
             using var reader = new StreamReader(stream);
             return PetAnimationManifest.Parse(reader.ReadToEnd());

@@ -1,5 +1,4 @@
 using PetHelper;
-using System.Reflection;
 using Xunit;
 
 namespace PetHelper.Tests;
@@ -94,24 +93,5 @@ public sealed class PetAnimationManifestTests
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(new[] { "placeholder-a.png" }, resolved.Frames);
         Assert.Equal(1000, resolved.IntervalMs);
-    }
-
-    [Fact]
-    public void Missing_embedded_manifest_is_reported_without_resource_details()
-    {
-        var method = typeof(PetAnimationPlayer).GetMethod(
-            "LoadManifest",
-            BindingFlags.Static | BindingFlags.NonPublic,
-            binder: null,
-            types: [typeof(Assembly)],
-            modifiers: null);
-
-        Assert.NotNull(method);
-        var exception = Assert.Throws<TargetInvocationException>(() => method!.Invoke(null, [typeof(PetAnimationManifestTests).Assembly]));
-        var inner = Assert.IsType<InvalidOperationException>(exception.InnerException);
-
-        Assert.Equal("The pet animation manifest is unavailable.", inner.Message);
-        Assert.DoesNotContain("Assets", inner.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("pack:", inner.Message, StringComparison.OrdinalIgnoreCase);
     }
 }
