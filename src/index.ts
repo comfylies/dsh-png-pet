@@ -20,37 +20,51 @@ type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings
 type Helper = Pick<HelperProcess, 'start' | 'send' | 'stop'>
 type HelperFactory = (options: Pick<HelperProcessOptions, 'onMessage'>) => Helper
 
-export function apply(ctx: PluginContext, createHelper: HelperFactory = (options) => new HelperProcess(options)): void {
-  ctx.inject(['settings'], (settingsCtx) => {
-    const scope = settingsCtx.settings.register(settingsNamespace('dsh-png-pet'), dialogueSettingsSchema)
-    startDialogueHost(ctx, scope, createHelper)
-  })
+export function apply(ctx: PluginContext): void {
+  applyWithHelper(ctx, (options) => new HelperProcess(options))
 }
 
-function startDialogueHost(ctx: PluginContext, scope: DshDialogueSettingsScope, createHelper: HelperFactory): void {
-  const dialogueCtx = createDialogueContext(ctx, scope)
+export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory): void {
+  startDialogueHost(ctx, createHelper)
+}
+
+function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): void {
   let controller: DialogueController | undefined
+  let unwatchSettings = () => {}
+  let helperReady = false
   const helper = createHelper({
     onMessage: (message) => routeHelperMessage(message, controller),
   })
   const bridge = new CompanionBridge((message) => helper.send(message))
-  controller = new DialogueController(dialogueCtx, (message) => helper.send(message))
-  const unwatchSettings = watchDialogueSettings(scope, controller)
-  registerSessionObservers(ctx, bridge, controller)
 
-  ctx.effect(() => () => {
-    controller.dispose()
-    unwatchSettings()
-    void helper.stop()
-  })
-
-  void helper.start().then(() => {
+  const publishWhenReady = () => {
+    if (!helperReady || !controller) return
     helper.send({ kind: 'hello' })
     helper.send({ kind: 'config', scale: 1, reducedMotion: false })
     controller.publishConversationConfig()
     bridge.publishCurrent()
+  }
+
+  void helper.start().then(() => {
+    helperReady = true
+    publishWhenReady()
   }).catch(() => {
     console.error('dsh-png-pet helper startup failed')
+  })
+
+  ctx.effect(() => () => {
+    controller?.dispose()
+    unwatchSettings()
+    void helper.stop()
+  })
+
+  ctx.inject(['settings'], (settingsCtx) => {
+    const scope = settingsCtx.settings.register(settingsNamespace('dsh-png-pet'), dialogueSettingsSchema)
+    const dialogueCtx = createDialogueContext(ctx, scope)
+    controller = new DialogueController(dialogueCtx, (message) => helper.send(message))
+    unwatchSettings = watchDialogueSettings(scope, controller)
+    registerSessionObservers(ctx, bridge, controller)
+    publishWhenReady()
   })
 }
 
@@ -72,12 +86,17 @@ export function createDialogueContext(
 export function routeHelperMessage(
   message: HelperProcessMessage,
   controller: Pick<DialogueController, 'acceptInput' | 'helperClosed'> | undefined,
-): void {
+): Promise<void> {
   if (message.kind === 'input') {
-    void controller?.acceptInput(message)
-  } else {
-    controller?.helperClosed()
+    try {
+      return Promise.resolve(controller?.acceptInput(message)).catch(() => {})
+    } catch {
+      return Promise.resolve()
+    }
   }
+
+  controller?.helperClosed()
+  return Promise.resolve()
 }
 
 export function watchDialogueSettings(

@@ -123,6 +123,19 @@ test('resumes an unavailable live session before following up', async () => {
   assert.deepEqual(sent, [{ kind: 'input-status', requestId: 6, status: 'sent' }])
 })
 
+test('contains a missing settings snapshot as a fixed rejected input status', async () => {
+  const sent = []
+  const controller = new DialogueController({
+    settings: { get: () => undefined, update: () => {}, watch: () => () => {} },
+    agents: { get: () => undefined, resume: async () => undefined },
+    createUserMessage: () => ({ id: 'message-id' }),
+  }, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 1, text: 'input omitted' })
+
+  assert.deepEqual(sent, [{ kind: 'input-status', requestId: 1, status: 'rejected' }])
+})
+
 test('rejects input without a configured session and clears an unavailable session', async () => {
   const withoutDefault = createDsh({ settings: { defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 } })
   const unavailable = createDsh({ resumeFails: true })

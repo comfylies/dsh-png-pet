@@ -70,6 +70,17 @@ export class DialogueController {
   }
 
   public async acceptInput(input: HelperInputMessage): Promise<void> {
+    try {
+      await this.acceptInputUnsafe(input)
+    } catch {
+      this.currentInputRequestId = undefined
+      this.currentInputSessionId = undefined
+      this.clearAll('cancelled')
+      this.send({ kind: 'input-status', requestId: input.requestId, status: 'rejected' })
+    }
+  }
+
+  private async acceptInputUnsafe(input: HelperInputMessage): Promise<void> {
     this.currentInputRequestId = input.requestId
     this.currentInputSessionId = undefined
     this.clearAll('next-input')

@@ -16,6 +16,11 @@ test('uses the safe dialogue setting defaults', () => {
 test('exposes the dialogue settings as a serializable schemastery schema', () => {
   assert.equal(typeof dialogueSettingsSchema, 'function')
   assert.equal(typeof dialogueSettingsSchema.toJSON, 'function')
+  assert.deepEqual(dialogueSettingsSchema(undefined), {
+    defaultSessionId: null,
+    previewEnabled: false,
+    previewMaxChars: 480,
+  })
   assert.deepEqual(dialogueSettingsSchema({}), {
     defaultSessionId: null,
     previewEnabled: false,

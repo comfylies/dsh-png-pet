@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CompanionBridge } from '../lib/companion-bridge.js'
-import { apply, createDialogueContext, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
+import { apply, applyWithHelper, createDialogueContext, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
+
+test('keeps the production plugin entrypoint to one context argument', () => {
+  assert.equal(apply.length, 1)
+})
 
 test('keeps prototype-backed DSH services reachable through the dialogue context adapter', () => {
   const agents = { get: () => undefined, resume: async () => undefined }
@@ -59,33 +63,33 @@ test('defers the helper until settings injection registers the dialogue scope an
     stop: async () => {},
   }
 
-  apply(context, () => helper)
+  applyWithHelper(context, () => helper)
   await Promise.resolve()
 
-  assert.deepEqual(calls[0], ['inject', ['settings']])
-  assert.deepEqual(calls[1][0], 'register')
-  assert.equal(calls[1][1], 'dsh-png-pet')
-  assert.equal(typeof calls[1][2], 'function')
-  assert.equal(typeof calls[1][2].toJSON, 'function')
-  assert.deepEqual(calls[1][2]({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 480 }), {
+  assert.deepEqual(calls.slice(0, 3), ['start', 'effect', ['inject', ['settings']]])
+  assert.deepEqual(calls[3][0], 'register')
+  assert.equal(calls[3][1], 'dsh-png-pet')
+  assert.equal(typeof calls[3][2], 'function')
+  assert.equal(typeof calls[3][2].toJSON, 'function')
+  assert.deepEqual(calls[3][2]({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 480 }), {
     defaultSessionId: null,
     previewEnabled: false,
     previewMaxChars: 480,
   })
-  assert.deepEqual(calls.slice(2, 4), ['watch', 'effect'])
+  assert.deepEqual(calls.slice(4), ['watch'])
   assert.equal(calls.includes('start'), true)
 })
 
-test('does not construct or start a helper when settings are not injected', () => {
+test('starts a helper even when settings are not injected', () => {
   const calls = []
   const context = createHostContext(calls)
 
-  assert.doesNotThrow(() => apply(context, () => {
+  assert.doesNotThrow(() => applyWithHelper(context, () => {
     calls.push('helper-created')
     return { start: async () => {}, send: () => {}, stop: async () => {} }
   }))
 
-  assert.deepEqual(calls, [['inject', ['settings']]])
+  assert.deepEqual(calls, ['helper-created', 'effect', ['inject', ['settings']]])
 })
 
 test('routes a closed helper lifecycle message directly to preview cleanup', () => {
@@ -98,6 +102,22 @@ test('routes a closed helper lifecycle message directly to preview cleanup', () 
   routeHelperMessage({ version: 4, kind: 'closed' }, controller)
 
   assert.deepEqual(calls, ['closed'])
+})
+
+test('does not leave a rejected helper input promise unhandled', async () => {
+  let unhandled = false
+  const onUnhandledRejection = () => { unhandled = true }
+  process.once('unhandledRejection', onUnhandledRejection)
+  const controller = {
+    acceptInput: async () => { throw new Error('expected') },
+    helperClosed: () => {},
+  }
+
+  routeHelperMessage({ version: 4, kind: 'input', requestId: 1, text: 'input omitted' }, controller)
+  await new Promise((resolve) => setImmediate(resolve))
+  process.removeListener('unhandledRejection', onUnhandledRejection)
+
+  assert.equal(unhandled, false)
 })
 
 test('uses the owner settings watch callback to apply committed settings in order', () => {

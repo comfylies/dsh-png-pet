@@ -17,13 +17,13 @@ export const dialogueSettingsSchema = z.transform(
     defaultSessionId: z.union([z.string().min(1), z.const(null)]).default(null),
     previewEnabled: z.boolean().default(false),
     previewMaxChars: z.number().step(1).min(80).max(2000).default(480),
-  }),
+  }).default(dialogueSettingsDefaults),
   (settings) => ({
     defaultSessionId: settings.defaultSessionId ?? null,
     previewEnabled: settings.previewEnabled ?? false,
     previewMaxChars: settings.previewMaxChars ?? 480,
   }),
-)
+).default(dialogueSettingsDefaults)
 
 export function validateDialogueSettings(value: unknown): DialogueSettings {
   return dialogueSettingsSchema(value as never)
