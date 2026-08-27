@@ -1,5 +1,8 @@
 {
-  "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 },
+  "idle": {
+    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png", "Animations/idle/005.png", "Animations/idle/006.png", "Animations/idle/007.png", "Animations/idle/008.png"],
+    "intervalMs": 125
+  },
   "thinking": { "frames": [], "intervalMs": 120, "fallback": "idle" },
   "working": { "frames": [], "intervalMs": 100, "fallback": "idle" },
   "thinking-working": { "frames": [], "intervalMs": 100, "fallback": "working" },

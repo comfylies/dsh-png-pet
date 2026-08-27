@@ -108,10 +108,13 @@ public sealed class PetAnimationManifestTests
         using var reader = new StreamReader(stream!);
 
         var manifest = PetAnimationManifest.Parse(reader.ReadToEnd());
-        var resolved = manifest.Resolve(PetAnimationKey.Idle, frame => frame == "placeholder-a.png");
+        var idleFrames = Enumerable.Range(1, 8)
+            .Select(i => $"Animations/idle/{i:D3}.png")
+            .ToArray();
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, idleFrames.Contains);
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
-        Assert.Equal(new[] { "placeholder-a.png" }, resolved.Frames);
-        Assert.Equal(1000, resolved.IntervalMs);
+        Assert.Equal(idleFrames, resolved.Frames);
+        Assert.Equal(125, resolved.IntervalMs);
     }
 }

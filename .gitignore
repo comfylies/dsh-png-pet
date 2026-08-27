@@ -10,3 +10,4 @@ pet-helper.Tests/obj/
 .npm-cache/
 *.user
 *.tgz
+publish-to-github.ps1

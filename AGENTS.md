@@ -5,21 +5,23 @@
 - 仅支持 Windows 10/11 x64。
 - DSH/Node.js 负责插件、Session、模型与设置；C# WPF Helper 是唯一可见界面。
 - 插件与 Helper 只能经 stdin/stdout JSON Lines 通信；不得创建 HTTP、WebSocket 或其他本地端口。
-- 不读取、保存、输出或传递 API Key、授权头、提示词、模型回复、工具参数、文件路径或 Session 正文。
+- 不读取、保存、输出或传递 API Key、授权头、提示词、工具参数或文件路径。
+- 桌宠输入、回复预览、完整回复和按需加载的最近对话历史可仅通过本地 JSON Lines 暂存和显示；它们不得写入日志、文件或设置，也不得发送到网络。
 
 ## 当前状态
 
-- 包版本为 dsh-png-pet@0.1.1。
-- DSH web profile 已安装 dsh-png-pet@0.1.1；已运行的 Harness 必须重启才能加载更新。
-- 已实现：Helper 生命周期、透明窗口、拖动、位置保存、缩放、右键菜单、托盘恢复/退出、透明鲸主题形象。
-- 未实现：真实 DSH 事件订阅和状态归约、状态气泡/动画、DSH 设置同步、打开 DSH、本次关闭抑制重启和崩溃退避。
-- 下一阶段设计见 docs/下一阶段-DSH状态桥接.md。
+- 当前包版本为 dsh-png-pet@0.1.23，协议版本为 v5。安装状态不是源码事实；需要时用 `dsh plugin --profile web list` 确认。已运行的 Harness 必须重启才能加载更新。
+- 已实现：Helper 生命周期及有序关闭、透明窗口、拖动、位置保存、缩放、右键菜单、托盘恢复/退出、状态气泡、基于真实 DSH Session/Agent 事件的状态归约、多 Session 优先级、PNG 动作清单和减少动态效果回退。
+- 已实现：DSH Web“桌宠”设置（默认会话、回复预览及长度）、桌宠输入发送、回复显示/预览，以及按需读取并显示有限的对话历史。
+- 未实现：打开 DSH、本次关闭抑制自动重启、Helper 崩溃退避，以及将缩放和减少动态效果持久化到 DSH 设置。
 
 ## 关键路径
 
 - src/index.ts：DSH 插件入口和 Helper 生命周期。
 - src/protocol.ts：JSON Lines 协议；扩展字段时必须同步 TypeScript、C# 和测试。
 - src/helper-process.ts：Helper 子进程启动、握手、发送和关闭。
+- src/companion-reducer.ts、src/dsh-event-adapter.ts、src/companion-bridge.ts：DSH 事件适配、状态归约和安全状态桥接。
+- src/dialogue-controller.ts、src/dialogue-history.ts、src/dialogue-settings.ts、src/client.tsx：桌宠对话、受限历史、设置和 Web 设置页。
 - pet-helper/：WPF Helper。
 - pet-helper/Assets/placeholder-a.png：WPF 嵌入的当前形象。
 - assets/placeholder-a.png：随 npm 包发布的镜像资源；必须与 WPF 资源保持相同内容。
@@ -27,10 +29,11 @@
 
 ## 修改形象
 
-1. 同时替换 pet-helper/Assets/placeholder-a.png 与 assets/placeholder-a.png。
+1. 主形象仍须同时替换 pet-helper/Assets/placeholder-a.png 与 assets/placeholder-a.png。
 2. 检查两者 SHA-256 相同，并保留 PNG alpha。
-3. 递增 package.json 和 package-lock.json 中的版本号。
-4. 运行构建、测试、打包并更新 DSH 安装包。
+3. 动作帧放在 pet-helper/Assets/Animations/<动作键>/，并同步更新 pet-helper/Assets/pet-animations.json；缺失动作必须回退 idle。
+4. 递增 package.json 和 package-lock.json 中的版本号。
+5. 运行构建、测试、打包并更新 DSH 安装包。
 
 ## 验证与发布
 
