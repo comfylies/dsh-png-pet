@@ -8,19 +8,35 @@ namespace PetHelper;
 
 public partial class MainWindow : Window
 {
+    /// <summary>
+    /// How far the pet window may protrude past a screen edge so the character body visually
+    /// hugs the edge. Derived from the 1254×1254 placeholder PNG (opaque x[274..1074],
+    /// y[6..1224]) inside a 220×220 window with the image bottom-aligned (margin 20) and
+    /// Uniform-scaled: body is ≈54px from the window's left, ≈21px from its top, ≈29px from
+    /// its right, ≈5px from its bottom. Recompute when the character art changes.
+    /// </summary>
+    private static readonly PlacementPlanner.EdgeProtrusion PetProtrusion = new(54, 21, 29, 5);
+
     private readonly PetWindowStateStore stateStore = new();
     private readonly PetAnimationPlayer animationPlayer;
+    private readonly IScreenLayout screenLayout;
     private PetDisplayState lastDisplayState = new("idle", string.Empty, 0);
     private bool reducedMotion;
     private bool restoringState = true;
-    private bool dragging;
     private DialogueWindow? dialogueWindow;
+
+    private bool dragging;
+    private bool combinedDrag;
+    private Rect dragStartPetRect;
+    private Rect dragStartDialogueRect;
+    private Rect? lastMovedDialogueRect;
 
     public event EventHandler? HiddenToTray;
 
-    public MainWindow()
+    public MainWindow(IScreenLayout screenLayout)
     {
         InitializeComponent();
+        this.screenLayout = screenLayout;
         animationPlayer = new PetAnimationPlayer(PetImage);
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion: false);
         RestoreState();
@@ -42,7 +58,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            dialogueWindow.FocusInput();
+            dialogueWindow.ShowDialogue(CurrentRect());
         }
     }
 
@@ -65,6 +81,14 @@ public partial class MainWindow : Window
         SaveState();
     }
 
+    public void SaveState()
+    {
+        if (!restoringState)
+        {
+            stateStore.Save(CurrentState());
+        }
+    }
+
     private void RestoreState() => ApplyState(stateStore.Load());
 
     private void ApplyState(PetWindowState state)
@@ -76,8 +100,11 @@ public partial class MainWindow : Window
         if (state.Left is { } left && state.Top is { } top)
         {
             if (!IsLoaded) WindowStartupLocation = WindowStartupLocation.Manual;
-            Left = left;
-            Top = top;
+            var saved = new Rect(left, top, Width, Height);
+            var workArea = PlacementPlanner.NearestWorkArea(saved, screenLayout.WorkAreas);
+            var rect = PlacementPlanner.ClampIntoWorkAreaWithProtrusion(saved, workArea, PetProtrusion);
+            Left = rect.X;
+            Top = rect.Y;
             return;
         }
 
@@ -87,7 +114,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            var workArea = SystemParameters.WorkArea;
+            var workArea = screenLayout.PrimaryWorkArea;
             Left = workArea.Left + (workArea.Width - Width) / 2d;
             Top = workArea.Top + (workArea.Height - Height) / 2d;
         }
@@ -96,13 +123,7 @@ public partial class MainWindow : Window
     private PetWindowState CurrentState() =>
         PetWindowState.Normalize(Left, Top, Width / PetWindowState.BaseSize);
 
-    private void SaveState()
-    {
-        if (!restoringState)
-        {
-            stateStore.Save(CurrentState());
-        }
-    }
+    private Rect CurrentRect() => new(Left, Top, ActualWidth, ActualHeight);
 
     private void Pet_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -112,27 +133,86 @@ public partial class MainWindow : Window
             ToggleDialogueWindow();
             return;
         }
-        if (e.ClickCount == 1)
+
+        combinedDrag = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        dragStartPetRect = CurrentRect();
+        if (combinedDrag && dialogueWindow is { IsVisible: true })
         {
-            dragging = true;
-            try
+            dragStartDialogueRect = new Rect(
+                dialogueWindow.Left,
+                dialogueWindow.Top,
+                dialogueWindow.ActualWidth,
+                dialogueWindow.ActualHeight);
+        }
+
+        dragging = true;
+        animationPlayer.Pause();
+        try
+        {
+            // Native OS-level window move (WM_NCLBUTTONDOWN / HTCAPTION): the window surface
+            // is not redrawn while it follows the cursor, so the pet drags smoothly. It is
+            // modal, so clamping happens after the drag ends (see Window_LocationChanged and
+            // the finally block below).
+            DragMove();
+        }
+        finally
+        {
+            dragging = false;
+            animationPlayer.Resume();
+            ClampPetIntoProtrusion();
+            if (combinedDrag && dialogueWindow is { IsVisible: true })
             {
-                DragMove();
+                // Re-sync the dialogue's WPF state after the Win32 moves that followed the
+                // pet during the drag, then persist it.
+                if (lastMovedDialogueRect is { } rect)
+                {
+                    dialogueWindow.ApplyCombinedPosition(rect.X, rect.Y);
+                }
+                dialogueWindow.SaveState();
             }
-            finally
-            {
-                dragging = false;
-            }
+            SaveState();
         }
     }
 
+    /// <summary>
+    /// Fired while DragMove() is running (and on every other position change). During a
+    /// combined (Ctrl) drag the dialogue follows the pet's actual movement and is clamped
+    /// fully on screen. The pet itself is never repositioned here: fighting the OS move loop
+    /// would make it jitter.
+    /// </summary>
     private void Window_LocationChanged(object? sender, EventArgs e)
     {
-        SaveState();
-        if (dragging && dialogueWindow is { IsVisible: true })
+        if (!dragging || !combinedDrag || dialogueWindow is not { IsVisible: true }) return;
+
+        var appliedDeltaX = Left - dragStartPetRect.X;
+        var appliedDeltaY = Top - dragStartPetRect.Y;
+        var dialogueTarget = new Rect(
+            dragStartDialogueRect.X + appliedDeltaX,
+            dragStartDialogueRect.Y + appliedDeltaY,
+            dragStartDialogueRect.Width,
+            dragStartDialogueRect.Height);
+        var dialogueClamped = PlacementPlanner.ClampIntoWorkArea(
+            dialogueTarget,
+            screenLayout.WorkAreaFor(dialogueTarget));
+        lastMovedDialogueRect = dialogueClamped;
+        WindowMover.Move(dialogueWindow, dialogueClamped.X, dialogueClamped.Y);
+    }
+
+    /// <summary>
+    /// After a native drag the pet may have been left off-screen; pull it back to its edge
+    /// protrusion limit (the "dock at the screen edge" position).
+    /// </summary>
+    private void ClampPetIntoProtrusion()
+    {
+        var current = CurrentRect();
+        var clamped = PlacementPlanner.ClampIntoWorkAreaWithProtrusion(
+            current,
+            screenLayout.WorkAreaFor(current),
+            PetProtrusion);
+        if (clamped.X != Left || clamped.Y != Top)
         {
-            dialogueWindow.Left = Left + Width + 8;
-            dialogueWindow.Top = Top;
+            Left = clamped.X;
+            Top = clamped.Y;
         }
     }
 
