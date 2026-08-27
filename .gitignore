@@ -8,6 +8,7 @@ pet-helper.Tests/obj/
 .superpowers/
 .dsh-test/
 .npm-cache/
+.tools/
 *.user
 *.tgz
 publish-to-github.ps1

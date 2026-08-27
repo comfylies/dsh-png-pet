@@ -6,6 +6,120 @@ namespace PetHelper.Tests;
 public sealed class PetAnimationManifestTests
 {
     [Fact]
+    public void Resolves_a_version_three_action_manifest_from_its_own_state_directory()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            {
+              "formatVersion": 3,
+              "actions": {
+                "idle": { "manifest": "Animations/idle/animation.json" },
+                "thinking": { "manifest": "Animations/thinking/animation.json", "fallback": "idle" },
+                "working": { "manifest": "Animations/working/animation.json", "fallback": "idle" },
+                "thinking-working": { "manifest": "Animations/thinking-working/animation.json", "fallback": "working" },
+                "waiting": { "manifest": "Animations/waiting/animation.json", "fallback": "idle" },
+                "success": { "manifest": "Animations/success/animation.json", "fallback": "idle" },
+                "error": { "manifest": "Animations/error/animation.json", "fallback": "idle" },
+                "disconnected": { "manifest": "Animations/disconnected/animation.json", "fallback": "idle" }
+              }
+            }
+            """, path => path == "Animations/idle/animation.json" ? """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png", "breathe/002.png"],
+                  "frameDurationMs": 160,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              }
+            }
+            """ : "{ \"clips\": {} }");
+
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, _ => true);
+
+        Assert.Equal("idle-breathe", resolved.Id);
+        Assert.Equal(
+            new[] { "Animations/idle/breathe/001.png", "Animations/idle/breathe/002.png" },
+            resolved.Frames);
+    }
+
+    [Fact]
+    public void Rejects_a_version_three_action_manifest_outside_its_own_directory()
+    {
+        Assert.Throws<FormatException>(() => PetAnimationManifest.Parse("""
+            {
+              "formatVersion": 3,
+              "actions": {
+                "idle": { "manifest": "Animations/working/animation.json" }
+              }
+            }
+            """, _ => "{ \"clips\": {} }"));
+    }
+
+    [Fact]
+    public void Resolves_a_version_two_clip_with_its_declared_duration_and_playback_mode()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            {
+              "formatVersion": 2,
+              "clips": {
+                "idle-look-around": {
+                  "frames": ["Animations/idle/001.png", "Animations/idle/002.png"],
+                  "frameDurationMs": 160,
+                  "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "actions": {
+                "idle": { "clips": ["idle-look-around"] }
+              }
+            }
+            """);
+
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, _ => true);
+
+        Assert.Equal("idle-look-around", resolved.Id);
+        Assert.Equal(160, resolved.FrameDurationMs);
+        Assert.Equal(PetClipPlaybackMode.Once, resolved.Playback);
+    }
+
+    [Fact]
+    public void Converts_a_legacy_action_to_a_looping_default_clip()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            { "idle": { "frames": ["Animations/idle/001.png", "Animations/idle/002.png"] } }
+            """);
+
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, _ => true);
+
+        Assert.Equal("idle-default", resolved.Id);
+        Assert.Equal(500, resolved.FrameDurationMs);
+        Assert.Equal(PetClipPlaybackMode.Loop, resolved.Playback);
+    }
+
+    [Theory]
+    [InlineData("Idle-looks")]
+    [InlineData("idle_looks")]
+    [InlineData("idle looks")]
+    public void Rejects_an_invalid_version_two_clip_identifier(string clipId)
+    {
+        Assert.Throws<FormatException>(() => PetAnimationManifest.Parse($$"""
+            {
+              "formatVersion": 2,
+              "clips": {
+                "{{clipId}}": {
+                  "frames": ["Animations/idle/001.png"],
+                  "frameDurationMs": 160,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "actions": { "idle": { "clips": ["{{clipId}}"] } }
+            }
+            """));
+    }
+
+    [Fact]
     public void Resolves_a_configured_multiframe_action_in_order()
     {
         var manifest = PetAnimationManifest.Parse("""
@@ -105,15 +219,22 @@ public sealed class PetAnimationManifestTests
         Assert.NotNull(stream);
         using var reader = new StreamReader(stream!);
 
-        var manifest = PetAnimationManifest.Parse(reader.ReadToEnd());
-        var idleFrames = Enumerable.Range(1, 4)
-            .Select(i => $"Animations/idle/{i:D3}.png")
+        var manifest = PetAnimationManifest.Parse(reader.ReadToEnd(), path =>
+        {
+            using var actionStream = assembly.GetManifestResourceStream(
+                $"PetHelper.Assets.{path.Replace('/', '.').Replace('-', '_')}");
+            Assert.NotNull(actionStream);
+            using var actionReader = new StreamReader(actionStream!);
+            return actionReader.ReadToEnd();
+        });
+        var idleFrames = Enumerable.Range(1, 32)
+            .Select(i => $"Animations/idle/breathe/{i:D3}.png")
             .ToArray();
         var resolved = manifest.Resolve(PetAnimationKey.Idle, idleFrames.Contains);
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(idleFrames, resolved.Frames);
-        Assert.Equal(250, resolved.IntervalMs);
+        Assert.Equal(125, resolved.IntervalMs);
     }
 
     [Fact]

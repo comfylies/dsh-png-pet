@@ -1,0 +1,19 @@
+{
+  "clips": {
+    "breathe": {
+      "frames": [
+        "breathe/001.png", "breathe/002.png", "breathe/003.png", "breathe/004.png",
+        "breathe/005.png", "breathe/006.png", "breathe/007.png", "breathe/008.png",
+        "breathe/009.png", "breathe/010.png", "breathe/011.png", "breathe/012.png",
+        "breathe/013.png", "breathe/014.png", "breathe/015.png", "breathe/016.png",
+        "breathe/017.png", "breathe/018.png", "breathe/019.png", "breathe/020.png",
+        "breathe/021.png", "breathe/022.png", "breathe/023.png", "breathe/024.png",
+        "breathe/025.png", "breathe/026.png", "breathe/027.png", "breathe/028.png",
+        "breathe/029.png", "breathe/030.png", "breathe/031.png", "breathe/032.png"
+      ],
+      "frameDurationMs": 125,
+      "playback": "loop",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    }
+  }
+}

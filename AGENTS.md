@@ -10,8 +10,8 @@
 
 ## 当前状态
 
-- 当前包版本为 dsh-png-pet@0.1.23，协议版本为 v5。安装状态不是源码事实；需要时用 `dsh plugin --profile web list` 确认。已运行的 Harness 必须重启才能加载更新。
-- 已实现：Helper 生命周期及有序关闭、透明窗口、拖动、位置保存、缩放、右键菜单、托盘恢复/退出、状态气泡、基于真实 DSH Session/Agent 事件的状态归约、多 Session 优先级、PNG 动作清单和减少动态效果回退。
+- 当前包版本为 dsh-png-pet@0.1.25，协议版本为 v5。安装状态不是源码事实；需要时用 `dsh plugin --profile web list` 确认。已运行的 Harness 必须重启才能加载更新。
+- 已实现：Helper 生命周期及有序关闭、透明窗口、拖动、位置保存、缩放、右键菜单、托盘恢复/退出、状态气泡、基于真实 DSH Session/Agent 事件的状态归约、多 Session 优先级、目录化 v3 PNG Clip 清单、完整片段播放与减少动态效果回退。
 - 已实现：DSH Web“桌宠”设置（默认会话、回复预览及长度）、桌宠输入发送、回复显示/预览，以及按需读取并显示有限的对话历史。
 - 未实现：打开 DSH、本次关闭抑制自动重启、Helper 崩溃退避，以及将缩放和减少动态效果持久化到 DSH 设置。
 
@@ -23,6 +23,8 @@
 - src/companion-reducer.ts、src/dsh-event-adapter.ts、src/companion-bridge.ts：DSH 事件适配、状态归约和安全状态桥接。
 - src/dialogue-controller.ts、src/dialogue-history.ts、src/dialogue-settings.ts、src/client.tsx：桌宠对话、受限历史、设置和 Web 设置页。
 - pet-helper/：WPF Helper。
+- pet-helper/Assets/pet-animations.json：v3 状态索引；每个状态目录的 animation.json 声明 Clip。
+- pet-helper/Assets/Animations/idle/breathe/：当前 idle 呼吸动画，32 帧、125 ms/帧、循环时长 4 秒。
 - pet-helper/Assets/placeholder-a.png：WPF 嵌入的当前形象。
 - assets/placeholder-a.png：随 npm 包发布的镜像资源；必须与 WPF 资源保持相同内容。
 - scripts/build-helper.ps1：发布自包含 exe 到 runtime/bin/win32-x64/。
@@ -31,7 +33,7 @@
 
 1. 主形象仍须同时替换 pet-helper/Assets/placeholder-a.png 与 assets/placeholder-a.png。
 2. 检查两者 SHA-256 相同，并保留 PNG alpha。
-3. 动作帧放在 pet-helper/Assets/Animations/<动作键>/，并同步更新 pet-helper/Assets/pet-animations.json；缺失动作必须回退 idle。
+3. 动作帧放在 pet-helper/Assets/Animations/<动作键>/<片段键>/，同步更新状态目录的 animation.json 及根 pet-animations.json；缺失动作必须回退 idle。对视频帧先用 scripts/remove-backgrounds.ps1 在本地 rembg 去背景，确认透明 PNG、统一画布和基线后再导入。
 4. 递增 package.json 和 package-lock.json 中的版本号。
 5. 运行构建、测试、打包并更新 DSH 安装包。
 
@@ -63,6 +65,7 @@ dsh plugin --profile web list
 - pet-helper.exe 单文件发布必须保留 IncludeNativeLibrariesForSelfExtract=true。
 - 运行 DSH 或 Codex 子进程时可能缺少 WINDIR；App.xaml.cs 已从有效的 SystemRoot 补齐该环境变量。
 - Git 可能提示无法访问 C:\Users\root\.config\git\ignore；这是环境权限警告，不要为此修改项目文件。
+- rembg 首次安装会下载本地模型；scripts/install-rembg.ps1 把依赖放入项目的 .tools/rembg，scripts/remove-backgrounds.ps1 仅写入单独的输出目录，绝不覆盖原图。
 
 ## 工作方式
 

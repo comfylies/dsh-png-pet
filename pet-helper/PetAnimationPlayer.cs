@@ -18,6 +18,8 @@ public sealed class PetAnimationPlayer
     private readonly Dictionary<string, BitmapImage> imagesByFrame = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
 
+    public event EventHandler? Completed;
+
     public PetAnimationPlayer(WpfImage image)
         : this(
             image,
@@ -51,6 +53,7 @@ public sealed class PetAnimationPlayer
             playback = new PetAnimationPlayback(
                 LoadManifest(manifestStreamReader, manifestReaderFactory),
                 IsFrameAvailable);
+            playback.Completed += Playback_Completed;
         }
         catch (InvalidOperationException)
         {
@@ -90,6 +93,7 @@ public sealed class PetAnimationPlayer
     {
         timer.Stop();
         timer.Tick -= Timer_Tick;
+        if (playback is not null) playback.Completed -= Playback_Completed;
     }
 
     /// <summary>
@@ -121,7 +125,10 @@ public sealed class PetAnimationPlayer
 
         playback.Advance();
         UpdateImage();
+        if (!playback.IsAnimating) timer.Stop();
     }
+
+    private void Playback_Completed(object? sender, EventArgs e) => Completed?.Invoke(this, EventArgs.Empty);
 
     private void UpdateImage()
     {
@@ -214,11 +221,20 @@ public sealed class PetAnimationPlayer
                 ?? throw new InvalidOperationException(ManifestUnavailableMessage);
             using var reader = manifestReaderFactory(stream)
                 ?? throw new InvalidOperationException(ManifestUnavailableMessage);
-            return PetAnimationManifest.Parse(reader.ReadToEnd());
+            return PetAnimationManifest.Parse(reader.ReadToEnd(), ReadEmbeddedActionManifest);
         }
         catch (Exception)
         {
             throw new InvalidOperationException(ManifestUnavailableMessage);
         }
+    }
+
+    private static string ReadEmbeddedActionManifest(string identifier)
+    {
+        var resourceName = $"PetHelper.Assets.{identifier.Replace('/', '.').Replace('-', '_')}";
+        using var stream = typeof(PetAnimationPlayer).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(ManifestUnavailableMessage);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }

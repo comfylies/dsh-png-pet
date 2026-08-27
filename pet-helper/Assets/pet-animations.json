@@ -1,12 +1,13 @@
 {
-  "idle": {
-    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png"]
-  },
-  "thinking": { "frames": [], "fallback": "idle" },
-  "working": { "frames": [], "fallback": "idle" },
-  "thinking-working": { "frames": [], "fallback": "working" },
-  "waiting": { "frames": [], "fallback": "idle" },
-  "success": { "frames": [], "fallback": "idle" },
-  "error": { "frames": [], "fallback": "idle" },
-  "disconnected": { "frames": [], "fallback": "idle" }
+  "formatVersion": 3,
+  "actions": {
+    "idle": { "manifest": "Animations/idle/animation.json" },
+    "thinking": { "manifest": "Animations/thinking/animation.json", "fallback": "idle" },
+    "working": { "manifest": "Animations/working/animation.json", "fallback": "idle" },
+    "thinking-working": { "manifest": "Animations/thinking-working/animation.json", "fallback": "working" },
+    "waiting": { "manifest": "Animations/waiting/animation.json", "fallback": "idle" },
+    "success": { "manifest": "Animations/success/animation.json", "fallback": "idle" },
+    "error": { "manifest": "Animations/error/animation.json", "fallback": "idle" },
+    "disconnected": { "manifest": "Animations/disconnected/animation.json", "fallback": "idle" }
+  }
 }

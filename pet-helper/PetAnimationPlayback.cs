@@ -4,8 +4,8 @@ public sealed class PetAnimationPlayback
 {
     private readonly PetAnimationManifest manifest;
     private readonly Func<string, bool> isFrameAvailable;
-    private ResolvedAnimation? animation;
-    private int frameIndex;
+    private readonly PetClipPlayback clipPlayback = new();
+    private ResolvedClip? clip;
 
     public PetAnimationPlayback(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable)
     {
@@ -13,46 +13,31 @@ public sealed class PetAnimationPlayback
         this.isFrameAvailable = isFrameAvailable ?? throw new ArgumentNullException(nameof(isFrameAvailable));
     }
 
-    public PetAnimationKey Key => CurrentAnimation.Key;
+    public PetAnimationKey Key => CurrentClip.Key;
 
-    public string Frame => CurrentAnimation.Frames[frameIndex];
+    public string Frame => clipPlayback.Frame;
 
-    public int IntervalMs => CurrentAnimation.IntervalMs;
+    public int IntervalMs => clipPlayback.FrameDurationMs;
 
-    public bool IsAnimating { get; private set; }
+    public bool IsAnimating => clipPlayback.IsAnimating;
+
+    public event EventHandler? Completed
+    {
+        add => clipPlayback.Completed += value;
+        remove => clipPlayback.Completed -= value;
+    }
 
     public void Apply(PetAnimationKey requested, bool reducedMotion)
     {
-        var resolved = manifest.Resolve(requested, isFrameAvailable);
-        var effectiveKeyChanged = animation is null || animation.Key != resolved.Key;
-
-        if (effectiveKeyChanged)
-        {
-            frameIndex = 0;
-        }
-
-        animation = resolved;
-
-        if (reducedMotion)
-        {
-            frameIndex = 0;
-            IsAnimating = false;
-            return;
-        }
-
-        IsAnimating = resolved.Frames.Length > 1;
+        clip = manifest.Resolve(requested, isFrameAvailable);
+        clipPlayback.Start(clip, reducedMotion);
     }
 
     public void Advance()
     {
-        if (!IsAnimating)
-        {
-            return;
-        }
-
-        frameIndex = (frameIndex + 1) % CurrentAnimation.Frames.Length;
+        clipPlayback.Advance();
     }
 
-    private ResolvedAnimation CurrentAnimation => animation ??
+    private ResolvedClip CurrentClip => clip ??
         throw new InvalidOperationException("A pet animation must be applied before it can be played.");
 }
