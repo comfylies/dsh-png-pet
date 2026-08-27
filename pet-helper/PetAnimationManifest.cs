@@ -7,6 +7,9 @@ public sealed record ResolvedAnimation(PetAnimationKey Key, ImmutableArray<strin
 
 public sealed class PetAnimationManifest
 {
+    private const int TargetCycleMs = 1000;
+    private const int MaximumFramesPerAction = 64;
+
     private static readonly ImmutableDictionary<string, PetAnimationKey> KeysByName =
         new Dictionary<string, PetAnimationKey>(StringComparer.Ordinal)
         {
@@ -103,7 +106,10 @@ public sealed class PetAnimationManifest
 
             if (!definition.Frames.IsEmpty && definition.Frames.All(isFrameAvailable))
             {
-                return new ResolvedAnimation(current, definition.Frames, definition.IntervalMs);
+                return new ResolvedAnimation(
+                    current,
+                    definition.Frames,
+                    CalculateIntervalMs(definition.Frames.Length));
             }
 
             if (definition.Fallback is not { } fallback)
@@ -120,7 +126,6 @@ public sealed class PetAnimationManifest
     private static AnimationDefinition ParseDefinition(JsonElement action, HashSet<string> allFrames)
     {
         ImmutableArray<string>? frames = null;
-        int? intervalMs = null;
         PetAnimationKey? fallback = null;
         var seenFields = new HashSet<string>(StringComparer.Ordinal);
 
@@ -136,9 +141,6 @@ public sealed class PetAnimationManifest
                 case "frames":
                     frames = ParseFrames(field.Value, allFrames);
                     break;
-                case "intervalMs":
-                    intervalMs = ParseInterval(field.Value);
-                    break;
                 case "fallback":
                     fallback = ParseFallback(field.Value);
                     break;
@@ -147,12 +149,12 @@ public sealed class PetAnimationManifest
             }
         }
 
-        if (frames is null || intervalMs is null)
+        if (frames is null)
         {
             throw InvalidManifest();
         }
 
-        return new AnimationDefinition(frames.Value, intervalMs.Value, fallback);
+        return new AnimationDefinition(frames.Value, fallback);
     }
 
     private static ImmutableArray<string> ParseFrames(JsonElement element, HashSet<string> allFrames)
@@ -176,23 +178,21 @@ public sealed class PetAnimationManifest
                 throw InvalidManifest();
             }
 
+            if (frames.Count >= MaximumFramesPerAction)
+            {
+                throw InvalidManifest();
+            }
+
             frames.Add(identifier!);
         }
 
         return frames.ToImmutable();
     }
 
-    private static int ParseInterval(JsonElement element)
-    {
-        if (element.ValueKind != JsonValueKind.Number ||
-            !element.TryGetInt32(out var intervalMs) ||
-            intervalMs is < 16 or > 10000)
-        {
-            throw InvalidManifest();
-        }
-
-        return intervalMs;
-    }
+    private static int CalculateIntervalMs(int frameCount) =>
+        (int)Math.Round(
+            TargetCycleMs / (double)frameCount,
+            MidpointRounding.AwayFromZero);
 
     private static PetAnimationKey ParseFallback(JsonElement element)
     {
@@ -254,6 +254,5 @@ public sealed class PetAnimationManifest
 
     private sealed record AnimationDefinition(
         ImmutableArray<string> Frames,
-        int IntervalMs,
         PetAnimationKey? Fallback);
 }

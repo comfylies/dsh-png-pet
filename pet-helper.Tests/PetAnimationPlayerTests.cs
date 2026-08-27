@@ -50,7 +50,7 @@ public sealed class PetAnimationPlayerTests
             var player = new PetAnimationPlayer(
                 image,
                 static () => new MemoryStream(Encoding.UTF8.GetBytes("""
-                    { "idle": { "frames": ["Animations/missing/001.png"], "intervalMs": 1000 } }
+                    { "idle": { "frames": ["Animations/missing/001.png"] } }
                     """)),
                 () => staticPlaceholder);
 

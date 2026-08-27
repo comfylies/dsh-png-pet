@@ -22,6 +22,7 @@ npm run test:package
 
 - 动作清单位于 `pet-helper/Assets/pet-animations.json`。
 - 用户提供的透明 PNG 帧放入 `pet-helper/Assets/Animations/<动作键>/`，并在清单中按顺序引用；动作在对应状态持续时只在本地循环播放。
+- 每个动作可有 1–64 张帧；帧间隔由 Helper 按 `round(1000 / 帧数)` 毫秒独立计算（8 张为 125 ms）。单帧动作静态显示，不需要用重复图片补足 8 张。
 - 缺少动作素材时会回退到 `idle`；开启减少动态效果时固定显示动作的第一帧。
 - 仓库当前仅包含默认 `idle` 素材，尚未提供其他动作帧。
 - 添加 PNG 或修改清单后，运行 `npm run build:helper` 和 `npm pack`，重新安装生成的插件包并重启 DSH Harness；源资源不会动态部署到已运行的 Harness。

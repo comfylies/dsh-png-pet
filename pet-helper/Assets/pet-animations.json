@@ -1,13 +1,12 @@
 {
   "idle": {
-    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png", "Animations/idle/005.png", "Animations/idle/006.png", "Animations/idle/007.png", "Animations/idle/008.png"],
-    "intervalMs": 125
+    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png"]
   },
-  "thinking": { "frames": [], "intervalMs": 120, "fallback": "idle" },
-  "working": { "frames": [], "intervalMs": 100, "fallback": "idle" },
-  "thinking-working": { "frames": [], "intervalMs": 100, "fallback": "working" },
-  "waiting": { "frames": [], "intervalMs": 160, "fallback": "idle" },
-  "success": { "frames": [], "intervalMs": 120, "fallback": "idle" },
-  "error": { "frames": [], "intervalMs": 120, "fallback": "idle" },
-  "disconnected": { "frames": [], "intervalMs": 350, "fallback": "idle" }
+  "thinking": { "frames": [], "fallback": "idle" },
+  "working": { "frames": [], "fallback": "idle" },
+  "thinking-working": { "frames": [], "fallback": "working" },
+  "waiting": { "frames": [], "fallback": "idle" },
+  "success": { "frames": [], "fallback": "idle" },
+  "error": { "frames": [], "fallback": "idle" },
+  "disconnected": { "frames": [], "fallback": "idle" }
 }

@@ -13,7 +13,7 @@ public sealed class PetAnimationPlaybackTests
         playback.Apply(PetAnimationKey.Thinking, reducedMotion: false);
         Assert.Equal(PetAnimationKey.Thinking, playback.Key);
         Assert.Equal("Animations/thinking/001.png", playback.Frame);
-        Assert.Equal(120, playback.IntervalMs);
+        Assert.Equal(500, playback.IntervalMs);
         Assert.True(playback.IsAnimating);
 
         playback.Advance();
@@ -97,30 +97,27 @@ public sealed class PetAnimationPlaybackTests
 
     private static PetAnimationManifest CreateManifest() => PetAnimationManifest.Parse("""
         {
-          "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 },
+          "idle": { "frames": ["placeholder-a.png"] },
           "thinking": {
             "frames": ["Animations/thinking/001.png", "Animations/thinking/002.png"],
-            "intervalMs": 120,
             "fallback": "idle"
           },
           "working": {
             "frames": ["Animations/working/001.png"],
-            "intervalMs": 100,
             "fallback": "idle"
           },
-          "thinking-working": { "frames": [], "intervalMs": 100, "fallback": "working" }
+          "thinking-working": { "frames": [], "fallback": "working" }
         }
         """);
 
     private static PetAnimationManifest CreateManifestWithTwoWorkingFrames() => PetAnimationManifest.Parse("""
         {
-          "idle": { "frames": ["placeholder-a.png"], "intervalMs": 1000 },
+          "idle": { "frames": ["placeholder-a.png"] },
           "working": {
             "frames": ["Animations/working/001.png", "Animations/working/002.png"],
-            "intervalMs": 100,
             "fallback": "idle"
           },
-          "thinking-working": { "frames": [], "intervalMs": 100, "fallback": "working" }
+          "thinking-working": { "frames": [], "fallback": "working" }
         }
         """);
 }
