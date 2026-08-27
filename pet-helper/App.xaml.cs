@@ -18,9 +18,10 @@ public partial class App : System.Windows.Application
         Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = Encoding.UTF8;
         base.OnStartup(e);
-        var window = new MainWindow();
+        var screenLayout = new Win32ScreenLayout();
+        var window = new MainWindow(screenLayout);
         MainWindow = window;
-        var dialogueWindow = new DialogueWindow();
+        var dialogueWindow = new DialogueWindow(screenLayout);
         dialogue = dialogueWindow;
         dialogueWindow.InputSubmitted += (_, input) => WriteInput(input);
         dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
@@ -46,6 +47,8 @@ public partial class App : System.Windows.Application
             Console.Out.Flush();
         }
 
+        dialogue?.SaveState();
+        (MainWindow as MainWindow)?.SaveState();
         trayIcon?.Dispose();
         base.OnExit(e);
     }
@@ -63,7 +66,7 @@ public partial class App : System.Windows.Application
 
     private void ExitFromTray()
     {
-        if (dialogue is { IsVisible: true }) dialogue.SaveState();
+        dialogue?.SaveState();
         Shutdown();
     }
 

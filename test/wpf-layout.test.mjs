@@ -59,15 +59,19 @@ test('keeps the state bubble visible regardless of other windows', () => {
   assert.doesNotMatch(code, /UpdateStateBubbleVisibility/)
 })
 
-test('links the dialogue window to double-click and pet dragging', () => {
+test('links the dialogue window to double-click and Ctrl-combined pet dragging', () => {
   const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 
   assert.match(code, /ToggleDialogueWindow\(\)/)
   assert.match(code, /ClickCount\s*==\s*2/)
-  assert.match(code, /dialogueWindow\.Left\s*=\s*Left\s*\+\s*Width\s*\+\s*8/)
+  // Native DragMove keeps the pet smooth; Ctrl combines the dialogue by the applied delta.
+  assert.match(code, /DragMove\(\)/)
+  assert.match(code, /combinedDrag\s*=\s*\(Keyboard\.Modifiers\s*&/)
+  assert.match(code, /WindowMover\.Move\(dialogueWindow/)
+  assert.doesNotMatch(code, /dialogueWindow\.Left\s*=\s*Left\s*\+\s*Width\s*\+\s*8/)
 })
 
-test('lets the dialogue window drag and remember its position', () => {
+test('lets the dialogue window drag, resize, and remember its position', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
   const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
 
@@ -75,5 +79,8 @@ test('lets the dialogue window drag and remember its position', () => {
   assert.match(code, /Mouse\.GetPosition\(null\)/)
   assert.match(code, /stateStore\.Save\(/)
   assert.match(code, /stateStore\.Load\(\)/)
-  assert.match(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)
+  // Whole-window dragging, edge/corner resize, and wake placement replace per-move saves.
+  assert.match(code, /WindowResizeMath\.HitTest/)
+  assert.match(code, /ShowDialogue\(/)
+  assert.doesNotMatch(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)
 })

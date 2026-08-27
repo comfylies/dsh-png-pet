@@ -92,6 +92,23 @@ public sealed class PetAnimationPlayer
         timer.Tick -= Timer_Tick;
     }
 
+    /// <summary>
+    /// Suspends frame playback without losing the current animation state, so dragging the
+    /// pet does not compete with per-frame redraws of the transparent window.
+    /// </summary>
+    public void Pause()
+    {
+        timer.Stop();
+    }
+
+    /// <summary>Resumes frame playback if the current animation is still animating.</summary>
+    public void Resume()
+    {
+        if (playback is not { IsAnimating: true }) return;
+        timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
+        timer.Start();
+    }
+
     internal bool IsTimerRunning => timer.IsEnabled;
 
     private void Timer_Tick(object? sender, EventArgs e)

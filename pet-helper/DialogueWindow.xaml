@@ -4,12 +4,8 @@
         Width="280" Height="380" WindowStartupLocation="Manual"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="CanResize"
-        LocationChanged="DialogueWindow_LocationChanged"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseMove="Window_MouseMove" MouseLeftButtonUp="Window_MouseLeftButtonUp">
-  <WindowChrome.WindowChrome>
-    <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="12"
-                  GlassFrameThickness="0" UseAeroCaptionButtons="False" />
-  </WindowChrome.WindowChrome>
   <Window.Resources>
     <Style x:Key="NarrowScrollBar" TargetType="{x:Type ScrollBar}">
       <Setter Property="Width" Value="4" />
@@ -80,7 +76,7 @@
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <DockPanel Grid.Row="0" MouseLeftButtonDown="DragHandle_MouseLeftButtonDown">
+        <DockPanel Grid.Row="0">
           <Button DockPanel.Dock="Left" x:Name="HistoryButton" Content="历史"
                   Style="{StaticResource DeepSeekButton}"
                   Click="HistoryButton_Click" Padding="10,0" Margin="0,0,6,0" />

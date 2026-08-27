@@ -62,6 +62,33 @@ public sealed class PetAnimationPlayerTests
         });
     }
 
+    [Fact]
+    public void Pause_and_resume_are_safe_without_active_playback()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var player = new PetAnimationPlayer(
+                image,
+                static () => new MemoryStream(Encoding.UTF8.GetBytes("""
+                    { "idle": { "frames": ["Animations/missing/001.png", "Animations/missing/002.png"], "intervalMs": 1000 } }
+                    """)),
+                static () => null);
+
+            // Frames are unavailable in the test environment, so playback stays static; both
+            // calls must be safe no-ops and must not start the timer.
+            player.Apply(PetAnimationKey.Idle, reducedMotion: false);
+            Assert.False(player.IsTimerRunning);
+
+            player.Pause();
+            Assert.False(player.IsTimerRunning);
+            player.Resume();
+            Assert.False(player.IsTimerRunning);
+
+            player.Stop();
+        });
+    }
+
     private static void AssertStaticFallback(Func<Stream?> manifestStreamReader)
     {
         RunOnSta(() =>
