@@ -3,7 +3,11 @@ using System.Text.Json;
 
 namespace PetHelper;
 
-public sealed record ResolvedAnimation(PetAnimationKey Key, ImmutableArray<string> Frames, int IntervalMs);
+public sealed record ResolvedAnimation(
+    PetAnimationKey Key,
+    ImmutableArray<string> Frames,
+    int IntervalMs,
+    PetStatusAnchor StatusAnchor);
 
 public sealed class PetAnimationManifest
 {
@@ -109,7 +113,8 @@ public sealed class PetAnimationManifest
                 return new ResolvedAnimation(
                     current,
                     definition.Frames,
-                    CalculateIntervalMs(definition.Frames.Length));
+                    CalculateIntervalMs(definition.Frames.Length),
+                    definition.StatusAnchor!);
             }
 
             if (definition.Fallback is not { } fallback)
@@ -127,6 +132,7 @@ public sealed class PetAnimationManifest
     {
         ImmutableArray<string>? frames = null;
         PetAnimationKey? fallback = null;
+        PetStatusAnchor? statusAnchor = null;
         var seenFields = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var field in action.EnumerateObject())
@@ -144,17 +150,20 @@ public sealed class PetAnimationManifest
                 case "fallback":
                     fallback = ParseFallback(field.Value);
                     break;
+                case "statusAnchor":
+                    statusAnchor = ParseStatusAnchor(field.Value);
+                    break;
                 default:
                     throw InvalidManifest();
             }
         }
 
-        if (frames is null)
+        if (frames is null || (!frames.Value.IsEmpty && statusAnchor is null))
         {
             throw InvalidManifest();
         }
 
-        return new AnimationDefinition(frames.Value, fallback);
+        return new AnimationDefinition(frames.Value, fallback, statusAnchor);
     }
 
     private static ImmutableArray<string> ParseFrames(JsonElement element, HashSet<string> allFrames)
@@ -203,6 +212,47 @@ public sealed class PetAnimationManifest
         }
 
         return fallback;
+    }
+
+    private static PetStatusAnchor ParseStatusAnchor(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            throw InvalidManifest();
+        }
+
+        double? x = null;
+        double? y = null;
+        var seenFields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in element.EnumerateObject())
+        {
+            if (!seenFields.Add(field.Name) || field.Value.ValueKind != JsonValueKind.Number)
+            {
+                throw InvalidManifest();
+            }
+
+            switch (field.Name)
+            {
+                case "x":
+                    x = field.Value.GetDouble();
+                    break;
+                case "y":
+                    y = field.Value.GetDouble();
+                    break;
+                default:
+                    throw InvalidManifest();
+            }
+        }
+
+        var anchor = x is { } anchorX && y is { } anchorY
+            ? new PetStatusAnchor(anchorX, anchorY)
+            : throw InvalidManifest();
+        if (!anchor.IsWithinArtboard)
+        {
+            throw InvalidManifest();
+        }
+
+        return anchor;
     }
 
     private static bool IsSafeFrameIdentifier(string? identifier)
@@ -254,5 +304,6 @@ public sealed class PetAnimationManifest
 
     private sealed record AnimationDefinition(
         ImmutableArray<string> Frames,
-        PetAnimationKey? Fallback);
+        PetAnimationKey? Fallback,
+        PetStatusAnchor? StatusAnchor);
 }

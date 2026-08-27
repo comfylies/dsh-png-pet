@@ -1,6 +1,7 @@
 {
   "idle": {
-    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png"]
+    "frames": ["Animations/idle/001.png", "Animations/idle/002.png", "Animations/idle/003.png", "Animations/idle/004.png"],
+    "statusAnchor": { "x": 0.5, "y": 0.0 }
   },
   "thinking": { "frames": [], "fallback": "idle" },
   "working": { "frames": [], "fallback": "idle" },

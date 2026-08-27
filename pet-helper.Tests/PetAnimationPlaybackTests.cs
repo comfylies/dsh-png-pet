@@ -18,9 +18,11 @@ public sealed class PetAnimationPlaybackTests
 
         playback.Advance();
         Assert.Equal("Animations/thinking/002.png", playback.Frame);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.1d), playback.StatusAnchor);
 
         playback.Advance();
         Assert.Equal("Animations/thinking/001.png", playback.Frame);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.1d), playback.StatusAnchor);
     }
 
     [Fact]
@@ -97,13 +99,15 @@ public sealed class PetAnimationPlaybackTests
 
     private static PetAnimationManifest CreateManifest() => PetAnimationManifest.Parse("""
         {
-          "idle": { "frames": ["placeholder-a.png"] },
+          "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
           "thinking": {
             "frames": ["Animations/thinking/001.png", "Animations/thinking/002.png"],
+            "statusAnchor": { "x": 0.5, "y": 0.1 },
             "fallback": "idle"
           },
           "working": {
             "frames": ["Animations/working/001.png"],
+            "statusAnchor": { "x": 0.5, "y": 0.1 },
             "fallback": "idle"
           },
           "thinking-working": { "frames": [], "fallback": "working" }
@@ -112,9 +116,10 @@ public sealed class PetAnimationPlaybackTests
 
     private static PetAnimationManifest CreateManifestWithTwoWorkingFrames() => PetAnimationManifest.Parse("""
         {
-          "idle": { "frames": ["placeholder-a.png"] },
+          "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
           "working": {
             "frames": ["Animations/working/001.png", "Animations/working/002.png"],
+            "statusAnchor": { "x": 0.5, "y": 0.1 },
             "fallback": "idle"
           },
           "thinking-working": { "frames": [], "fallback": "working" }

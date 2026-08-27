@@ -8,6 +8,7 @@ namespace PetHelper;
 
 public partial class MainWindow : Window
 {
+    private const double StatusBubbleGap = 4d;
     private readonly PetWindowStateStore stateStore = new();
     private readonly PetAnimationPlayer animationPlayer;
     private PetDisplayState lastDisplayState = new("idle", string.Empty, 0);
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion: false);
         RestoreState();
         restoringState = false;
+        Loaded += (_, _) => UpdateStateBubblePosition();
         Closed += (_, _) => animationPlayer.Stop();
     }
 
@@ -55,6 +57,7 @@ public partial class MainWindow : Window
             ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29))
             : new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95));
         animationPlayer.Apply(state.AnimationKey, reducedMotion);
+        UpdateStateBubblePosition();
     }
 
     public void ApplyConfig(ConfigMessage config)
@@ -62,6 +65,7 @@ public partial class MainWindow : Window
         reducedMotion = config.ReducedMotion;
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
+        UpdateStateBubblePosition();
         SaveState();
     }
 
@@ -72,6 +76,7 @@ public partial class MainWindow : Window
         Width = state.Width;
         Height = state.Height;
         StateBubble.LayoutTransform = new ScaleTransform(state.Scale, state.Scale);
+        UpdateStateBubblePosition();
 
         if (state.Left is { } left && state.Top is { } top)
         {
@@ -134,6 +139,31 @@ public partial class MainWindow : Window
             dialogueWindow.Left = Left + Width + 8;
             dialogueWindow.Top = Top;
         }
+    }
+
+    private void PetLayout_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateStateBubblePosition();
+
+    private void StateBubble_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateStateBubblePosition();
+
+    private void UpdateStateBubblePosition()
+    {
+        if (PetImage.ActualWidth <= 0d || PetImage.ActualHeight <= 0d ||
+            StateBubble.ActualWidth <= 0d || StateBubble.ActualHeight <= 0d)
+        {
+            return;
+        }
+
+        var anchor = animationPlayer.StatusAnchor;
+        var point = PetImage.TranslatePoint(
+            new System.Windows.Point(PetImage.ActualWidth * anchor.X, PetImage.ActualHeight * anchor.Y),
+            StateBubbleCanvas);
+        var left = point.X - StateBubble.ActualWidth / 2d;
+        var top = point.Y - StateBubble.ActualHeight - StatusBubbleGap;
+
+        Canvas.SetLeft(StateBubble, Math.Clamp(left, 0d, Math.Max(0d, StateBubbleCanvas.ActualWidth - StateBubble.ActualWidth)));
+        Canvas.SetTop(StateBubble, Math.Clamp(top, 0d, Math.Max(0d, StateBubbleCanvas.ActualHeight - StateBubble.ActualHeight)));
     }
 
     private void ScaleMenuItem_Click(object sender, RoutedEventArgs e)

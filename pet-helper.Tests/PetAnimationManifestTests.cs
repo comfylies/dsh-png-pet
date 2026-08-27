@@ -10,9 +10,10 @@ public sealed class PetAnimationManifestTests
     {
         var manifest = PetAnimationManifest.Parse("""
             {
-              "idle": { "frames": ["placeholder-a.png"] },
+              "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
               "thinking": {
                 "frames": ["Animations/thinking/001.png", "Animations/thinking/002.png"],
+                "statusAnchor": { "x": 0.5, "y": 0.1 },
                 "fallback": "idle"
               }
             }
@@ -23,6 +24,7 @@ public sealed class PetAnimationManifestTests
         Assert.Equal(PetAnimationKey.Thinking, resolved.Key);
         Assert.Equal(new[] { "Animations/thinking/001.png", "Animations/thinking/002.png" }, resolved.Frames);
         Assert.Equal(500, resolved.IntervalMs);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.1d), resolved.StatusAnchor);
     }
 
     [Fact]
@@ -30,8 +32,8 @@ public sealed class PetAnimationManifestTests
     {
         var manifest = PetAnimationManifest.Parse("""
             {
-              "idle": { "frames": ["placeholder-a.png"] },
-              "working": { "frames": ["Animations/working/001.png"], "fallback": "idle" },
+              "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
+              "working": { "frames": ["Animations/working/001.png"], "statusAnchor": { "x": 0.5, "y": 0.1 }, "fallback": "idle" },
               "thinking-working": { "frames": [], "fallback": "working" }
             }
             """);
@@ -55,7 +57,7 @@ public sealed class PetAnimationManifestTests
     public void Resolves_each_missing_non_idle_action_to_the_available_idle_action(PetAnimationKey requested)
     {
         var manifest = PetAnimationManifest.Parse("""
-            { "idle": { "frames": ["placeholder-a.png"] } }
+            { "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } } }
             """);
 
         var resolved = manifest.Resolve(requested, frame => frame == "placeholder-a.png");
@@ -121,13 +123,15 @@ public sealed class PetAnimationManifestTests
     {
         var manifest = PetAnimationManifest.Parse("""
             {
-              "idle": { "frames": ["placeholder-a.png"] },
+              "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
               "thinking": {
                 "frames": ["Animations/thinking/001.png", "Animations/thinking/002.png", "Animations/thinking/003.png"],
+                "statusAnchor": { "x": 0.5, "y": 0.1 },
                 "fallback": "idle"
               },
               "working": {
                 "frames": ["Animations/working/001.png", "Animations/working/002.png", "Animations/working/003.png", "Animations/working/004.png", "Animations/working/005.png", "Animations/working/006.png"],
+                "statusAnchor": { "x": 0.5, "y": 0.1 },
                 "fallback": "idle"
               }
             }
@@ -143,7 +147,7 @@ public sealed class PetAnimationManifestTests
     {
         var manifest = PetAnimationManifest.Parse("""
             {
-              "idle": { "frames": ["placeholder-a.png"] },
+              "idle": { "frames": ["placeholder-a.png"], "statusAnchor": { "x": 0.5, "y": 0.1 } },
               "working": {
                 "frames": [],
                 "fallback": "idle"
@@ -155,5 +159,34 @@ public sealed class PetAnimationManifestTests
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(1000, resolved.IntervalMs);
+    }
+
+    [Fact]
+    public void Resolves_the_status_anchor_from_the_effective_fallback_action()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            {
+              "idle": {
+                "frames": ["placeholder-a.png"],
+                "statusAnchor": { "x": 0.5, "y": 0.08 }
+              },
+              "working": { "frames": [], "fallback": "idle" }
+            }
+            """);
+
+        var resolved = manifest.Resolve(PetAnimationKey.Working, _ => true);
+
+        Assert.Equal(PetAnimationKey.Idle, resolved.Key);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.08d), resolved.StatusAnchor);
+    }
+
+    [Theory]
+    [InlineData("{ \"idle\": { \"frames\": [\"placeholder-a.png\"] } }")]
+    [InlineData("{ \"idle\": { \"frames\": [\"placeholder-a.png\"], \"statusAnchor\": { \"x\": -0.1, \"y\": 0.1 } } }")]
+    [InlineData("{ \"idle\": { \"frames\": [\"placeholder-a.png\"], \"statusAnchor\": { \"x\": 0.5, \"y\": 1.1 } } }")]
+    [InlineData("{ \"idle\": { \"frames\": [\"placeholder-a.png\"], \"statusAnchor\": { \"x\": 0.5 } } }")]
+    public void Rejects_missing_or_invalid_status_anchors_for_rendered_actions(string json)
+    {
+        Assert.Throws<FormatException>(() => PetAnimationManifest.Parse(json));
     }
 }

@@ -19,6 +19,8 @@ public sealed class PetAnimationPlayback
 
     public int IntervalMs => CurrentAnimation.IntervalMs;
 
+    public PetStatusAnchor StatusAnchor => CurrentAnimation.StatusAnchor;
+
     public bool IsAnimating { get; private set; }
 
     public void Apply(PetAnimationKey requested, bool reducedMotion)
