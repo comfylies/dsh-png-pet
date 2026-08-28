@@ -8,8 +8,8 @@ function createClock() {
   return {
     timers,
     clock: {
-      setTimeout(callback) {
-        const timer = { callback, cleared: false }
+      setTimeout(callback, delayMs) {
+        const timer = { callback, delayMs, cleared: false }
         timers.push(timer)
         return timer
       },
@@ -26,6 +26,7 @@ test('sends a fixed success state then returns to idle after its terminal timer'
   const bridge = new CompanionBridge((message) => sent.push(message), { clock })
 
   bridge.apply({ sessionId: 's', seq: 1, isSubagent: false, kind: 'success' })
+  assert.equal(timers[0].delayMs, 5_000)
   timers[0].callback()
 
   assert.deepEqual(sent, [

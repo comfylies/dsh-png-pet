@@ -21,6 +21,9 @@ const defaultClock: BridgeClock = {
   clearTimeout,
 }
 
+const SuccessDisplayDurationMs = 5_000
+const DefaultTerminalDisplayDurationMs = 2_500
+
 export class CompanionBridge {
   private readonly reducer: CompanionReducer
   private readonly clock: BridgeClock
@@ -63,16 +66,21 @@ export class CompanionBridge {
       label: labelForPresentation(presentation.state, presentation.activities),
       sequence: presentation.sequence,
     })
-    if (presentation.terminal) this.scheduleIdle(presentation.sequence)
+    if (presentation.terminal) {
+      this.scheduleIdle(
+        presentation.sequence,
+        presentation.state === 'success' ? SuccessDisplayDurationMs : DefaultTerminalDisplayDurationMs,
+      )
+    }
   }
 
-  private scheduleIdle(sequence: number): void {
+  private scheduleIdle(sequence: number, delayMs: number): void {
     this.timer = this.clock.setTimeout(() => {
       const current = this.reducer.current()
       if (!current.terminal || current.sequence !== sequence) return
       this.reducer.disposeTerminal(sequence)
       this.publish(this.reducer.current())
-    }, 2_500)
+    }, delayMs)
   }
 
   private clearTerminalTimer(): void {

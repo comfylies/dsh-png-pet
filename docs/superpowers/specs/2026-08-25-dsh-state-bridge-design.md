@@ -48,7 +48,7 @@ type SessionDisposedFact = { sessionId: string }
 
 未知事件一律不产生事实。默认忽略 `session.header.delegationDepth` 大于零的子 Agent；Reducer 配置 `includeSubagents: true` 后才接纳它们。
 
-多 Session 的可见状态从候选状态中按 `waiting > error > working > thinking > success > idle` 选择。并列状态取较大的事件序号；这使结果在同一输入序列下确定。`success` 与 `error` 是短暂状态：Host 在 2.5 秒后，仅当同一展示序号仍是当前输出时发送 `idle`，新的事实会取消旧计时器。
+多 Session 的可见状态从候选状态中按 `waiting > error > working > thinking > success > idle` 选择。并列状态取较大的事件序号；这使结果在同一输入序列下确定。`success` 与 `error` 是短暂状态：Host 在成功状态展示 5 秒、错误状态展示 2.5 秒后，仅当同一展示序号仍是当前输出时发送 `idle`，新的事实会取消旧计时器。
 
 `disconnected` 不来自 Session 事件：它只由协议校验、握手失败或 Host 停止触发。
 

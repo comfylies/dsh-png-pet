@@ -1,1 +1,31 @@
-{ "clips": {} }
+{
+  "clips": {
+    "complete": {
+      "frames": [
+        "complete/001.png", "complete/002.png", "complete/003.png",
+        "complete/004.png", "complete/005.png", "complete/006.png",
+        "complete/007.png", "complete/008.png", "complete/009.png",
+        "complete/010.png", "complete/011.png", "complete/012.png",
+        "complete/013.png", "complete/014.png", "complete/015.png",
+        "complete/016.png", "complete/017.png", "complete/018.png",
+        "complete/019.png", "complete/020.png", "complete/021.png",
+        "complete/022.png", "complete/023.png", "complete/024.png",
+        "complete/025.png", "complete/026.png", "complete/027.png",
+        "complete/028.png", "complete/029.png", "complete/030.png",
+        "complete/031.png", "complete/032.png", "complete/033.png",
+        "complete/034.png", "complete/035.png", "complete/036.png",
+        "complete/037.png", "complete/038.png", "complete/039.png",
+        "complete/040.png", "complete/041.png", "complete/042.png",
+        "complete/043.png", "complete/044.png", "complete/045.png",
+        "complete/046.png", "complete/047.png", "complete/048.png",
+        "complete/049.png", "complete/050.png", "complete/051.png",
+        "complete/052.png", "complete/053.png", "complete/054.png",
+        "complete/055.png", "complete/056.png", "complete/057.png",
+        "complete/058.png", "complete/059.png", "complete/060.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "once",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    }
+  }
+}

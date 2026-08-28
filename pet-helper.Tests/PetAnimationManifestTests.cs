@@ -237,17 +237,33 @@ public sealed class PetAnimationManifestTests
             .Select(i => $"Animations/idle/breathe/{i:D3}.png")
             .ToArray();
         var questionFrame = "Animations/question/wait-answer.png";
-        var resolved = manifest.Resolve(PetAnimationKey.Idle, frame => idleFrames.Contains(frame) || frame == questionFrame);
+        var successFrames = Enumerable.Range(1, 60)
+            .Select(i => $"Animations/success/complete/{i:D3}.png")
+            .ToArray();
+        var resolved = manifest.Resolve(
+            PetAnimationKey.Idle,
+            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(idleFrames, resolved.Frames);
         Assert.Equal(125, resolved.IntervalMs);
 
-        var question = manifest.Resolve(PetAnimationKey.Question, frame => idleFrames.Contains(frame) || frame == questionFrame);
+        var question = manifest.Resolve(
+            PetAnimationKey.Question,
+            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
 
         Assert.Equal(PetAnimationKey.Question, question.Key);
         Assert.Equal(new[] { questionFrame }, question.Frames);
         Assert.Equal(1000, question.IntervalMs);
+
+        var success = manifest.Resolve(
+            PetAnimationKey.Success,
+            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
+
+        Assert.Equal(PetAnimationKey.Success, success.Key);
+        Assert.Equal(successFrames, success.Frames);
+        Assert.Equal(83, success.IntervalMs);
+        Assert.Equal(PetClipPlaybackMode.Once, success.Playback);
     }
 
     [Fact]
