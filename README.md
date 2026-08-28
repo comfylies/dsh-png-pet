@@ -18,6 +18,29 @@ npm run test:package
 
 构建结果位于 `runtime/bin/win32-x64/pet-helper.exe`，并以 .NET 自包含单文件形式发布。
 
+## 安装到 DSH Harness
+
+先完成构建并生成 npm 包：
+
+```powershell
+npm run build:helper
+npm pack
+```
+
+DSH CLI 对含空格的插件包路径解析不稳定。请将生成的 `dsh-png-pet-<version>.tgz` 复制到无空格路径后，再安装到 Web profile：
+
+```powershell
+New-Item -ItemType Directory -Force C:\dsh-packages
+Copy-Item .\dsh-png-pet-<version>.tgz C:\dsh-packages\
+
+# 更新前先从桌宠右键菜单选择“关闭桌宠”，避免 Windows 锁定 Helper。
+& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web remove dsh-png-pet
+& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-<version>.tgz
+& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web list
+```
+
+确认列表显示目标版本后，重启 DSH Harness；已运行的 Harness 不会自动加载更新。`.tgz` 是本地安装产物，已由 `.gitignore` 排除，不应提交到仓库。
+
 ## 动画资源
 
 - 动作清单位于 `pet-helper/Assets/pet-animations.json`。
