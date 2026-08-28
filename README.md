@@ -39,7 +39,7 @@ Copy-Item .\dsh-png-pet-<version>.tgz C:\dsh-packages\
 & C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web list
 ```
 
-确认列表显示目标版本后，重启 DSH Harness；已运行的 Harness 不会自动加载更新。`.tgz` 是本地安装产物，已由 `.gitignore` 排除，不应提交到仓库。
+确认列表显示目标版本后，重启 DSH Harness；已运行的 Harness 不会自动加载更新。`.tgz` 是本地安装产物，已由 `.gitignore` 排除，不应提交到仓库。如果不知道怎么安装，可以让 AI 帮忙。
 
 ## 动画资源
 
