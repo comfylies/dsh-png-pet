@@ -7,7 +7,7 @@ public sealed record PetDisplayState(string State, string Label, long Sequence)
         ("idle", "") => PetAnimationKey.Idle,
         ("active", "思考中…") => PetAnimationKey.Thinking,
         ("active", "工作中…") => PetAnimationKey.Working,
-        ("active", "思考中/工作中") => PetAnimationKey.ThinkingWorking,
+        ("active", "思考中/工作中") => PetAnimationKey.Thinking,
         ("active", "输出中…") => PetAnimationKey.Responding,
         ("waiting", "等待你的操作") => PetAnimationKey.Waiting,
         ("question", "等你回答…") => PetAnimationKey.Question,

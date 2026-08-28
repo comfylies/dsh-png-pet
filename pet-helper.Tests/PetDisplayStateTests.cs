@@ -37,7 +37,7 @@ public sealed class PetDisplayStateTests
     [InlineData("idle", "", PetAnimationKey.Idle)]
     [InlineData("active", "思考中…", PetAnimationKey.Thinking)]
     [InlineData("active", "工作中…", PetAnimationKey.Working)]
-    [InlineData("active", "思考中/工作中", PetAnimationKey.ThinkingWorking)]
+    [InlineData("active", "思考中/工作中", PetAnimationKey.Thinking)]
     [InlineData("active", "输出中…", PetAnimationKey.Responding)]
     [InlineData("waiting", "等待你的操作", PetAnimationKey.Waiting)]
     [InlineData("question", "等你回答…", PetAnimationKey.Question)]
