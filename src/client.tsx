@@ -11,8 +11,9 @@ import { projectSessionOptions, type DialogueSettings } from './client-settings-
 const SETTINGS_NAMESPACE = 'dsh-png-pet'
 const DEFAULT_SETTINGS: DialogueSettings = {
   defaultSessionId: null,
-  previewEnabled: false,
-  previewMaxChars: 480,
+  defaultWorkspaceId: null,
+  previewEnabled: true,
+  previewMaxChars: 2000,
 }
 const SESSION_LIST_UNAVAILABLE = '会话列表尚未就绪。'
 const SELECTED_SESSION_UNAVAILABLE = '所选会话已不可用。'
@@ -89,7 +90,7 @@ export async function writeDialogueSetting(
     typeof value !== 'number'
     || !Number.isInteger(value)
     || value < 80
-    || value > 2000
+    || value > 8000
   )) return false
 
   try {
@@ -159,7 +160,7 @@ function DesktopPetSettingsSection({
 
   function onPreviewLengthChange(event: ChangeEvent<HTMLInputElement>): void {
     const nextValue = Number(event.currentTarget.value)
-    if (!Number.isInteger(nextValue) || nextValue < 80 || nextValue > 2000) {
+    if (!Number.isInteger(nextValue) || nextValue < 80 || nextValue > 8000) {
       setWriteFailed(true)
       return
     }
@@ -186,13 +187,13 @@ function DesktopPetSettingsSection({
           void update('previewEnabled', event.currentTarget.checked)
         },
       }),
-      '显示回复预览'),
+      '实时流式回复'),
     createElement('label', null,
-      '预览长度',
+      '流式长度',
       createElement('input', {
         type: 'number',
         min: 80,
-        max: 2000,
+        max: 8000,
         step: 1,
         value: value.previewMaxChars,
         onChange: onPreviewLengthChange,

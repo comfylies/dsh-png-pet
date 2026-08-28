@@ -78,12 +78,12 @@ test('writes preview settings through the standard scope setter', async () => {
 
   assert.equal(await client.writeDialogueSetting(scope, 'previewEnabled', true), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 80), true)
-  assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 2000), true)
-  assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 79), false)
+  assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8000), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8001), false)
   assert.deepEqual(writes, [
     ['previewEnabled', true],
     ['previewMaxChars', 80],
-    ['previewMaxChars', 2000],
+    ['previewMaxChars', 8000],
   ])
 })
 

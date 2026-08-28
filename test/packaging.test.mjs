@@ -99,16 +99,17 @@ test('packed Helper completes a ready, config, state, and shutdown handshake', a
       const timeout = setTimeout(() => reject(new Error(`packed Helper did not complete its handshake: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":5,"kind":"ready"}') {
-          child.stdin.write('{"version":5,"kind":"config","scale":1,"reducedMotion":false}\n')
-          child.stdin.write('{"version":5,"kind":"state","state":"active","activities":["responding"],"label":"输出中…","sequence":1}\n')
-          child.stdin.write('{"version":5,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
+        if (line === '{"version":6,"kind":"ready"}') {
+          child.stdin.write('{"version":6,"kind":"config","scale":1,"reducedMotion":false}\n')
+          child.stdin.write('{"version":6,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
+          child.stdin.write('{"version":6,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
+        }
           setTimeout(() => {
             shutdownSent = true
-            child.stdin.write('{"version":5,"kind":"shutdown"}\n')
+            child.stdin.write('{"version":6,"kind":"shutdown"}\n')
           }, 250)
         }
-        if (line === '{"version":5,"kind":"closed"}') {
+        if (line === '{"version":6,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }
@@ -136,3 +137,4 @@ test('packed Helper completes a ready, config, state, and shutdown handshake', a
   assert.equal(existsSync(packageDirectory), false)
   assert.equal(existsSync(extractionDirectory), false)
 })
+

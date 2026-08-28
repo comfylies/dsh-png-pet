@@ -4,6 +4,8 @@ import { dialogueSettingsSchema } from './dialogue-settings.js'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { type DshDialogueContext, type DshDialogueSettingsScope, type DshSettingsProvider } from './dsh-dialogue-types.js'
 import { HelperProcess, type HelperProcessMessage, type HelperProcessOptions } from './helper-process.js'
+import { TargetController } from './target-controller.js'
+import type { TargetApi } from './target-service.js'
 
 export const name = 'dsh-png-pet'
 
@@ -12,7 +14,7 @@ export const name = 'dsh-png-pet'
  * restricted context: services used through `ctx.*` MUST be declared here or
  * property access throws "cannot get property ... without inject".
  */
-export const inject = ['agents'] as const
+export const inject = ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel'] as const
 
 export type SessionObserverContext = {
   on(name: 'session/event', listener: (session: unknown, event: unknown) => void): unknown
@@ -20,6 +22,7 @@ export type SessionObserverContext = {
 }
 
 type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings'> & {
+  apiProxy: TargetApi
   effect(factory: () => () => void): void
   inject(services: readonly ['settings'], callback: (ctx: { settings: DshSettingsProvider }) => void): void
 }
@@ -37,10 +40,11 @@ export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory)
 
 function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): void {
   let controller: DialogueController | undefined
+  let targetController: TargetController | undefined
   let unwatchSettings = () => {}
   let helperReady = false
   const helper = createHelper({
-    onMessage: (message) => routeHelperMessage(message, controller),
+    onMessage: (message) => routeHelperMessage(message, controller, targetController),
   })
   const bridge = new CompanionBridge((message) => helper.send(message))
 
@@ -69,6 +73,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
     const scope = settingsCtx.settings.register(settingsNamespace('dsh-png-pet'), dialogueSettingsSchema)
     const dialogueCtx = createDialogueContext(ctx, scope)
     controller = new DialogueController(dialogueCtx, (message) => helper.send(message))
+    targetController = new TargetController(ctx.apiProxy, scope, (message) => helper.send(message))
     unwatchSettings = watchDialogueSettings(scope, controller)
     registerSessionObservers(ctx, bridge, controller)
     publishWhenReady()
@@ -76,12 +81,21 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
 }
 
 export function createDialogueContext(
-  ctx: Pick<DshDialogueContext, 'agents'>,
+  ctx: Pick<DshDialogueContext, 'agents' | 'attachments' | 'sessionQuery' | 'agentDefaultModel'>,
   settings: DshDialogueSettingsScope,
 ): DshDialogueContext {
   return {
     get agents() {
       return ctx.agents
+    },
+    get attachments() {
+      return ctx.attachments
+    },
+    get sessionQuery() {
+      return ctx.sessionQuery
+    },
+    get agentDefaultModel() {
+      return ctx.agentDefaultModel
     },
     settings,
   }
@@ -89,13 +103,27 @@ export function createDialogueContext(
 
 export function routeHelperMessage(
   message: HelperProcessMessage,
-  controller: Pick<DialogueController, 'acceptInput' | 'requestHistory' | 'helperClosed'> | undefined,
+  controller: Pick<DialogueController, 'acceptInput' | 'requestHistory' | 'stop' | 'helperClosed'> | undefined,
+  targetController?: Pick<TargetController, 'open' | 'answer'>,
 ): Promise<void> {
-  if (message.kind === 'input' || message.kind === 'request-history') {
+  if (message.kind === 'input' || message.kind === 'request-history' || message.kind === 'stop') {
     try {
       const handled = message.kind === 'input'
         ? controller?.acceptInput(message)
-        : controller?.requestHistory(message.requestId)
+        : message.kind === 'stop'
+          ? controller?.stop(message.requestId)
+          : controller?.requestHistory(message.requestId)
+      return Promise.resolve(handled).catch(() => {})
+    } catch {
+      return Promise.resolve()
+    }
+  }
+
+  if (message.kind === 'target-open' || message.kind === 'target-answer') {
+    try {
+      const handled = message.kind === 'target-open'
+        ? targetController?.open(message)
+        : targetController?.answer(message)
       return Promise.resolve(handled).catch(() => {})
     } catch {
       return Promise.resolve()

@@ -3,11 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
-import { extractDialogueHistory } from './dialogue-history.js'
+import { extractDialogueHistory, turnAssistantText } from './dialogue-history.js'
 import type { DialogueSettings } from './dialogue-settings.js'
 import type { DshDialogueContext, DshSessionEvent } from './dsh-dialogue-types.js'
-import type { HelperInputMessage, HostOutboundMessage } from './protocol.js'
+import { REPLY_MAX_CHARS, type HelperInputMessage, type HostOutboundMessage } from './protocol.js'
 
 // TEMP-DIAG: reply delivery diagnostics for the "stuck on generating" investigation.
 // Records only error categories and step outcomes — never input text. Remove after verification.
@@ -53,6 +54,7 @@ export class DialogueController {
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
       defaultSessionId: settings.defaultSessionId,
+      defaultWorkspaceId: settings.defaultWorkspaceId,
     })
     if (!settings.previewEnabled) this.clearAll('disabled')
   }
@@ -64,6 +66,7 @@ export class DialogueController {
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
       defaultSessionId: settings.defaultSessionId,
+      defaultWorkspaceId: settings.defaultWorkspaceId,
     })
 
     if (previous.previewEnabled && !settings.previewEnabled) {
@@ -116,7 +119,12 @@ export class DialogueController {
     let agent = this.ctx.agents.get(sessionId)
     if (agent === undefined) {
       try {
-        agent = (await this.ctx.agents.resume({ resumeSessionId: sessionId }))?.agent
+        const resumeOptions: { resumeSessionId: string, agentOptions?: { provider: string, model: string } } = {
+          resumeSessionId: sessionId,
+        }
+        const defaultModel = this.readDefaultModel()
+        if (defaultModel !== undefined) resumeOptions.agentOptions = defaultModel
+        agent = (await this.ctx.agents.resume(resumeOptions))?.agent
       } catch {
         agent = undefined
       }
@@ -127,8 +135,9 @@ export class DialogueController {
       return
     }
 
+    const content = await this.buildContent(input)
     const message = createUserMessage({
-      content: [{ type: 'text', text: input.text }],
+      content,
       source: { kind: 'user' },
     })
     const request: Request = {
@@ -148,6 +157,63 @@ export class DialogueController {
       if (!this.isCurrentInput(input.requestId)) return
       this.removeRequest(request)
       this.send({ kind: 'input-status', requestId: input.requestId, status: 'rejected' })
+    }
+  }
+
+  /** Images become durable attachment refs (real binary upload); files become path text the model can read. */
+  private async buildContent(input: HelperInputMessage): Promise<Array<{ type: 'text', text: string } | { type: 'image', attachment: ImageAttachmentRef }>> {
+    const blocks: Array<{ type: 'text', text: string } | { type: 'image', attachment: ImageAttachmentRef }> = []
+    let fileText = ''
+    for (const attachment of input.attachments ?? []) {
+      if (attachment.type === 'image') {
+        if (this.ctx.attachments === undefined) throw new Error('attachments service unavailable')
+        const ref = await this.ctx.attachments.saveImage({
+          data: Buffer.from(attachment.base64, 'base64'),
+          mediaType: attachment.mediaType,
+          ...(attachment.name === undefined ? {} : { name: attachment.name }),
+        })
+        blocks.push({ type: 'image', attachment: ref })
+        continue
+      }
+      const name = attachment.name ?? baseName(attachment.path)
+      fileText += fileText.length === 0 ? `[文件 ${name}]\n${attachment.path}` : `\n[文件 ${name}]\n${attachment.path}`
+    }
+    const text = [input.text, fileText].filter((part) => part.length > 0).join('\n')
+    if (text.length > 0) blocks.push({ type: 'text', text })
+    return blocks
+  }
+
+  /** The deployment's default provider/model so a resumed agent can assemble its persona prompt. */
+  private readDefaultModel(): { provider: string, model: string } | undefined {
+    try {
+      const selection = this.ctx.agentDefaultModel?.currentSelection()
+      if (selection !== undefined
+        && typeof selection.provider === 'string' && selection.provider.length > 0
+        && typeof selection.model === 'string' && selection.model.length > 0) {
+        return { provider: selection.provider, model: selection.model }
+      }
+    } catch {
+      // A missing default model must never break the input pipeline.
+    }
+    return undefined
+  }
+
+  /** Aborts the live turn. The terminal reply-preview/status are driven by the resulting aborted turn/end. */
+  public stop(requestId: number): void {
+    const settings = this.ctx.settings.get()
+    const sessionId = this.currentInputSessionId ?? settings.defaultSessionId
+    if (sessionId === null || sessionId === undefined) return
+    const agent = this.ctx.agents.get(sessionId)
+    if (agent === undefined) return
+    if (agent.status === 'running') {
+      agent.cancel({ kind: 'user' })
+      return
+    }
+    // No live turn to abort: finalize the request locally so the UI never sticks.
+    const request = this.activeRequests.get(requestId)
+    if (request !== undefined) {
+      this.removeRequest(request)
+      this.send({ kind: 'input-status', requestId, status: 'stopped' })
     }
   }
 
@@ -187,6 +253,7 @@ export class DialogueController {
     }
 
     if (event.type === 'turn/end') {
+      const reason = readTurnEndReason(event.data)
       if (request !== undefined) {
         if (request.previewEnabled && request.preview.length > 0) {
           this.send({ kind: 'reply-preview', requestId: request.requestId, text: request.preview, completed: true })
@@ -195,30 +262,36 @@ export class DialogueController {
         this.removeRequest(request)
       }
       if (this.currentInputRequestId !== undefined) {
-        this.publishReply(sessionId, this.currentInputRequestId)
+        if (reason === 'aborted') {
+          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'stopped' })
+        } else if (reason === 'interrupted') {
+          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'interrupted' })
+        } else if (reason === 'error' || reason === 'max-tokens' || reason === 'blocked') {
+          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'failed' })
+        } else {
+          this.publishReply(sessionId, this.currentInputRequestId, turn)
+        }
       }
     }
   }
 
-  private publishReply(sessionId: string, requestId: number): void {
+  /** Publishes the full final text of exactly the ended turn (placeholders for tool-only turns). */
+  private publishReply(sessionId: string, requestId: number, turn: number): void {
     try {
-      const agent = this.ctx.agents.get(sessionId)
-      diag(`publishReply requestId=${requestId} agent=${agent === undefined ? 'undefined' : 'live'}`)
-      const events = agent?.session?.events
+      const events = this.ctx.agents.get(sessionId)?.session?.events
       if (events === undefined) {
         diag('publishReply events=undefined')
         return
       }
-      diag(`publishReply events=${events.length}`)
-      const history = extractDialogueHistory(events)
-      diag(`publishReply history=${history.length} last=${history.at(-1)?.role ?? 'none'}`)
-      for (let index = history.length - 1; index >= 0; index--) {
-        if (history[index].role !== 'assistant') continue
-        this.send({ kind: 'reply', requestId, text: history[index].text, completed: true })
-        diag('publishReply sent')
+      const text = turnAssistantText(events, turn)
+      if (text === undefined || text === '') {
+        diag('publishReply no-assistant-found')
         return
       }
-      diag('publishReply no-assistant-found')
+      // The wire caps replies; keep the tail so the dialogue never sends nothing.
+      const bounded = text.length <= REPLY_MAX_CHARS ? text : text.slice(-REPLY_MAX_CHARS)
+      this.send({ kind: 'reply', requestId, text: bounded, completed: true })
+      diag('publishReply sent')
     } catch (error) {
       diag(`publishReply threw ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -228,20 +301,30 @@ export class DialogueController {
     this.clearAll('disabled')
   }
 
-  public requestHistory(requestId: number): void {
+  public async requestHistory(requestId: number): Promise<void> {
     const settings = this.ctx.settings.get()
     const sessionId = this.currentInputSessionId ?? settings.defaultSessionId
     if (sessionId === null || sessionId === undefined) {
       this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
       return
     }
-    let agent = this.ctx.agents.get(sessionId)
-    if (agent === undefined) {
+    const agent = this.ctx.agents.get(sessionId)
+    if (agent !== undefined) {
+      try {
+        const messages = extractDialogueHistory(agent.session?.events ?? [])
+        this.send({ kind: 'conversation-history', requestId, available: true, messages })
+      } catch {
+        this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
+      }
+      return
+    }
+    if (this.ctx.sessionQuery === undefined) {
       this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
       return
     }
     try {
-      const messages = extractDialogueHistory(agent.session?.events ?? [])
+      const snapshot = await this.ctx.sessionQuery.readSession(sessionId)
+      const messages = extractDialogueHistory(snapshot.events)
       this.send({ kind: 'conversation-history', requestId, available: true, messages })
     } catch {
       this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
@@ -317,6 +400,12 @@ export class DialogueController {
   }
 }
 
+function baseName(path: string): string {
+  const cleaned = path.replace(/[/\\]+$/, '')
+  const parts = cleaned.split(/[/\\]/)
+  return parts.at(-1) ?? ''
+}
+
 function isSessionEvent(value: unknown): value is DshSessionEvent {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && typeof (value as { type?: unknown }).type === 'string'
 }
@@ -330,6 +419,11 @@ function readMessageId(data: unknown): string | undefined {
 function readTurn(data: unknown): number | undefined {
   const turn = readRecord(data)?.turn
   return typeof turn === 'number' && Number.isSafeInteger(turn) && turn >= 0 ? turn : undefined
+}
+
+function readTurnEndReason(data: unknown): string | undefined {
+  const kind = readRecord(readRecord(data)?.reason)?.kind
+  return typeof kind === 'string' ? kind : undefined
 }
 
 function readTextDelta(data: unknown): string | undefined {

@@ -8,8 +8,8 @@ test('keeps the production plugin entrypoint to one context argument', () => {
   assert.equal(apply.length, 1)
 })
 
-test('declares the agents service so DSH exposes it on the restricted plugin context', () => {
-  assert.deepEqual(inject, ['agents'])
+test('declares the services DSH exposes on the restricted plugin context', () => {
+  assert.deepEqual(inject, ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel'])
 })
 
 test('keeps prototype-backed DSH services reachable through the dialogue context adapter', () => {
@@ -36,6 +36,16 @@ function createHostContext(calls, register) {
   const listeners = new Map()
   return {
     agents: { get: () => undefined, resume: async () => undefined },
+    apiProxy: {
+      workspace: {
+        list: async () => ({ result: { ok: true, value: { items: [], archivedSessionIds: [] } } }),
+        create: async () => ({ result: { ok: true, value: { workspace: { workspaceId: 'w-1', path: 'C:\\x', title: 'x', sessionIds: [] }, created: true } } }),
+      },
+      sessions: {
+        list: async () => ({ result: { ok: true, value: { items: [] } } }),
+        create: async () => ({ result: { ok: true, value: { sessionId: 's-1' } } }),
+      },
+    },
     on(name, listener) { listeners.set(name, listener) },
     effect(factory) { calls.push('effect'); this.cleanup = factory() },
     inject(services, callback) {
@@ -71,8 +81,9 @@ test('defers the helper until settings injection registers the dialogue scope an
   assert.equal(calls[3][1], 'dsh-png-pet')
   assert.equal(typeof calls[3][2], 'function')
   assert.equal(typeof calls[3][2].toJSON, 'function')
-  assert.deepEqual(calls[3][2]({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 480 }), {
+  assert.deepEqual(calls[3][2]({ defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 480 }), {
     defaultSessionId: null,
+    defaultWorkspaceId: null,
     previewEnabled: false,
     previewMaxChars: 480,
   })
@@ -100,9 +111,22 @@ test('routes a request-history helper message to the controller', () => {
     helperClosed: () => calls.push('closed'),
   }
 
-  routeHelperMessage({ version: 5, kind: 'request-history', requestId: 6 }, controller)
+  routeHelperMessage({ version: 6, kind: 'request-history', requestId: 6 }, controller)
 
   assert.deepEqual(calls, [['history', 6]])
+})
+
+test('routes a stop helper message to the controller', () => {
+  const calls = []
+  const controller = {
+    acceptInput: () => calls.push('input'),
+    stop: (requestId) => calls.push(['stop', requestId]),
+    helperClosed: () => calls.push('closed'),
+  }
+
+  routeHelperMessage({ version: 6, kind: 'stop', requestId: 12 }, controller)
+
+  assert.deepEqual(calls, [['stop', 12]])
 })
 
 test('routes a closed helper lifecycle message directly to preview cleanup', () => {
@@ -112,9 +136,26 @@ test('routes a closed helper lifecycle message directly to preview cleanup', () 
     helperClosed: () => calls.push('closed'),
   }
 
-  routeHelperMessage({ version: 5, kind: 'closed' }, controller)
+  routeHelperMessage({ version: 6, kind: 'closed' }, controller)
 
   assert.deepEqual(calls, ['closed'])
+})
+
+test('routes target-open and target-answer helper messages to the target controller', async () => {
+  const calls = []
+  const targetController = {
+    open: async (message) => calls.push(['open', message.requestId]),
+    answer: async (message) => calls.push(['answer', message.kind, message.sessionId]),
+  }
+
+  await routeHelperMessage({ version: 6, kind: 'target-open', requestId: 9 }, undefined, targetController)
+  await routeHelperMessage(
+    { version: 6, kind: 'target-answer', requestId: 10, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
+    undefined,
+    targetController,
+  )
+
+  assert.deepEqual(calls, [['open', 9], ['answer', 'target-answer', 's-1']])
 })
 
 test('does not leave a rejected helper input promise unhandled', async () => {
@@ -126,7 +167,7 @@ test('does not leave a rejected helper input promise unhandled', async () => {
     helperClosed: () => {},
   }
 
-  routeHelperMessage({ version: 5, kind: 'input', requestId: 1, text: 'input omitted' }, controller)
+  routeHelperMessage({ version: 6, kind: 'input', requestId: 1, text: 'input omitted' }, controller)
   await new Promise((resolve) => setImmediate(resolve))
   process.removeListener('unhandledRejection', onUnhandledRejection)
 

@@ -14,20 +14,48 @@ test('extracts only user text and final assistant text from the event log', () =
   ]
 
   assert.deepEqual(extractDialogueHistory(events), [
-    { role: 'user', text: '你好' },
-    { role: 'assistant', text: '你好！' },
+    { role: 'user', blocks: [{ type: 'text', text: '你好' }] },
+    { role: 'assistant', blocks: [{ type: 'text', text: '你好！' }] },
   ])
 })
 
-test('skips tool-sourced user messages and empty text', () => {
+test('skips tool-sourced user messages and empty user text', () => {
   const events = [
     { type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: '工具结果' }], source: { kind: 'tool', callId: 'c1' } } },
     { type: 'user/message', seq: 2, data: { content: [{ type: 'text', text: '真实用户' }], source: { kind: 'user' } } },
-    { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: '' }] } } },
+    { type: 'user/message', seq: 3, data: { content: [{ type: 'text', text: '' }], source: { kind: 'user' } } },
   ]
 
   assert.deepEqual(extractDialogueHistory(events), [
-    { role: 'user', text: '真实用户' },
+    { role: 'user', blocks: [{ type: 'text', text: '真实用户' }] },
+  ])
+})
+
+test('keeps tool-only and empty assistant turns as placeholders', () => {
+  const events = [
+    { type: 'assistant/message', seq: 1, data: { message: { content: [{ type: 'tool-call', id: 'c1', name: 'bash', arguments: '{"secret":true}' }] } } },
+    { type: 'assistant/message', seq: 2, data: { message: { content: [] } } },
+  ]
+
+  assert.deepEqual(extractDialogueHistory(events), [
+    { role: 'assistant', blocks: [{ type: 'text', text: '调用了 bash' }] },
+    { role: 'assistant', blocks: [{ type: 'text', text: '（无内容）' }] },
+  ])
+})
+
+test('projects image blocks as placeholders without attachment bytes', () => {
+  const events = [
+    { type: 'user/message', seq: 1, data: { content: [
+      { type: 'image', attachment: { attachmentId: 'a-1', mediaType: 'image/png', bytes: 100, width: 640, height: 480, name: 'photo.png' } },
+      { type: 'text', text: '看图' },
+    ], source: { kind: 'user' } } },
+  ]
+
+  assert.deepEqual(extractDialogueHistory(events), [
+    { role: 'user', blocks: [
+      { type: 'image', name: 'photo.png', width: 640, height: 480 },
+      { type: 'text', text: '看图' },
+    ] },
   ])
 })
 
@@ -42,10 +70,10 @@ test('keeps only the latest 20 messages and crops each text to 2000 chars', () =
 
   assert.equal(history.length, 20)
   assert.equal(history[0].role, 'user')
-  assert.equal(history[0].text, 'm6')
+  assert.equal(history[0].blocks[0].text, 'm6')
   assert.equal(history[19].role, 'assistant')
-  assert.equal(history[19].text.length, 2000)
-  assert.equal(history[19].text.endsWith('tail'), true)
+  assert.equal(history[19].blocks[0].text.length, 2000)
+  assert.equal(history[19].blocks[0].text.endsWith('tail'), true)
 })
 
 test('ignores malformed events without throwing', () => {

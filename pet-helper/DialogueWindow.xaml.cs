@@ -1,8 +1,12 @@
+using System.Collections.Immutable;
+using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace PetHelper;
 
@@ -11,12 +15,21 @@ public partial class DialogueWindow : Window
     private static readonly Size MinSize = new(DialogueWindowState.MinWidth, DialogueWindowState.MinHeight);
     private static readonly Size MaxSize = new(DialogueWindowState.MaxWidth, DialogueWindowState.MaxHeight);
 
+    private const int MaxPendingAttachments = 4;
+    private const int MaxImageBytes = 2 * 1024 * 1024;
+
     private readonly IScreenLayout screenLayout;
     private readonly DialogueWindowStateStore stateStore = new();
-    private readonly ConversationState conversationState = new(previewEnabled: false, previewMaxChars: 480);
+    private readonly ConversationState conversationState = new(previewEnabled: true, previewMaxChars: 2000);
+    private readonly ObservableCollection<DialogueMessage> messages = new();
+    private readonly ObservableCollection<PendingAttachment> pendingAttachments = new();
+    private readonly DispatcherTimer streamFlushTimer;
     private long nextRequestId;
     private long historyRequestId;
     private bool restoringState = true;
+    private string? lastDefaultSessionId;
+    private string petStatusText = string.Empty;
+    private bool atBottom = true;
 
     private bool inSystemDrag;
     private bool resizingWindow;
@@ -27,6 +40,7 @@ public partial class DialogueWindow : Window
 
     public event EventHandler<InputSubmittedEventArgs>? InputSubmitted;
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
+    public event EventHandler<StopRequestedEventArgs>? StopRequested;
     public event EventHandler? HiddenToTray;
 
     public DialogueWindow(IScreenLayout screenLayout)
@@ -35,6 +49,11 @@ public partial class DialogueWindow : Window
         this.screenLayout = screenLayout;
         RestoreState();
         restoringState = false;
+        MessageList.ItemsSource = messages;
+        PendingAttachmentsList.ItemsSource = pendingAttachments;
+        streamFlushTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+        streamFlushTimer.Tick += StreamFlushTick;
+        streamFlushTimer.Start();
     }
 
     /// <summary>
@@ -70,6 +89,11 @@ public partial class DialogueWindow : Window
         Show();
         Activate();
         InputTextBox.Focus();
+        if (lastDefaultSessionId is not null)
+        {
+            RequestHistory();
+        }
+        Dispatcher.BeginInvoke(MessageScroll.ScrollToEnd);
     }
 
     /// <summary>Applies a position computed by the pet's combined (Ctrl) drag, clamped on screen.</summary>
@@ -83,15 +107,42 @@ public partial class DialogueWindow : Window
 
     public void ApplyConversationMessage(ProtocolMessage message)
     {
+        var sessionChanged = message is ConversationConfigMessage config && config.DefaultSessionId != lastDefaultSessionId;
         conversationState.Apply(message);
-        ConversationStatusLabel.Text = conversationState.StatusText;
-        ReplyTextBlock.Text = conversationState.ReplyPending && conversationState.ReplyText.Length == 0
-            ? "正在生成回复…"
-            : conversationState.ReplyText;
-        if (message is HistoryMessage)
+        if (message is ConversationConfigMessage configMessage)
         {
-            RenderHistory(conversationState);
+            lastDefaultSessionId = configMessage.DefaultSessionId;
+            if (sessionChanged)
+            {
+                messages.Clear();
+                pendingAttachments.Clear();
+                RefreshPendingAttachments();
+                RequestHistory();
+            }
         }
+
+        SyncMessages();
+        if (message is HistoryMessage or ReplyMessage or ReplyPreviewMessage { Completed: true } or InputStatusMessage)
+        {
+            EnsureAllMarkdownRendered();
+        }
+        UpdateStatusLabel();
+        UpdateSendButton();
+    }
+
+    /// <summary>Pet bubble state, shown in the dialogue status line when no conversation is active (同源联动).</summary>
+    public void ApplyPetState(StateMessage state)
+    {
+        petStatusText = state.State switch
+        {
+            "idle" => string.Empty,
+            "waiting" => "等待你的操作",
+            "success" => "已完成",
+            "error" => "发生错误",
+            "active" => state.Label,
+            _ => string.Empty,
+        };
+        UpdateStatusLabel();
     }
 
     public void CloseToHidden()
@@ -119,16 +170,55 @@ public partial class DialogueWindow : Window
         }
     }
 
+    private void RequestHistory()
+    {
+        if (lastDefaultSessionId is null) return;
+        historyRequestId++;
+        HistoryRequested?.Invoke(this, new HistoryRequestedEventArgs(historyRequestId));
+    }
+
     private void SubmitInput()
     {
         var text = InputTextBox.Text.Trim();
-        if (text.Length is 0 or > 2000) return;
+        if (text.Length > 2000) return;
+        if (text.Length == 0 && pendingAttachments.Count == 0) return;
+
+        var attachments = pendingAttachments
+            .Select(attachment => attachment.IsImage
+                ? (InputAttachment)new ImageInputAttachment(attachment.MediaType!, attachment.Base64!, attachment.Name)
+                : new FileInputAttachment(attachment.Path!, attachment.Name))
+            .ToImmutableArray();
 
         nextRequestId++;
-        conversationState.BeginInput(nextRequestId);
+        var images = pendingAttachments.Where(attachment => attachment.IsImage)
+            .Select(attachment => new DialogueImage(attachment.Name, null, null, attachment.Base64))
+            .ToImmutableArray();
+        var files = pendingAttachments.Where(attachment => !attachment.IsImage)
+            .Select(attachment => new DialogueFile(attachment.Name, attachment.Path!))
+            .ToImmutableArray();
+
+        conversationState.BeginInput(nextRequestId, text, images, files);
         InputTextBox.Clear();
-        ConversationStatusLabel.Text = "正在发送…";
-        InputSubmitted?.Invoke(this, new InputSubmittedEventArgs(nextRequestId, text));
+        pendingAttachments.Clear();
+        RefreshPendingAttachments();
+        SyncMessages();
+        UpdateStatusLabel();
+        UpdateSendButton();
+        InputSubmitted?.Invoke(this, new InputSubmittedEventArgs(nextRequestId, text, attachments));
+    }
+
+    private void SendButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (conversationState.HasActiveTurn)
+        {
+            var requestId = conversationState.RequestId;
+            if (requestId > 0)
+            {
+                StopRequested?.Invoke(this, new StopRequestedEventArgs(requestId));
+            }
+            return;
+        }
+        SubmitInput();
     }
 
     private void InputTextBox_KeyDown(object sender, KeyEventArgs e)
@@ -140,9 +230,281 @@ public partial class DialogueWindow : Window
         }
     }
 
-    private void SendButton_Click(object sender, RoutedEventArgs e) => SubmitInput();
-
     private void CloseButton_Click(object sender, RoutedEventArgs e) => CloseToHidden();
+
+    private void AttachmentButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择图片或文件（可多选）",
+            Multiselect = true,
+            Filter = "图片或文件|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.*",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        AddAttachments(dialog.FileNames);
+    }
+
+    private void AddAttachments(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (pendingAttachments.Count >= MaxPendingAttachments)
+            {
+                SetTemporaryStatus($"最多 {MaxPendingAttachments} 个附件");
+                break;
+            }
+            var name = Path.GetFileName(path);
+            if (IsImagePath(path))
+            {
+                if (!TryReadImage(path, out var base64, out var mediaType))
+                {
+                    SetTemporaryStatus("图片过大或无法读取，已跳过");
+                    continue;
+                }
+                pendingAttachments.Add(new PendingAttachment { Name = name, Base64 = base64, MediaType = mediaType });
+            }
+            else
+            {
+                pendingAttachments.Add(new PendingAttachment { Name = name, Path = path });
+            }
+        }
+        RefreshPendingAttachments();
+    }
+
+    private void RemoveAttachmentButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is PendingAttachment attachment)
+        {
+            pendingAttachments.Remove(attachment);
+            RefreshPendingAttachments();
+        }
+    }
+
+    private void RefreshPendingAttachments()
+    {
+        PendingAttachmentsList.Visibility = pendingAttachments.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool IsImagePath(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        return extension is ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif";
+    }
+
+    private static bool TryReadImage(string path, out string base64, out string mediaType)
+    {
+        base64 = string.Empty;
+        mediaType = string.Empty;
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            if (bytes.Length == 0 || bytes.Length > MaxImageBytes) return false;
+            mediaType = Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                _ => string.Empty,
+            };
+            if (mediaType.Length == 0) return false;
+            base64 = Convert.ToBase64String(bytes);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void Window_DragEnter(object sender, DragEventArgs e) => ApplyFileDropEffect(e);
+
+    private void Window_DragOver(object sender, DragEventArgs e) => ApplyFileDropEffect(e);
+
+    private static void ApplyFileDropEffect(DragEventArgs e)
+    {
+        e.Effects = HasFileDrop(e) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (!HasFileDrop(e) || e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0)
+        {
+            return;
+        }
+        AddAttachments(paths);
+        e.Handled = true;
+    }
+
+    private static bool HasFileDrop(DragEventArgs e) =>
+        e.Data.GetDataPresent(DataFormats.FileDrop)
+        && e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 };
+
+    private static void CopyText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch
+        {
+            // Clipboard contention is best effort.
+        }
+    }
+
+    private void MarkdownHost_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RichTextBox { DataContext: DialogueMessage { ShowMarkdown: true } message } host)
+        {
+            return;
+        }
+        RenderMarkdown(host, message);
+    }
+
+    private void EnsureAllMarkdownRendered()
+    {
+        foreach (var message in messages)
+        {
+            EnsureMarkdownRendered(message);
+        }
+    }
+
+    private void EnsureMarkdownRendered(DialogueMessage message)
+    {
+        if (!message.ShowMarkdown) return;
+        if (MessageList.ItemContainerGenerator.ContainerFromItem(message) is not ContentPresenter container)
+        {
+            return;
+        }
+        var host = FindDescendantRichTextBox(container);
+        if (host is not null)
+        {
+            RenderMarkdown(host, message);
+        }
+    }
+
+    private static RichTextBox? FindDescendantRichTextBox(DependencyObject root)
+    {
+        if (root is RichTextBox richTextBox) return richTextBox;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var found = FindDescendantRichTextBox(VisualTreeHelper.GetChild(root, index));
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static void RenderMarkdown(RichTextBox host, DialogueMessage message)
+    {
+        // A fresh RichTextBox already owns a FlowDocument with one empty Paragraph, so a
+        // "has blocks" guard would wrongly skip every render. Mark the host once instead.
+        if (ReferenceEquals(host.Tag, message)) return;
+        try
+        {
+            host.Document = MarkdownRenderer.Render(message.Text, CopyText);
+            host.Tag = message;
+        }
+        catch
+        {
+            // A malformed markdown must never break the dialogue.
+        }
+    }
+
+    private void StreamFlushTick(object? sender, EventArgs e)
+    {
+        var pending = conversationState.PendingStreamText;
+        if (pending is null) return;
+        // The buffered stream belongs to the live assistant message; a terminal ending
+        // (stopped/interrupted/failed) must still receive the partial text.
+        var message = conversationState.Messages.LastOrDefault(candidate =>
+            candidate.Role == "assistant" && (candidate.Streaming || candidate.End != MessageEndState.None));
+        if (message is null) return;
+        var becomesMarkdown = !message.ShowMarkdown;
+        message.Text = pending;
+        if (becomesMarkdown && message.ShowMarkdown)
+        {
+            EnsureMarkdownRendered(message);
+        }
+        if (atBottom)
+        {
+            MessageScroll.ScrollToEnd();
+        }
+    }
+
+    private void MessageScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentHeightChange > 0 && atBottom)
+        {
+            MessageScroll.ScrollToEnd();
+        }
+        atBottom = MessageScroll.VerticalOffset + MessageScroll.ViewportHeight >= MessageScroll.ExtentHeight - 4;
+    }
+
+    private void SyncMessages()
+    {
+        var source = conversationState.Messages;
+        var index = 0;
+        while (index < source.Length)
+        {
+            if (index < messages.Count)
+            {
+                if (!ReferenceEquals(messages[index], source[index]))
+                {
+                    messages[index] = source[index];
+                }
+            }
+            else
+            {
+                messages.Add(source[index]);
+            }
+            index++;
+        }
+        while (messages.Count > source.Length)
+        {
+            messages.RemoveAt(messages.Count - 1);
+        }
+    }
+
+    private void UpdateStatusLabel()
+    {
+        var text = conversationState.StatusText;
+        if (text.Length == 0)
+        {
+            if (conversationState.HasStreamingMessage)
+            {
+                text = "生成中…";
+            }
+            else if (conversationState.HasActiveTurn)
+            {
+                text = "思考中…";
+            }
+            else
+            {
+                text = petStatusText;
+            }
+        }
+        ConversationStatusLabel.Text = text;
+    }
+
+    private void UpdateSendButton()
+    {
+        if (conversationState.HasActiveTurn)
+        {
+            SendButton.Content = "停止";
+            SendButton.ToolTip = "停止生成";
+        }
+        else
+        {
+            SendButton.Content = "发送";
+            SendButton.ToolTip = "发送（Enter）";
+        }
+    }
+
+    private void SetTemporaryStatus(string text)
+    {
+        ConversationStatusLabel.Text = text;
+    }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -258,69 +620,40 @@ public partial class DialogueWindow : Window
         Height = rect.Height;
     }
 
-    private void HistoryButton_Click(object sender, RoutedEventArgs e)
-    {
-        historyRequestId++;
-        HistoryRequested?.Invoke(this, new HistoryRequestedEventArgs(historyRequestId));
-        HistoryPanel.Visibility = Visibility.Visible;
-        HistoryStatus.Text = "加载中…";
-        HistoryStatus.Visibility = Visibility.Visible;
-        HistoryScroll.Visibility = Visibility.Collapsed;
-        HistoryList.Children.Clear();
-    }
-
-    private void CloseHistoryButton_Click(object sender, RoutedEventArgs e)
-    {
-        HistoryPanel.Visibility = Visibility.Collapsed;
-    }
-
-    private void RenderHistory(ConversationState state)
-    {
-        HistoryList.Children.Clear();
-        HistoryScroll.Visibility = Visibility.Collapsed;
-        HistoryStatus.Visibility = Visibility.Visible;
-        if (!state.HistoryAvailable)
-        {
-            HistoryStatus.Text = "会话不可用";
-            return;
-        }
-        if (state.HistoryMessages.Length == 0)
-        {
-            HistoryStatus.Text = "暂无对话历史";
-            return;
-        }
-
-        HistoryStatus.Visibility = Visibility.Collapsed;
-        HistoryScroll.Visibility = Visibility.Visible;
-        foreach (var item in state.HistoryMessages)
-        {
-            var isUser = item.Role == "user";
-            var bubble = new Border
-            {
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8, 4, 8, 4),
-                Margin = new Thickness(0, 2, 0, 2),
-                MaxWidth = 190,
-                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-                Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(90, isUser ? (byte)46 : (byte)64, isUser ? (byte)92 : (byte)68, isUser ? (byte)122 : (byte)84)),
-            };
-            bubble.Child = new TextBlock
-            {
-                Text = item.Text,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = System.Windows.Media.Brushes.White,
-            };
-            HistoryList.Children.Add(bubble);
-        }
-    }
-
-    private static bool IsInteractiveTarget(DependencyObject? target)
+    internal static bool IsInteractiveTarget(DependencyObject? target)
     {
         while (target is not null)
         {
-            if (target is TextBox or Button or ScrollViewer or ScrollBar) return true;
-            target = VisualTreeHelper.GetParent(target);
+            if (target is TextBox or Button or ScrollViewer or ScrollBar or RichTextBox or ListBox or ItemsControl)
+            {
+                return true;
+            }
+            target = ParentOf(target);
         }
         return false;
+    }
+
+    /// <summary>
+    /// Walks the parent chain across both Visuals and ContentElements: the markdown host's
+    /// OriginalSource can be a FlowDocument Paragraph/Run (a ContentElement), which
+    /// VisualTreeHelper.GetParent rejects.
+    /// </summary>
+    private static DependencyObject? ParentOf(DependencyObject target) =>
+        target is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(target)
+            : LogicalTreeHelper.GetParent(target);
+
+    /// <summary>One pending attachment chip: an image (base64 kept for the thumbnail echo) or a file path.</summary>
+    private sealed class PendingAttachment
+    {
+        public required string Name { get; init; }
+
+        public string? Base64 { get; init; }
+
+        public string? MediaType { get; init; }
+
+        public string? Path { get; init; }
+
+        public bool IsImage => Base64 is not null;
     }
 }

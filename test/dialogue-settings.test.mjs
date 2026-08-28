@@ -8,8 +8,9 @@ import { validateDialogueSettings } from '../lib/dialogue-settings.js'
 test('uses the safe dialogue setting defaults', () => {
   assert.deepEqual(dialogueSettingsDefaults, {
     defaultSessionId: null,
-    previewEnabled: false,
-    previewMaxChars: 480,
+    defaultWorkspaceId: null,
+    previewEnabled: true,
+    previewMaxChars: 2000,
   })
 })
 
@@ -18,17 +19,19 @@ test('exposes the dialogue settings as a serializable schemastery schema', () =>
   assert.equal(typeof dialogueSettingsSchema.toJSON, 'function')
   assert.deepEqual(dialogueSettingsSchema(undefined), {
     defaultSessionId: null,
-    previewEnabled: false,
-    previewMaxChars: 480,
+    defaultWorkspaceId: null,
+    previewEnabled: true,
+    previewMaxChars: 2000,
   })
   assert.deepEqual(dialogueSettingsSchema({}), {
     defaultSessionId: null,
-    previewEnabled: false,
-    previewMaxChars: 480,
+    defaultWorkspaceId: null,
+    previewEnabled: true,
+    previewMaxChars: 2000,
   })
   assert.deepEqual(
     dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80 },
   )
   assert.throws(
     () => dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: true, previewMaxChars: 80.5 }),
@@ -52,25 +55,25 @@ test('projects only a session id and its DSH display title', () => {
   assert.equal(JSON.stringify(options).includes('private'), false)
 })
 
-test('accepts preview bounds and rejects values outside 80 through 2000', () => {
+test('accepts preview bounds and rejects values outside 80 through 8000', () => {
   assert.deepEqual(
-    validateDialogueSettings({ defaultSessionId: 's-1', previewEnabled: true, previewMaxChars: 480 }),
-    { defaultSessionId: 's-1', previewEnabled: true, previewMaxChars: 480 },
+    validateDialogueSettings({ defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480 }),
+    { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480 },
   )
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80 },
   )
   assert.deepEqual(
-    validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 2000 }),
-    { defaultSessionId: null, previewEnabled: false, previewMaxChars: 2000 },
+    validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 8000 }),
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 8000 },
   )
   assert.throws(
     () => validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 79 }),
     /previewMaxChars/,
   )
   assert.throws(
-    () => validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 2001 }),
+    () => validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 8001 }),
     /previewMaxChars/,
   )
   assert.throws(

@@ -7,6 +7,7 @@
         LocationChanged="Window_LocationChanged">
   <Window.ContextMenu>
     <ContextMenu>
+      <MenuItem Header="选择会话" Click="SelectTargetMenuItem_Click" />
       <MenuItem Header="隐藏" Click="HideMenuItem_Click" />
       <MenuItem Header="缩放">
         <MenuItem Header="75%" Tag="0.75" Click="ScaleMenuItem_Click" />
@@ -19,8 +20,10 @@
       <MenuItem Header="关闭桌宠" Click="CloseMenuItem_Click" />
     </ContextMenu>
   </Window.ContextMenu>
-  <Grid x:Name="PetLayout" MouseLeftButtonDown="Pet_MouseLeftButtonDown" SizeChanged="PetLayout_SizeChanged">
-    <Image x:Name="PetImage" Stretch="Uniform" VerticalAlignment="Bottom" />
+  <Grid x:Name="PetLayout" MouseLeftButtonDown="Pet_MouseLeftButtonDown"
+        SizeChanged="PetLayout_SizeChanged" AllowDrop="True"
+        DragEnter="Pet_DragEnter" DragOver="Pet_DragOver" Drop="Pet_Drop">
+    <Image x:Name="PetImage" Stretch="Uniform" VerticalAlignment="Bottom" Margin="0,20,0,0" />
     <Canvas x:Name="StateBubbleCanvas" IsHitTestVisible="False" Panel.ZIndex="1">
       <Border x:Name="StateBubble" Visibility="Collapsed" Background="#E62B4B5F"
               CornerRadius="12" Padding="12,6" SizeChanged="StateBubble_SizeChanged">

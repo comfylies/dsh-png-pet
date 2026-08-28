@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperInputMessage | HelperHistoryRequest | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
 
 export type HelperProcessOptions = {
   command?: string
@@ -114,12 +114,26 @@ export class HelperProcess {
             // Ignore consumer failures so a validated input can be retried.
           }
         }
+        if (message.kind === 'stop') {
+          try {
+            this.options.onMessage(message)
+          } catch {
+            // Ignore consumer failures so a validated stop can be retried.
+          }
+        }
         if (message.kind === 'request-history' && message.requestId > this.lastHistoryRequestId) {
           try {
             this.options.onMessage(message)
             this.lastHistoryRequestId = message.requestId
           } catch {
             // Ignore consumer failures so a validated history request can be retried.
+          }
+        }
+        if (message.kind === 'target-open' || message.kind === 'target-answer') {
+          try {
+            this.options.onMessage(message)
+          } catch {
+            // Ignore consumer failures so a validated target message can be retried.
           }
         }
       })

@@ -1,5 +1,6 @@
 export type DialogueSettings = {
   defaultSessionId: string | null
+  defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
 }

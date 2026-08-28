@@ -6,11 +6,21 @@ namespace PetHelper;
 public static class ProtocolReader
 {
     private const long MaxSafeSequence = 9_007_199_254_740_991;
-    private const int MaxLineLength = 65536;
+    private const int MaxLineLength = 16_000_000;
     private const int MaxTextLength = 2000;
+    private const int MaxPreviewLength = 8000;
     private const int MaxReplyLength = 8000;
     private const int MaxHistoryMessages = 20;
+    private const int MaxHistoryBlocks = 8;
+    private const int MaxHistoryImageNameLength = 200;
+    private const int MaxHistoryImageDimension = 100000;
     private const int MinPreviewChars = 80;
+    private const int MaxWorkspaces = 64;
+    private const int MaxSessionsPerWorkspace = 100;
+    private const int MaxUngroupedSessions = 100;
+    private const int MaxTargetIdLength = 200;
+    private const int MaxTargetTitleLength = 200;
+    private const int MaxTargetPathLength = 2048;
 
     public static ProtocolMessage? Parse(string line)
     {
@@ -20,7 +30,7 @@ public static class ProtocolReader
         {
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !HasVersionFive(root)) return null;
+            if (root.ValueKind != JsonValueKind.Object || !HasVersionSix(root)) return null;
 
             return root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
                 ? kind.GetString() switch
@@ -35,6 +45,7 @@ public static class ProtocolReader
                     "clear-preview" => ParseClearPreview(root),
                     "reply" => ParseReply(root),
                     "conversation-history" => ParseHistory(root),
+                    "target-request" => ParseTargetRequest(root),
                     _ => null,
                 }
                 : null;
@@ -47,17 +58,21 @@ public static class ProtocolReader
 
     private static ConversationConfigMessage? ParseConversationConfig(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "previewEnabled", "previewMaxChars", "defaultSessionId")
+        if (!HasExactlyProperties(root, "version", "kind", "previewEnabled", "previewMaxChars", "defaultSessionId", "defaultWorkspaceId")
             || !root.TryGetProperty("previewEnabled", out var previewEnabled)
             || !root.TryGetProperty("previewMaxChars", out var previewMaxChars)
             || !root.TryGetProperty("defaultSessionId", out var defaultSessionId)
+            || !root.TryGetProperty("defaultWorkspaceId", out var defaultWorkspaceId)
             || previewEnabled.ValueKind is not JsonValueKind.True and not JsonValueKind.False
             || previewMaxChars.ValueKind != JsonValueKind.Number
             || !previewMaxChars.TryGetInt32(out var maxChars)
-            || maxChars is < MinPreviewChars or > MaxTextLength
+            || maxChars is < MinPreviewChars or > MaxPreviewLength
             || (defaultSessionId.ValueKind != JsonValueKind.Null
                 && (defaultSessionId.ValueKind != JsonValueKind.String
-                    || defaultSessionId.GetString() is not { Length: > 0 })))
+                    || defaultSessionId.GetString() is not { Length: > 0 }))
+            || (defaultWorkspaceId.ValueKind != JsonValueKind.Null
+                && (defaultWorkspaceId.ValueKind != JsonValueKind.String
+                    || defaultWorkspaceId.GetString() is not { Length: > 0 })))
         {
             return null;
         }
@@ -65,7 +80,113 @@ public static class ProtocolReader
         return new ConversationConfigMessage(
             previewEnabled.GetBoolean(),
             maxChars,
-            defaultSessionId.ValueKind == JsonValueKind.Null ? null : defaultSessionId.GetString());
+            defaultSessionId.ValueKind == JsonValueKind.Null ? null : defaultSessionId.GetString(),
+            defaultWorkspaceId.ValueKind == JsonValueKind.Null ? null : defaultWorkspaceId.GetString());
+    }
+
+    private static TargetRequestMessage? ParseTargetRequest(JsonElement root)
+    {
+        if (!HasPropertiesWithOptional(root, ["version", "kind", "requestId", "workspaces", "sessionsByWorkspace", "ungrouped", "defaultWorkspaceId", "defaultSessionId"], ["error"])
+            || !TryGetRequestId(root, out var requestId)
+            || !root.TryGetProperty("workspaces", out var workspaces)
+            || !root.TryGetProperty("sessionsByWorkspace", out var sessionsByWorkspace)
+            || !root.TryGetProperty("ungrouped", out var ungrouped)
+            || !root.TryGetProperty("defaultWorkspaceId", out var defaultWorkspaceId)
+            || !root.TryGetProperty("defaultSessionId", out var defaultSessionId)
+            || workspaces.ValueKind != JsonValueKind.Array
+            || sessionsByWorkspace.ValueKind != JsonValueKind.Object
+            || ungrouped.ValueKind != JsonValueKind.Array
+            || (defaultWorkspaceId.ValueKind != JsonValueKind.Null
+                && (defaultWorkspaceId.ValueKind != JsonValueKind.String
+                    || defaultWorkspaceId.GetString() is not { Length: > 0 and <= MaxTargetIdLength }))
+            || (defaultSessionId.ValueKind != JsonValueKind.Null
+                && (defaultSessionId.ValueKind != JsonValueKind.String
+                    || defaultSessionId.GetString() is not { Length: > 0 and <= MaxTargetIdLength })))
+        {
+            return null;
+        }
+
+        var error = root.TryGetProperty("error", out var errorElement)
+            && errorElement.ValueKind == JsonValueKind.String
+            && errorElement.GetString() is { Length: > 0 and <= MaxTargetTitleLength } errorText
+            ? errorText
+            : null;
+        if (root.TryGetProperty("error", out var rawError) && rawError.ValueKind != JsonValueKind.Null && error is null)
+        {
+            return null;
+        }
+
+        var workspaceItems = new List<TargetWorkspaceInfo>();
+        foreach (var entry in workspaces.EnumerateArray())
+        {
+            if (workspaceItems.Count >= MaxWorkspaces
+                || entry.ValueKind != JsonValueKind.Object
+                || !entry.TryGetProperty("id", out var id)
+                || !entry.TryGetProperty("title", out var title)
+                || !entry.TryGetProperty("path", out var path)
+                || id.ValueKind != JsonValueKind.String
+                || id.GetString() is not { Length: > 0 and <= MaxTargetIdLength } idText
+                || title.ValueKind != JsonValueKind.String
+                || title.GetString() is not { Length: > 0 and <= MaxTargetTitleLength } titleText
+                || path.ValueKind != JsonValueKind.String
+                || path.GetString() is not { Length: > 0 and <= MaxTargetPathLength } pathText)
+            {
+                return null;
+            }
+
+            workspaceItems.Add(new TargetWorkspaceInfo(idText, titleText, pathText));
+        }
+        if (workspaceItems.Count > MaxWorkspaces) return null;
+
+        var byWorkspace = new Dictionary<string, ImmutableArray<TargetSessionInfo>>(StringComparer.Ordinal);
+        foreach (var property in sessionsByWorkspace.EnumerateObject())
+        {
+            if (property.Name.Length is 0 or > MaxTargetIdLength
+                || property.Value.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var sessions = ParseTargetSessions(property.Value, MaxSessionsPerWorkspace);
+            if (sessions is null) return null;
+            byWorkspace[property.Name] = sessions.Value;
+        }
+
+        var ungroupedSessions = ParseTargetSessions(ungrouped, MaxUngroupedSessions);
+        if (ungroupedSessions is null) return null;
+
+        return new TargetRequestMessage(
+            requestId,
+            workspaceItems.ToImmutableArray(),
+            byWorkspace.ToImmutableDictionary(StringComparer.Ordinal),
+            ungroupedSessions.Value,
+            defaultWorkspaceId.ValueKind == JsonValueKind.Null ? null : defaultWorkspaceId.GetString(),
+            defaultSessionId.ValueKind == JsonValueKind.Null ? null : defaultSessionId.GetString(),
+            error);
+    }
+
+    private static ImmutableArray<TargetSessionInfo>? ParseTargetSessions(JsonElement array, int limit)
+    {
+        var items = new List<TargetSessionInfo>();
+        foreach (var entry in array.EnumerateArray())
+        {
+            if (items.Count >= limit
+                || entry.ValueKind != JsonValueKind.Object
+                || !entry.TryGetProperty("id", out var id)
+                || !entry.TryGetProperty("title", out var title)
+                || !entry.TryGetProperty("blank", out var blank)
+                || id.ValueKind != JsonValueKind.String
+                || id.GetString() is not { Length: > 0 and <= MaxTargetIdLength } idText
+                || title.ValueKind != JsonValueKind.String
+                || title.GetString() is not { Length: <= MaxTargetTitleLength } titleText
+                || blank.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+            {
+                return null;
+            }
+
+            items.Add(new TargetSessionInfo(idText, titleText, blank.GetBoolean()));
+        }
+        return items.ToImmutableArray();
     }
 
     private static InputStatusMessage? ParseInputStatus(JsonElement root)
@@ -75,7 +196,7 @@ public static class ProtocolReader
             || !root.TryGetProperty("status", out var status)
             || status.ValueKind != JsonValueKind.String
             || status.GetString() is not string statusText
-            || statusText is not ("queued" or "sent" or "no-default-session" or "session-unavailable" or "rejected"))
+            || statusText is not ("queued" or "sent" or "no-default-session" or "session-unavailable" or "rejected" or "stopped" or "interrupted" or "failed"))
         {
             return null;
         }
@@ -91,7 +212,7 @@ public static class ProtocolReader
             || !root.TryGetProperty("completed", out var completed)
             || text.ValueKind != JsonValueKind.String
             || text.GetString() is not { } previewText
-            || previewText.Length is 0 or > MaxTextLength
+            || previewText.Length is 0 or > MaxPreviewLength
             || completed.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
         {
             return null;
@@ -147,22 +268,64 @@ public static class ProtocolReader
         var items = new List<HistoryItem>();
         foreach (var entry in messages.EnumerateArray())
         {
-            if (entry.ValueKind != JsonValueKind.Object
+            if (items.Count >= MaxHistoryMessages
+                || entry.ValueKind != JsonValueKind.Object
                 || !entry.TryGetProperty("role", out var role)
-                || !entry.TryGetProperty("text", out var text)
+                || !entry.TryGetProperty("blocks", out var blocks)
                 || role.ValueKind != JsonValueKind.String
                 || role.GetString() is not ("user" or "assistant")
-                || text.ValueKind != JsonValueKind.String
-                || text.GetString() is not { Length: > 0 and <= MaxTextLength } entryText)
+                || blocks.ValueKind != JsonValueKind.Array)
             {
                 return null;
             }
 
-            items.Add(new HistoryItem(role.GetString()!, entryText));
-            if (items.Count > MaxHistoryMessages) return null;
+            var parsedBlocks = ParseHistoryBlocks(blocks);
+            if (parsedBlocks is null) return null;
+            items.Add(new HistoryItem(role.GetString()!, parsedBlocks.Value));
         }
+        if (items.Count > MaxHistoryMessages) return null;
 
         return new HistoryMessage(requestId, available.GetBoolean(), items.ToImmutableArray());
+    }
+
+    private static ImmutableArray<HistoryBlock>? ParseHistoryBlocks(JsonElement array)
+    {
+        var blocks = new List<HistoryBlock>();
+        foreach (var block in array.EnumerateArray())
+        {
+            if (blocks.Count >= MaxHistoryBlocks
+                || block.ValueKind != JsonValueKind.Object
+                || !block.TryGetProperty("type", out var type)
+                || type.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            switch (type.GetString())
+            {
+                case "text" when block.TryGetProperty("text", out var text)
+                    && text.ValueKind == JsonValueKind.String
+                    && text.GetString() is { Length: > 0 and <= MaxTextLength } textValue:
+                    blocks.Add(new HistoryTextBlock(textValue));
+                    break;
+                case "image" when block.TryGetProperty("name", out var name)
+                    && block.TryGetProperty("width", out var width)
+                    && block.TryGetProperty("height", out var height)
+                    && name.ValueKind == JsonValueKind.String
+                    && name.GetString() is { Length: <= MaxHistoryImageNameLength } nameValue
+                    && width.ValueKind == JsonValueKind.Number
+                    && width.TryGetInt32(out var widthValue)
+                    && widthValue is >= 1 and <= MaxHistoryImageDimension
+                    && height.ValueKind == JsonValueKind.Number
+                    && height.TryGetInt32(out var heightValue)
+                    && heightValue is >= 1 and <= MaxHistoryImageDimension:
+                    blocks.Add(new HistoryImageBlock(nameValue, widthValue, heightValue));
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return blocks.Count == 0 ? null : blocks.ToImmutableArray();
     }
 
     private static ConfigMessage? ParseConfig(JsonElement root)
@@ -230,11 +393,11 @@ public static class ProtocolReader
             && requestId is > 0 and <= MaxSafeSequence;
     }
 
-    private static bool HasVersionFive(JsonElement root) =>
+    private static bool HasVersionSix(JsonElement root) =>
         root.TryGetProperty("version", out var version)
         && version.ValueKind == JsonValueKind.Number
         && version.TryGetInt32(out var value)
-        && value == 5;
+        && value == 6;
 
     private static bool HasExactlyProperties(JsonElement root, params string[] expected)
     {
@@ -244,5 +407,18 @@ public static class ProtocolReader
             if (!names.Remove(property.Name)) return false;
         }
         return names.Count == 0;
+    }
+
+    private static bool HasPropertiesWithOptional(JsonElement root, string[] required, string[] optional)
+    {
+        var allowed = new HashSet<string>(required, StringComparer.Ordinal);
+        allowed.UnionWith(optional);
+        var missing = new HashSet<string>(required, StringComparer.Ordinal);
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!allowed.Contains(property.Name)) return false;
+            missing.Remove(property.Name);
+        }
+        return missing.Count == 0;
     }
 }
