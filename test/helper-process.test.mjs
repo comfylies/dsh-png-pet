@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
@@ -35,7 +35,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v5 config and state messages', async () => {
+test('sends only typed v6 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -51,8 +51,8 @@ test('sends only typed v5 config and state messages', async () => {
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":5,"kind":"config","scale":1,"reducedMotion":false}\n',
-    '{"version":5,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
+    '{"version":6,"kind":"config","scale":1,"reducedMotion":false}\n',
+    '{"version":6,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
 })
 
@@ -76,7 +76,7 @@ test('forwards only validated helper input messages to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 5, kind: 'input', requestId: 9, text: 'hello' }])
+    assert.deepEqual(received, [{ version: 6, kind: 'input', requestId: 9, text: 'hello' }])
   } finally {
     await helper.stop()
   }
@@ -124,7 +124,7 @@ test('forwards a validated closed lifecycle message without an input body', asyn
   await helper.start()
   await helper.stop()
 
-  assert.deepEqual(received, [{ version: 5, kind: 'closed' }])
+  assert.deepEqual(received, [{ version: 6, kind: 'closed' }])
 })
 
 test('retries an input callback that throws before advancing its request id', async () => {
@@ -177,3 +177,60 @@ test('forwards history and input requests with independent request ids', async (
     await helper.stop()
   }
 })
+
+test('forwards a validated stop message to onMessage', async () => {
+  const received = []
+  let resolveMessage
+  const messageReceived = new Promise((resolve) => {
+    resolveMessage = resolve
+  })
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--stop'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      received.push(message)
+      resolveMessage()
+    },
+  })
+
+  try {
+    await helper.start()
+    await messageReceived
+    assert.deepEqual(received, [{ version: 6, kind: 'stop', requestId: 9 }])
+  } finally {
+    await helper.stop()
+  }
+})
+
+test('forwards target-open and target-answer helper messages to onMessage', async () => {
+  const received = []
+  let resolveSecond
+  const secondReceived = new Promise((resolve) => {
+    resolveSecond = resolve
+  })
+  const helper = new HelperProcess({
+    command: process.execPath,
+    args: [fixture, '--target-open', '--target-answer'],
+    readyTimeoutMs: 1_000,
+    shutdownTimeoutMs: 1_000,
+    onMessage: (message) => {
+      received.push(message)
+      if (received.length === 2) resolveSecond()
+    },
+  })
+
+  try {
+    await helper.start()
+    await secondReceived
+    assert.deepEqual(received, [
+      { version: 6, kind: 'target-open', requestId: 21 },
+      { version: 6, kind: 'target-answer', requestId: 22, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
+    ])
+  } finally {
+    await helper.stop()
+  }
+})
+
+

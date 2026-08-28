@@ -3,70 +3,127 @@ import test from 'node:test'
 
 import { encodeHostMessage, parseHelperMessage, parseHostMessage } from '../lib/protocol.js'
 
-test('accepts a v5 ready message', () => {
+test('accepts a v6 ready message', () => {
   assert.deepEqual(
-    parseHelperMessage('{"version":5,"kind":"ready"}'),
-    { version: 5, kind: 'ready' },
+    parseHelperMessage('{"version":6,"kind":"ready"}'),
+    { version: 6, kind: 'ready' },
   )
 })
 
-test('encodes a v5 canonical composite active state presentation', () => {
+test('encodes a v6 canonical composite active state presentation', () => {
   assert.equal(
     encodeHostMessage({ kind: 'state', state: 'active', activities: ['thinking', 'working'], label: '思考中/工作中', sequence: 42 }),
-    '{"version":5,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":42}\n',
+    '{"version":6,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":42}\n',
   )
 })
 
 test('accepts a bounded helper input and encodes bounded dialogue messages', () => {
   assert.deepEqual(
-    parseHelperMessage('{"version":5,"kind":"input","requestId":7,"text":"hello"}'),
-    { version: 5, kind: 'input', requestId: 7, text: 'hello' },
+    parseHelperMessage('{"version":6,"kind":"input","requestId":7,"text":"hello"}'),
+    { version: 6, kind: 'input', requestId: 7, text: 'hello' },
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null }),
-    '{"version":5,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":480,"defaultSessionId":null}\n',
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null, defaultWorkspaceId: null }),
+    '{"version":6,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":480,"defaultSessionId":null,"defaultWorkspaceId":null}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'input-status', requestId: 7, status: 'queued' }),
-    '{"version":5,"kind":"input-status","requestId":7,"status":"queued"}\n',
+    '{"version":6,"kind":"input-status","requestId":7,"status":"queued"}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'reply-preview', requestId: 7, text: 'ok', completed: false }),
-    '{"version":5,"kind":"reply-preview","requestId":7,"text":"ok","completed":false}\n',
+    '{"version":6,"kind":"reply-preview","requestId":7,"text":"ok","completed":false}\n',
   )
   assert.equal(
     encodeHostMessage({ kind: 'clear-preview', requestId: 7, reason: 'next-input' }),
-    '{"version":5,"kind":"clear-preview","requestId":7,"reason":"next-input"}\n',
+    '{"version":6,"kind":"clear-preview","requestId":7,"reason":"next-input"}\n',
   )
 })
 
-test('rejects invalid v5 dialogue payloads', () => {
+test('accepts an input with attachments and an empty text', () => {
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"input","requestId":7,"text":"","attachments":[{"type":"image","mediaType":"image/png","base64":"AAAA"},{"type":"file","path":"C:\\\\a.txt","name":"a.txt"}]}'),
+    {
+      version: 6,
+      kind: 'input',
+      requestId: 7,
+      text: '',
+      attachments: [
+        { type: 'image', mediaType: 'image/png', base64: 'AAAA' },
+        { type: 'file', path: 'C:\\a.txt', name: 'a.txt' },
+      ],
+    },
+  )
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"input","requestId":8,"text":"看图","attachments":[{"type":"image","mediaType":"image/jpeg","base64":"BBBB","name":"pic.jpg"}]}'),
+    {
+      version: 6,
+      kind: 'input',
+      requestId: 8,
+      text: '看图',
+      attachments: [{ type: 'image', mediaType: 'image/jpeg', base64: 'BBBB', name: 'pic.jpg' }],
+    },
+  )
+})
+
+test('round-trips a stop helper message', () => {
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"stop","requestId":12}\n'),
+    { version: 6, kind: 'stop', requestId: 12 },
+  )
+})
+
+test('rejects invalid v6 dialogue payloads', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":5,"kind":"input","requestId":1,"text":"x","extra":true}'),
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":"x","extra":true}'),
     /fields/,
   )
   assert.throws(
-    () => parseHelperMessage(JSON.stringify({ version: 5, kind: 'input', requestId: 1, text: 'x'.repeat(2001) })),
+    () => parseHelperMessage(JSON.stringify({ version: 6, kind: 'input', requestId: 1, text: 'x'.repeat(2001) })),
     /text/,
   )
   assert.throws(
-    () => parseHelperMessage('{"version":5,"kind":"input","requestId":0,"text":"hello"}'),
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":0,"text":"hello"}'),
     /requestId/,
   )
   assert.throws(
-    () => parseHelperMessage('{"version":5,"kind":"input","requestId":1,"text":" hello"}'),
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":" hello"}'),
     /text/,
   )
   assert.throws(
-    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 79, defaultSessionId: null }),
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":""}'),
+    /requires text or an attachment/,
+  )
+  assert.throws(
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":"x","attachments":[]}'),
+    /attachments/,
+  )
+  assert.throws(
+    () => parseHelperMessage(`{"version":6,"kind":"input","requestId":1,"text":"x","attachments":[{"type":"image","mediaType":"image/gif","base64":"${'A'.repeat(3000001)}"}]}`),
+    /image/,
+  )
+  assert.throws(
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":"x","attachments":[{"type":"image","mediaType":"image/tiff","base64":"AAAA"}]}'),
+    /image/,
+  )
+  assert.throws(
+    () => parseHelperMessage('{"version":6,"kind":"input","requestId":1,"text":"x","attachments":[{"type":"file","path":""}]}'),
+    /file/,
+  )
+  assert.throws(
+    () => parseHelperMessage('{"version":6,"kind":"stop","requestId":0}'),
+    /requestId/,
+  )
+  assert.throws(
+    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 79, defaultSessionId: null, defaultWorkspaceId: null }),
     /previewMaxChars/,
   )
   assert.throws(
-    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2001, defaultSessionId: null }),
+    () => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 8001, defaultSessionId: null, defaultWorkspaceId: null }),
     /previewMaxChars/,
   )
   assert.throws(
-    () => parseHostMessage('{"version":5,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":2001,"defaultSessionId":null}'),
+    () => parseHostMessage('{"version":6,"kind":"conversation-config","previewEnabled":true,"previewMaxChars":8001,"defaultSessionId":null,"defaultWorkspaceId":null}'),
     /previewMaxChars/,
   )
   assert.throws(
@@ -91,12 +148,12 @@ test('rejects a required host field inherited from the prototype', () => {
   assert.throws(() => encodeHostMessage(message), /missing required fields/)
 })
 
-test('parseHostMessage rejects extra fields for every v5 dialogue message kind', () => {
+test('parseHostMessage rejects extra fields for every v6 dialogue message kind', () => {
   const messages = [
-    { version: 5, kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null },
-    { version: 5, kind: 'input-status', requestId: 7, status: 'queued' },
-    { version: 5, kind: 'reply-preview', requestId: 7, text: 'ok', completed: false },
-    { version: 5, kind: 'clear-preview', requestId: 7, reason: 'next-input' },
+    { version: 6, kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: null, defaultWorkspaceId: null },
+    { version: 6, kind: 'input-status', requestId: 7, status: 'queued' },
+    { version: 6, kind: 'reply-preview', requestId: 7, text: 'ok', completed: false },
+    { version: 6, kind: 'clear-preview', requestId: 7, reason: 'next-input' },
   ]
 
   for (const message of messages) {
@@ -104,50 +161,50 @@ test('parseHostMessage rejects extra fields for every v5 dialogue message kind',
   }
 })
 
-test('accepts v5 dialogue boundaries and rejects 2001-character text', () => {
+test('accepts v6 dialogue boundaries and rejects 2001-character text', () => {
   const maximumText = 'x'.repeat(2000)
-  const ready = '{"version":5,"kind":"ready"}'
+  const ready = '{"version":6,"kind":"ready"}'
 
   assert.deepEqual(
-    parseHelperMessage(JSON.stringify({ version: 5, kind: 'input', requestId: 1, text: maximumText })),
-    { version: 5, kind: 'input', requestId: 1, text: maximumText },
+    parseHelperMessage(JSON.stringify({ version: 6, kind: 'input', requestId: 1, text: maximumText })),
+    { version: 6, kind: 'input', requestId: 1, text: maximumText },
   )
   assert.equal(encodeHostMessage({ kind: 'reply-preview', requestId: 1, text: maximumText, completed: false }).endsWith('\n'), true)
   assert.deepEqual(
     parseHelperMessage(`${ready}${' '.repeat(4096 - ready.length)}`),
-    { version: 5, kind: 'ready' },
+    { version: 6, kind: 'ready' },
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: null }).includes('"previewMaxChars":80'),
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: null, defaultWorkspaceId: null }).includes('"previewMaxChars":80'),
     true,
   )
   assert.equal(
-    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2000, defaultSessionId: null }).includes('"previewMaxChars":2000'),
+    encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 2000, defaultSessionId: null, defaultWorkspaceId: null }).includes('"previewMaxChars":2000'),
     true,
   )
   assert.throws(
-    () => encodeHostMessage({ kind: 'reply-preview', requestId: 1, text: 'x'.repeat(2001), completed: false }),
+    () => encodeHostMessage({ kind: 'reply-preview', requestId: 1, text: 'x'.repeat(8001), completed: false }),
     /text/,
   )
 })
 
 test('rejects a state message with a free-form label', () => {
   assert.throws(
-    () => parseHostMessage('{"version":5,"kind":"state","state":"active","activities":["working"],"label":"C:\\\\secret","sequence":1}'),
+    () => parseHostMessage('{"version":6,"kind":"state","state":"active","activities":["working"],"label":"C:\\\\secret","sequence":1}'),
     /label/,
   )
 })
 
 test('rejects non-canonical composite activities', () => {
   assert.throws(
-    () => parseHostMessage('{"version":5,"kind":"state","state":"active","activities":["working","thinking"],"label":"思考中/工作中","sequence":1}'),
+    () => parseHostMessage('{"version":6,"kind":"state","state":"active","activities":["working","thinking"],"label":"思考中/工作中","sequence":1}'),
     /activities/,
   )
 })
 
 test('rejects activities for an exclusive state', () => {
   assert.throws(
-    () => parseHostMessage('{"version":5,"kind":"state","state":"waiting","activities":["thinking"],"label":"等待你的操作","sequence":1}'),
+    () => parseHostMessage('{"version":6,"kind":"state","state":"waiting","activities":["thinking"],"label":"等待你的操作","sequence":1}'),
     /activities/,
   )
 })
@@ -158,53 +215,155 @@ test('rejects an old Helper handshake', () => {
 
 test('rejects an unknown helper message kind', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":5,"kind":"secret"}'),
+    () => parseHelperMessage('{"version":6,"kind":"secret"}'),
     /kind/,
   )
 })
 
 test('rejects a message with an unsupported protocol version', () => {
   assert.throws(
-    () => parseHelperMessage('{"version":6,"kind":"ready"}'),
+    () => parseHelperMessage('{"version":5,"kind":"ready"}'),
     /version/,
   )
 })
 
-test('rejects a line longer than 65536 characters', () => {
-  assert.throws(() => parseHelperMessage(' '.repeat(65537)), /long/)
+test('rejects a line longer than the 16 million character limit', () => {
+  assert.throws(() => parseHelperMessage(' '.repeat(16_000_001)), /long/)
+})
+
+test('accepts a large image attachment line', () => {
+  const base64 = 'A'.repeat(3_000_000)
+  const parsed = parseHelperMessage(JSON.stringify({ version: 6, kind: 'input', requestId: 9, text: '', attachments: [{ type: 'image', mediaType: 'image/png', base64 }] }))
+  assert.equal(parsed.kind, 'input')
+  assert.equal(parsed.attachments[0].base64.length, 3_000_000)
 })
 
 test('round-trips a request-history helper message', () => {
-  const parsed = parseHelperMessage('{"version":5,"kind":"request-history","requestId":9}\n')
-  assert.deepEqual(parsed, { version: 5, kind: 'request-history', requestId: 9 })
+  const parsed = parseHelperMessage('{"version":6,"kind":"request-history","requestId":9}\n')
+  assert.deepEqual(parsed, { version: 6, kind: 'request-history', requestId: 9 })
 })
 
 test('round-trips a reply host message with the extended limit', () => {
   const text = 'a'.repeat(8000)
   const line = encodeHostMessage({ kind: 'reply', requestId: 3, text, completed: true })
   const parsed = parseHostMessage(line)
-  assert.deepEqual(parsed, { version: 5, kind: 'reply', requestId: 3, text, completed: true })
+  assert.deepEqual(parsed, { version: 6, kind: 'reply', requestId: 3, text, completed: true })
 })
 
 test('rejects an over-limit reply text', () => {
   assert.throws(() => encodeHostMessage({ kind: 'reply', requestId: 3, text: 'a'.repeat(8001), completed: true }))
 })
 
-test('round-trips a conversation-history message with bounded entries', () => {
-  const messages = [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }]
+test('round-trips a conversation-history message with block entries', () => {
+  const messages = [
+    { role: 'user', blocks: [{ type: 'text', text: 'hi' }] },
+    { role: 'assistant', blocks: [{ type: 'text', text: 'hello' }, { type: 'image', name: 'chart.png', width: 640, height: 480 }] },
+  ]
   const parsed = parseHostMessage(encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages }))
-  assert.deepEqual(parsed, { version: 5, kind: 'conversation-history', requestId: 4, available: true, messages })
+  assert.deepEqual(parsed, { version: 6, kind: 'conversation-history', requestId: 4, available: true, messages })
 })
 
-test('rejects history entries beyond the limit or with unknown roles', () => {
-  const tooMany = Array.from({ length: 21 }, (_, i) => ({ role: 'user', text: `m${i}` }))
+test('rejects history entries beyond the limit or with invalid blocks', () => {
+  const tooMany = Array.from({ length: 21 }, (_, i) => ({ role: 'user', blocks: [{ type: 'text', text: `m${i}` }] }))
   assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: tooMany }))
-  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'system', text: 'x' }] }))
-  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', text: '' }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'system', blocks: [{ type: 'text', text: 'x' }] }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', blocks: [] }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', blocks: [{ type: 'text', text: '' }] }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', blocks: [{ type: 'image', name: 'a', width: 0, height: 1 }] }] }))
+  assert.throws(() => encodeHostMessage({ kind: 'conversation-history', requestId: 4, available: true, messages: [{ role: 'user', blocks: [{ type: 'unknown' }] }] }))
 })
 
-test('requires defaultSessionId on conversation-config', () => {
+test('requires defaultSessionId and defaultWorkspaceId on conversation-config', () => {
   assert.throws(() => encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480 }))
-  const parsed = parseHostMessage(encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: 's-1' }))
+  const parsed = parseHostMessage(encodeHostMessage({ kind: 'conversation-config', previewEnabled: true, previewMaxChars: 480, defaultSessionId: 's-1', defaultWorkspaceId: 'w-1' }))
   assert.equal(parsed.defaultSessionId, 's-1')
+  assert.equal(parsed.defaultWorkspaceId, 'w-1')
+})
+
+test('accepts the terminal input statuses', () => {
+  for (const status of ['stopped', 'interrupted', 'failed']) {
+    const line = encodeHostMessage({ kind: 'input-status', requestId: 3, status })
+    assert.deepEqual(parseHostMessage(line), { version: 6, kind: 'input-status', requestId: 3, status })
+  }
+})
+
+test('round-trips target-open and every target-answer variant', () => {
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"target-open","requestId":9}'),
+    { version: 6, kind: 'target-open', requestId: 9 },
+  )
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":"s-1","workspaceId":"w-1","newBlank":false}'),
+    { version: 6, kind: 'target-answer', requestId: 9, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
+  )
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":null,"workspaceId":"w-1","newBlank":true}'),
+    { version: 6, kind: 'target-answer', requestId: 9, sessionId: null, workspaceId: 'w-1', newBlank: true },
+  )
+  assert.deepEqual(
+    parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":null,"workspaceId":null,"newBlank":false,"path":"C:\\\\dir","newWorkspace":true}'),
+    { version: 6, kind: 'target-answer', requestId: 9, sessionId: null, workspaceId: null, newBlank: false, path: 'C:\\dir', newWorkspace: true },
+  )
+})
+
+test('rejects malformed target messages', () => {
+  assert.throws(() => parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":"s-1","workspaceId":null,"newBlank":true}'), /new blank/)
+  assert.throws(() => parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":null,"workspaceId":null,"newBlank":false}'), /empty target/)
+  assert.throws(() => parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":null,"workspaceId":null,"newBlank":false,"path":"C:\\\\dir","newWorkspace":true,"extra":1}'), /fields/)
+  assert.throws(() => parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":null,"workspaceId":"w-1","newBlank":false,"newWorkspace":true,"path":"C:\\\\dir"}'), /invalid workspace create/)
+  assert.throws(() => parseHelperMessage('{"version":6,"kind":"target-answer","requestId":9,"sessionId":"s-1","workspaceId":null,"newBlank":false,"path":"C:\\\\dir"}'), /unexpected path/)
+})
+
+test('round-trips a target-request with grouped and ungrouped sessions', () => {
+  const line = encodeHostMessage({
+    kind: 'target-request',
+    requestId: 7,
+    workspaces: [{ id: 'w-1', title: 'pet-helper', path: 'C:\\pet-helper' }],
+    sessionsByWorkspace: { 'w-1': [{ id: 's-9', title: '修复窗口', blank: false }] },
+    ungrouped: [{ id: 's-2', title: '', blank: true }],
+    defaultWorkspaceId: 'w-1',
+    defaultSessionId: 's-9',
+  })
+  const parsed = parseHostMessage(line)
+  assert.deepEqual(parsed, {
+    version: 6,
+    kind: 'target-request',
+    requestId: 7,
+    workspaces: [{ id: 'w-1', title: 'pet-helper', path: 'C:\\pet-helper' }],
+    sessionsByWorkspace: { 'w-1': [{ id: 's-9', title: '修复窗口', blank: false }] },
+    ungrouped: [{ id: 's-2', title: '', blank: true }],
+    defaultWorkspaceId: 'w-1',
+    defaultSessionId: 's-9',
+  })
+})
+
+test('rejects an oversized or invalid target-request', () => {
+  const tooMany = Array.from({ length: 65 }, (_, i) => ({ id: `w-${i}`, title: 't', path: 'C:\\x' }))
+  assert.throws(() => encodeHostMessage({
+    kind: 'target-request',
+    requestId: 7,
+    workspaces: tooMany,
+    sessionsByWorkspace: {},
+    ungrouped: [],
+    defaultWorkspaceId: null,
+    defaultSessionId: null,
+  }), /workspaces/)
+  assert.throws(() => encodeHostMessage({
+    kind: 'target-request',
+    requestId: 7,
+    workspaces: [{ id: '', title: 't', path: 'C:\\x' }],
+    sessionsByWorkspace: {},
+    ungrouped: [],
+    defaultWorkspaceId: null,
+    defaultSessionId: null,
+  }), /workspace/)
+  assert.throws(() => encodeHostMessage({
+    kind: 'target-request',
+    requestId: 7,
+    workspaces: [],
+    sessionsByWorkspace: { 'w-1': [{ id: 's-1', title: 't', blank: 'yes' }] },
+    ungrouped: [],
+    defaultWorkspaceId: null,
+    defaultSessionId: null,
+  }), /session/)
 })

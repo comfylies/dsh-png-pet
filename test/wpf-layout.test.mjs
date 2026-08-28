@@ -22,15 +22,39 @@ test('scales the pet window and its state bubble', () => {
   assert.match(code, /StateBubble\.LayoutTransform\s*=\s*new\s+ScaleTransform/)
 })
 
-test('renders the white translucent dialogue window with merged input and output', () => {
+test('renders the white translucent dialogue window with a message list and input', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
 
   assert.match(xaml, /Background="#F0FFFFFF"/)
   assert.match(xaml, /ResizeMode="CanResize"/)
   assert.match(xaml, /x:Name="InputTextBox"/)
-  assert.match(xaml, /x:Name="ReplyTextBlock"/)
-  assert.match(xaml, /HistoryButton/)
-  assert.match(xaml, /x:Name="HistoryPanel"/)
+  assert.match(xaml, /x:Name="MessageList"/)
+  assert.match(xaml, /x:Name="MessageScroll"/)
+  assert.match(xaml, /x:Name="SendButton"/)
+  assert.match(xaml, /x:Name="PendingAttachmentsList"/)
+  assert.doesNotMatch(xaml, /HistoryButton/)
+  assert.doesNotMatch(xaml, /x:Name="HistoryPanel"/)
+  assert.doesNotMatch(xaml, /x:Name="ReplyTextBlock"/)
+})
+
+test('renders assistant markdown into a read-only rich text host', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Name="MarkdownHost"/)
+  assert.match(xaml, /IsReadOnly="True"/)
+  assert.match(xaml, /IsDocumentEnabled="True"/)
+  assert.match(xaml, /VirtualizingStackPanel/)
+})
+
+test('accepts dropped and picked attachments in the dialogue window', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /AllowDrop="True"/)
+  assert.match(code, /Window_Drop\(/)
+  assert.match(code, /AddAttachments\(/)
+  assert.match(code, /AttachmentButton_Click/)
+  assert.match(code, /Convert\.ToBase64String\(bytes\)|System\.Convert\.FromBase64String/)
 })
 
 test('styles scroll bars narrow without arrow buttons', () => {

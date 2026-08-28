@@ -1,11 +1,32 @@
-export const PROTOCOL_VERSION = 5 as const
+export const PROTOCOL_VERSION = 6 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
+export const HISTORY_BLOCK_LIMIT = 8
+export const HISTORY_IMAGE_NAME_MAX_CHARS = 200
+export const HISTORY_IMAGE_DIMENSION_MAX = 100000
 export const REPLY_MAX_CHARS = 8000
+export const INPUT_ATTACHMENT_LIMIT = 4
+export const INPUT_IMAGE_BASE64_MAX_CHARS = 3_000_000
+export const INPUT_FILE_PATH_MAX_CHARS = 2048
+export const TARGET_WORKSPACE_LIMIT = 64
+export const TARGET_SESSIONS_PER_WORKSPACE = 100
+export const TARGET_UNGOURPED_LIMIT = 100
+export const TARGET_ID_MAX_CHARS = 200
+export const TARGET_TITLE_MAX_CHARS = 200
+export const TARGET_PATH_MAX_CHARS = 2048
 
 export type HistoryRole = 'user' | 'assistant'
-export type HistoryMessage = { role: HistoryRole, text: string }
+export type HistoryTextBlock = { type: 'text', text: string }
+export type HistoryImageBlock = { type: 'image', name: string, width: number, height: number }
+export type HistoryBlock = HistoryTextBlock | HistoryImageBlock
+export type HistoryMessage = { role: HistoryRole, blocks: readonly HistoryBlock[] }
+
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+
+export type HelperAttachment =
+  | { type: 'image', mediaType: ImageMediaType, base64: string, name?: string }
+  | { type: 'file', path: string, name?: string }
 
 export const displayLabels = {
   idle: '',
@@ -24,10 +45,22 @@ export type Activity = keyof typeof activityLabels
 export type State = 'active' | keyof typeof displayLabels
 export type CompanionState = State
 export type HelperLifecycleMessageKind = 'ready' | 'closed'
-export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'request-history'
-export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer'
+export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected' | 'stopped' | 'interrupted' | 'failed'
 export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
-export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history'
+export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'target-request'
+
+export type TargetWorkspace = {
+  id: string
+  title: string
+  path: string
+}
+
+export type TargetSession = {
+  id: string
+  title: string
+  blank: boolean
+}
 
 export type HelperLifecycleMessage = {
   version: typeof PROTOCOL_VERSION
@@ -39,6 +72,13 @@ export type HelperInputMessage = {
   kind: 'input'
   requestId: number
   text: string
+  attachments?: readonly HelperAttachment[]
+}
+
+export type HelperStopMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'stop'
+  requestId: number
 }
 
 export type HelperHistoryRequest = {
@@ -47,39 +87,61 @@ export type HelperHistoryRequest = {
   requestId: number
 }
 
-export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperHistoryRequest
+export type HelperTargetOpenMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'target-open'
+  requestId: number
+}
+
+export type HelperTargetAnswerMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'target-answer'
+  requestId: number
+  sessionId: string | null
+  workspaceId: string | null
+  newBlank: boolean
+  /** Present only when creating a workspace: an existing directory to register. */
+  path?: string
+  /** True only when the answer requests a workspace create. */
+  newWorkspace?: boolean
+}
+
+export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
   | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
-  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null }
+  | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
   | { version: typeof PROTOCOL_VERSION, kind: 'reply-preview', requestId: number, text: string, completed: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
   | { version: typeof PROTOCOL_VERSION, kind: 'reply', requestId: number, text: string, completed: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
+  | { version: typeof PROTOCOL_VERSION, kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
   | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
-  | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null }
+  | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { kind: 'input-status', requestId: number, status: InputStatus }
   | { kind: 'reply-preview', requestId: number, text: string, completed: boolean }
   | { kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
   | { kind: 'reply', requestId: number, text: string, completed: boolean }
   | { kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
+  | { kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
 
-const maxLineLength = 65_536
+const maxLineLength = 16_000_000
 const maxTextLength = 2_000
 const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
-const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history'])
+const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'target-request'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
 const canonicalActivities: readonly Activity[] = ['thinking', 'working']
-const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected'])
+const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected', 'stopped', 'interrupted', 'failed'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
+const imageMediaTypes = new Set<ImageMediaType>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 export function labelForPresentation(state: State, activities: readonly Activity[]): string {
   if (state === 'active') {
@@ -108,11 +170,24 @@ export function parseHelperMessage(line: string): HelperMessage {
     assertPositiveSafeInteger(message.requestId, 'helper message requestId')
     return { version: PROTOCOL_VERSION, kind: 'request-history', requestId: message.requestId }
   }
+  if (message.kind === 'stop') {
+    assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
+    assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+    return { version: PROTOCOL_VERSION, kind: 'stop', requestId: message.requestId }
+  }
+  if (message.kind === 'target-open') {
+    assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
+    assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+    return { version: PROTOCOL_VERSION, kind: 'target-open', requestId: message.requestId }
+  }
+  if (message.kind === 'target-answer') {
+    return parseTargetAnswer(message)
+  }
+  if (message.kind === 'input') {
+    return parseInput(message)
+  }
 
-  assertExactKeys(message, ['version', 'kind', 'requestId', 'text'], 'helper message')
-  assertPositiveSafeInteger(message.requestId, 'helper message requestId')
-  assertInputText(message.text, 'helper message text')
-  return { version: PROTOCOL_VERSION, kind: 'input', requestId: message.requestId, text: message.text }
+  throw new Error('helper message has an unknown kind')
 }
 
 export function parseHostMessage(line: string): HostMessage {
@@ -177,13 +252,16 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         sequence,
       }
     case 'conversation-config':
-      assertExactKeys(value, ['version', 'kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId'], 'host message', ['kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId'])
+      assertExactKeys(value, ['version', 'kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId', 'defaultWorkspaceId'], 'host message', ['kind', 'previewEnabled', 'previewMaxChars', 'defaultSessionId', 'defaultWorkspaceId'])
       if (typeof value.previewEnabled !== 'boolean') throw new Error('host message has an invalid previewEnabled')
       if (!isPreviewMaxChars(value.previewMaxChars)) throw new Error('host message has an invalid previewMaxChars')
       if (value.defaultSessionId !== null && (typeof value.defaultSessionId !== 'string' || value.defaultSessionId.length === 0)) {
         throw new Error('host message has an invalid defaultSessionId')
       }
-      return { kind: 'conversation-config', previewEnabled: value.previewEnabled, previewMaxChars: value.previewMaxChars, defaultSessionId: value.defaultSessionId as string | null }
+      if (value.defaultWorkspaceId !== null && (typeof value.defaultWorkspaceId !== 'string' || value.defaultWorkspaceId.length === 0)) {
+        throw new Error('host message has an invalid defaultWorkspaceId')
+      }
+      return { kind: 'conversation-config', previewEnabled: value.previewEnabled, previewMaxChars: value.previewMaxChars, defaultSessionId: value.defaultSessionId as string | null, defaultWorkspaceId: value.defaultWorkspaceId as string | null }
     case 'input-status':
       assertExactKeys(value, ['version', 'kind', 'requestId', 'status'], 'host message', ['kind', 'requestId', 'status'])
       assertPositiveSafeInteger(value.requestId, 'host message requestId')
@@ -194,7 +272,7 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
     case 'reply-preview':
       assertExactKeys(value, ['version', 'kind', 'requestId', 'text', 'completed'], 'host message', ['kind', 'requestId', 'text', 'completed'])
       assertPositiveSafeInteger(value.requestId, 'host message requestId')
-      assertPreviewText(value.text, 'host message text')
+      assertStreamText(value.text, 'host message text')
       if (typeof value.completed !== 'boolean') throw new Error('host message has an invalid completed')
       return { kind: 'reply-preview', requestId: value.requestId, text: value.text, completed: value.completed }
     case 'clear-preview':
@@ -218,13 +296,105 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       if (typeof value.available !== 'boolean') throw new Error('host message has an invalid available')
       if (!isHistoryMessages(value.messages)) throw new Error('host message has invalid history messages')
       return { kind: 'conversation-history', requestId: value.requestId, available: value.available, messages: [...value.messages as HistoryMessage[]] }
+    case 'target-request':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'workspaces', 'sessionsByWorkspace', 'ungrouped', 'defaultWorkspaceId', 'defaultSessionId', 'error'], 'host message', ['kind', 'requestId', 'workspaces', 'sessionsByWorkspace', 'ungrouped', 'defaultWorkspaceId', 'defaultSessionId'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (value.error !== undefined && (typeof value.error !== 'string' || value.error.length === 0 || value.error.length > TARGET_TITLE_MAX_CHARS)) {
+        throw new Error('host message has an invalid target error')
+      }
+      return {
+        kind: 'target-request',
+        requestId: value.requestId,
+        workspaces: assertTargetWorkspaces(value.workspaces),
+        sessionsByWorkspace: assertSessionsByWorkspace(value.sessionsByWorkspace),
+        ungrouped: assertTargetSessions(value.ungrouped, 'host message ungrouped', TARGET_UNGOURPED_LIMIT),
+        defaultWorkspaceId: assertNullableId(value.defaultWorkspaceId, 'host message defaultWorkspaceId'),
+        defaultSessionId: assertNullableId(value.defaultSessionId, 'host message defaultSessionId'),
+        ...(value.error === undefined ? {} : { error: value.error }),
+      }
     default:
       throw new Error('host message has an unknown kind')
   }
 }
 
 function isHelperMessageKind(value: string): value is HelperMessageKind {
-  return value === 'input' || value === 'request-history' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+  return value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+}
+
+function parseInput(message: Record<string, unknown>): HelperInputMessage {
+  assertAllowedKeys(message, ['version', 'kind', 'requestId', 'text', 'attachments'], 'helper message')
+  assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+  if (typeof message.text !== 'string' || message.text.length > maxTextLength || message.text !== message.text.trim()) {
+    throw new Error('helper message text must be trimmed and at most 2000 characters')
+  }
+  const attachments = message.attachments === undefined ? undefined : assertHelperAttachments(message.attachments)
+  if (message.text.length === 0 && (attachments === undefined || attachments.length === 0)) {
+    throw new Error('helper message requires text or an attachment')
+  }
+  return { version: PROTOCOL_VERSION, kind: 'input', requestId: message.requestId, text: message.text, ...(attachments === undefined ? {} : { attachments }) }
+}
+
+function assertHelperAttachments(value: unknown): HelperAttachment[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > INPUT_ATTACHMENT_LIMIT) {
+    throw new Error('helper message has invalid attachments')
+  }
+  return value.map((entry, index) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`helper message attachment ${index} is invalid`)
+    }
+    const record = entry as Record<string, unknown>
+    if (record.type === 'image') {
+      if (typeof record.mediaType !== 'string' || !imageMediaTypes.has(record.mediaType as ImageMediaType)
+        || typeof record.base64 !== 'string' || record.base64.length === 0 || record.base64.length > INPUT_IMAGE_BASE64_MAX_CHARS) {
+        throw new Error(`helper message attachment ${index} is an invalid image`)
+      }
+      if (record.name !== undefined && (typeof record.name !== 'string' || record.name.length === 0 || record.name.length > TARGET_TITLE_MAX_CHARS)) {
+        throw new Error(`helper message attachment ${index} has an invalid name`)
+      }
+      return { type: 'image', mediaType: record.mediaType as ImageMediaType, base64: record.base64, ...(record.name === undefined ? {} : { name: record.name }) }
+    }
+    if (record.type === 'file') {
+      if (typeof record.path !== 'string' || record.path.length === 0 || record.path.length > INPUT_FILE_PATH_MAX_CHARS) {
+        throw new Error(`helper message attachment ${index} is an invalid file`)
+      }
+      if (record.name !== undefined && (typeof record.name !== 'string' || record.name.length === 0 || record.name.length > TARGET_TITLE_MAX_CHARS)) {
+        throw new Error(`helper message attachment ${index} has an invalid name`)
+      }
+      return { type: 'file', path: record.path, ...(record.name === undefined ? {} : { name: record.name }) }
+    }
+    throw new Error(`helper message attachment ${index} has an unknown type`)
+  })
+}
+
+function parseTargetAnswer(message: Record<string, unknown>): HelperTargetAnswerMessage {
+  assertAllowedKeys(message, ['version', 'kind', 'requestId', 'sessionId', 'workspaceId', 'newBlank', 'path', 'newWorkspace'], 'helper message')
+  assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+  if (typeof message.newBlank !== 'boolean') throw new Error('helper message has an invalid newBlank')
+  const sessionId = assertNullableId(message.sessionId, 'helper message sessionId')
+  const workspaceId = assertNullableId(message.workspaceId, 'helper message workspaceId')
+  const newWorkspace = message.newWorkspace === undefined ? false : message.newWorkspace
+  if (typeof newWorkspace !== 'boolean') throw new Error('helper message has an invalid newWorkspace')
+
+  if (newWorkspace) {
+    if (message.path === undefined || typeof message.path !== 'string' || message.path.length === 0 || message.path.length > TARGET_PATH_MAX_CHARS) {
+      throw new Error('helper message has an invalid path')
+    }
+    if (sessionId !== null || workspaceId !== null || message.newBlank) {
+      throw new Error('helper message has an invalid workspace create answer')
+    }
+    return { version: PROTOCOL_VERSION, kind: 'target-answer', requestId: message.requestId, sessionId: null, workspaceId: null, newBlank: false, path: message.path, newWorkspace: true }
+  }
+
+  if (message.path !== undefined) throw new Error('helper message has an unexpected path')
+
+  if (message.newBlank) {
+    // "+ 新对话": the host mints the session; no id may be attached yet.
+    if (sessionId !== null) throw new Error('helper message has an invalid new blank answer')
+    return { version: PROTOCOL_VERSION, kind: 'target-answer', requestId: message.requestId, sessionId: null, workspaceId, newBlank: true }
+  }
+
+  if (sessionId === null) throw new Error('helper message has an empty target answer')
+  return { version: PROTOCOL_VERSION, kind: 'target-answer', requestId: message.requestId, sessionId, workspaceId, newBlank: false }
 }
 
 function isHistoryMessages(value: unknown): value is readonly HistoryMessage[] {
@@ -233,9 +403,24 @@ function isHistoryMessages(value: unknown): value is readonly HistoryMessage[] {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return false
     const record = entry as Record<string, unknown>
     return (record.role === 'user' || record.role === 'assistant')
-      && typeof record.text === 'string'
-      && record.text.length > 0
-      && record.text.length <= HISTORY_MESSAGE_MAX_CHARS
+      && isHistoryBlocks(record.blocks)
+  })
+}
+
+function isHistoryBlocks(value: unknown): value is readonly HistoryBlock[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > HISTORY_BLOCK_LIMIT) return false
+  return value.every((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return false
+    const record = entry as Record<string, unknown>
+    if (record.type === 'text') {
+      return typeof record.text === 'string' && record.text.length > 0 && record.text.length <= HISTORY_MESSAGE_MAX_CHARS
+    }
+    if (record.type === 'image') {
+      return typeof record.name === 'string' && record.name.length <= HISTORY_IMAGE_NAME_MAX_CHARS
+        && typeof record.width === 'number' && Number.isSafeInteger(record.width) && record.width >= 1 && record.width <= HISTORY_IMAGE_DIMENSION_MAX
+        && typeof record.height === 'number' && Number.isSafeInteger(record.height) && record.height >= 1 && record.height <= HISTORY_IMAGE_DIMENSION_MAX
+    }
+    return false
   })
 }
 
@@ -245,15 +430,9 @@ function assertPositiveSafeInteger(value: unknown, subject: string): asserts val
   }
 }
 
-function assertInputText(value: unknown, subject: string): asserts value is string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > maxTextLength || value !== value.trim()) {
-    throw new Error(`${subject} must be trimmed and between 1 and ${maxTextLength} characters`)
-  }
-}
-
-function assertPreviewText(value: unknown, subject: string): asserts value is string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > maxTextLength) {
-    throw new Error(`${subject} must be between 1 and ${maxTextLength} characters`)
+function assertStreamText(value: unknown, subject: string): asserts value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > REPLY_MAX_CHARS) {
+    throw new Error(`${subject} must be between 1 and ${REPLY_MAX_CHARS} characters`)
   }
 }
 
@@ -261,7 +440,7 @@ function isPreviewMaxChars(value: unknown): value is number {
   return typeof value === 'number'
     && Number.isSafeInteger(value)
     && value >= minPreviewMaxChars
-    && value <= maxTextLength
+    && value <= REPLY_MAX_CHARS
 }
 
 function isCanonicalActivities(state: State, value: unknown): value is readonly Activity[] {
@@ -310,4 +489,80 @@ function assertExactKeys(
   if (requiredKeys.some((key) => !Object.hasOwn(message, key))) {
     throw new Error(`${subject} is missing required fields`)
   }
+}
+
+function assertAllowedKeys(
+  message: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  subject: string,
+): void {
+  const allowed = new Set(allowedKeys)
+  if (Object.keys(message).some((key) => !allowed.has(key))) {
+    throw new Error(`${subject} has unexpected fields`)
+  }
+}
+
+function assertNullableId(value: unknown, subject: string): string | null {
+  if (value === null) return null
+  if (typeof value !== 'string' || value.length === 0 || value.length > TARGET_ID_MAX_CHARS) {
+    throw new Error(`${subject} must be a non-empty id or null`)
+  }
+  return value
+}
+
+function assertTargetWorkspaces(value: unknown): TargetWorkspace[] {
+  if (!Array.isArray(value) || value.length > TARGET_WORKSPACE_LIMIT) {
+    throw new Error('host message has invalid workspaces')
+  }
+  return value.map((entry, index) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('host message has an invalid workspace')
+    }
+    const record = entry as Record<string, unknown>
+    const id = assertNullableId(record.id, `host message workspace ${index} id`)
+    const title = record.title
+    const path = record.path
+    if (id === null
+      || typeof title !== 'string' || title.length === 0 || title.length > TARGET_TITLE_MAX_CHARS
+      || typeof path !== 'string' || path.length === 0 || path.length > TARGET_PATH_MAX_CHARS) {
+      throw new Error('host message has an invalid workspace')
+    }
+    return { id, title, path }
+  })
+}
+
+function assertTargetSessions(value: unknown, subject: string, limit: number): TargetSession[] {
+  if (!Array.isArray(value) || value.length > limit) {
+    throw new Error(`${subject} has invalid sessions`)
+  }
+  return value.map((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`${subject} has an invalid session`)
+    }
+    const record = entry as Record<string, unknown>
+    const id = assertNullableId(record.id, `${subject} session id`)
+    const title = record.title
+    const blank = record.blank
+    if (id === null
+      || typeof title !== 'string' || title.length > TARGET_TITLE_MAX_CHARS
+      || typeof blank !== 'boolean') {
+      throw new Error(`${subject} has an invalid session`)
+    }
+    return { id, title, blank }
+  })
+}
+
+function assertSessionsByWorkspace(value: unknown): Record<string, TargetSession[]> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('host message has invalid sessionsByWorkspace')
+  }
+  const record = value as Record<string, unknown>
+  const result: Record<string, TargetSession[]> = {}
+  for (const key of Object.keys(record)) {
+    if (key.length === 0 || key.length > TARGET_ID_MAX_CHARS) {
+      throw new Error('host message has an invalid sessionsByWorkspace key')
+    }
+    result[key] = assertTargetSessions(record[key], `host message sessionsByWorkspace.${key}`, TARGET_SESSIONS_PER_WORKSPACE)
+  }
+  return result
 }

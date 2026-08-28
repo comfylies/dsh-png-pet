@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -32,6 +33,9 @@ public partial class MainWindow : Window
     private Rect? lastMovedDialogueRect;
 
     public event EventHandler? HiddenToTray;
+
+    /// <summary>Raised when the user opens the target-selection card (menu or dropped folder).</summary>
+    public event EventHandler<string?>? TargetSelectionRequested;
 
     public MainWindow(IScreenLayout screenLayout)
     {
@@ -239,6 +243,38 @@ public partial class MainWindow : Window
         SaveState();
         Hide();
         HiddenToTray?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SelectTargetMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        TargetSelectionRequested?.Invoke(this, null);
+    }
+
+    private void Pet_DragEnter(object sender, DragEventArgs e) => ApplyDropEffect(e);
+
+    private void Pet_DragOver(object sender, DragEventArgs e) => ApplyDropEffect(e);
+
+    private static void ApplyDropEffect(DragEventArgs e)
+    {
+        e.Effects = FirstDroppedDirectory(e) is null ? DragDropEffects.None : DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void Pet_Drop(object sender, DragEventArgs e)
+    {
+        var directory = FirstDroppedDirectory(e);
+        if (directory is null) return;
+        TargetSelectionRequested?.Invoke(this, directory);
+    }
+
+    private static string? FirstDroppedDirectory(DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
+        {
+            return null;
+        }
+        var first = paths.FirstOrDefault();
+        return first is not null && Directory.Exists(first) ? first : null;
     }
 
     private void CloseMenuItem_Click(object sender, RoutedEventArgs e) => Close();

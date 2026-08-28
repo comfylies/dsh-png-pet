@@ -4,21 +4,25 @@ import test from 'node:test'
 import { DialogueController } from '../lib/dialogue-controller.js'
 
 function createDsh({
-  settings = { defaultSessionId: 's-1', previewEnabled: true, previewMaxChars: 80 },
+  settings = { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 80 },
   agent,
   resumedAgent,
   resumeFails = false,
   resume,
+  attachments,
+  sessionQuery,
+  agentDefaultModel,
 } = {}) {
   const writes = []
   const settingsListeners = new Set()
-  let currentSettings = settings
+  const resumeCalls = []
+  let currentSettings = { defaultWorkspaceId: null, ...settings }
   const context = {
     settings: {
       get: () => currentSettings,
       update: (next) => {
         const previous = currentSettings
-        currentSettings = { ...currentSettings, ...next }
+        currentSettings = { defaultWorkspaceId: null, ...currentSettings, ...next }
         writes.push(next)
         for (const listener of settingsListeners) listener(next, previous)
       },
@@ -29,17 +33,22 @@ function createDsh({
     },
     agents: {
       get: (id) => id === 's-1' ? agent : undefined,
-      resume: async ({ resumeSessionId }) => {
-        assert.equal(resumeSessionId, 's-1')
-        if (resume !== undefined) return resume({ resumeSessionId })
+      resume: async (options) => {
+        assert.equal(options.resumeSessionId, 's-1')
+        resumeCalls.push(options)
+        if (resume !== undefined) return resume(options)
         if (resumeFails) throw new Error('unavailable')
         return resumedAgent === undefined ? undefined : { agent: resumedAgent }
       },
     },
+    ...(attachments === undefined ? {} : { attachments }),
+    ...(sessionQuery === undefined ? {} : { sessionQuery }),
+    ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }),
   }
   return {
     context,
     writes,
+    resumeCalls,
     updateSettings(next) {
       const previous = currentSettings
       currentSettings = next
@@ -47,6 +56,37 @@ function createDsh({
     },
   }
 }
+
+test('resumes an unavailable live session with the deployment default model so prompt assembly succeeds', async () => {
+  const sent = []
+  const followups = []
+  const dsh = createDsh({
+    agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }) },
+    resumedAgent: { status: 'idle', followup: (message) => followups.push(message) },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 6, text: 'input omitted' })
+
+  assert.equal(followups.length, 1)
+  assert.deepEqual(dsh.resumeCalls, [{
+    resumeSessionId: 's-1',
+    agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+  }])
+  assert.deepEqual(sent, [{ kind: 'input-status', requestId: 6, status: 'sent' }])
+})
+
+test('resumes without agentOptions when no default model service is available', async () => {
+  const sent = []
+  const followups = []
+  const dsh = createDsh({ resumedAgent: { status: 'idle', followup: (message) => followups.push(message) } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 6, text: 'input omitted' })
+
+  assert.equal(followups.length, 1)
+  assert.deepEqual(dsh.resumeCalls, [{ resumeSessionId: 's-1' }])
+})
 
 test('maps its generated user message id to the next turn and forwards only text deltas', async () => {
   const sent = []
@@ -329,7 +369,7 @@ test('publishes the final reply text after a turn ends', async () => {
   const followups = []
   const events = [
     { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
-    { type: 'assistant/message', data: { message: { content: [{ type: 'reasoning', text: 'hidden' }, { type: 'text', text: '答复' }] } } },
+    { type: 'assistant/message', data: { turn: 4, message: { content: [{ type: 'reasoning', text: 'hidden' }, { type: 'text', text: '答复' }] } } },
   ]
   const dsh = createDsh({ agent: { status: 'idle', followup: (message) => followups.push(message), session: { events } } })
   const controller = new DialogueController(dsh.context, (message) => sent.push(message))
@@ -348,7 +388,7 @@ test('publishes the final reply even when the turn was never associated with an 
   const sent = []
   const events = [
     { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
-    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '答复' }] } } },
+    { type: 'assistant/message', data: { turn: 4, message: { content: [{ type: 'text', text: '答复' }] } } },
   ]
   const dsh = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
   const controller = new DialogueController(dsh.context, (message) => sent.push(message))
@@ -371,10 +411,40 @@ test('answers a history request with the extracted dialogue', async () => {
   const controller = new DialogueController(dsh.context, (message) => sent.push(message))
 
   await controller.acceptInput({ requestId: 5, text: 'hi' })
-  controller.requestHistory(8)
+  await controller.requestHistory(8)
 
   assert.deepEqual(sent.filter((message) => message.kind === 'conversation-history'), [
-    { kind: 'conversation-history', requestId: 8, available: true, messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }] },
+    {
+      kind: 'conversation-history',
+      requestId: 8,
+      available: true,
+      messages: [
+        { role: 'user', blocks: [{ type: 'text', text: 'hi' }] },
+        { role: 'assistant', blocks: [{ type: 'text', text: 'hello' }] },
+      ],
+    },
+  ])
+})
+
+test('loads history through the session query service for a not-live session', async () => {
+  const sent = []
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: '存档' }], source: { kind: 'user' } } },
+  ]
+  const dsh = createDsh({
+    sessionQuery: { readSession: async (id) => ({ session: {}, events }) },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.requestHistory(8)
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-history'), [
+    {
+      kind: 'conversation-history',
+      requestId: 8,
+      available: true,
+      messages: [{ role: 'user', blocks: [{ type: 'text', text: '存档' }] }],
+    },
   ])
 })
 
@@ -383,11 +453,212 @@ test('reports an unavailable session in a history answer', async () => {
   const dsh = createDsh({ resumeFails: true })
   const controller = new DialogueController(dsh.context, (message) => sent.push(message))
 
-  controller.requestHistory(8)
+  await controller.requestHistory(8)
 
   assert.deepEqual(sent.filter((message) => message.kind === 'conversation-history'), [
     { kind: 'conversation-history', requestId: 8, available: false, messages: [] },
   ])
+})
+
+test('uploads images through the attachments service and echoes file paths as text', async () => {
+  const sent = []
+  const followups = []
+  const saved = []
+  const attachments = {
+    saveImage: async (input) => {
+      saved.push(input)
+      return { attachmentId: `a-${saved.length}`, mediaType: input.mediaType, bytes: input.data.length, width: 100, height: 80 }
+    },
+  }
+  const dsh = createDsh({
+    attachments,
+    agent: { status: 'idle', followup: (message) => followups.push(message) },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({
+    requestId: 21,
+    text: '看看这个',
+    attachments: [
+      { type: 'image', mediaType: 'image/png', base64: Buffer.from([1, 2, 3]).toString('base64'), name: 'shot.png' },
+      { type: 'file', path: 'C:\\docs\\notes.txt', name: 'notes.txt' },
+    ],
+  })
+
+  assert.equal(followups.length, 1)
+  const content = followups[0].content
+  assert.equal(content[0].type, 'image')
+  assert.equal(content[0].attachment.attachmentId, 'a-1')
+  assert.equal(content[1].type, 'text')
+  assert.match(content[1].text, /\[文件 notes\.txt\]/)
+  assert.match(content[1].text, /C:\\docs\\notes\.txt/)
+  assert.deepEqual(saved.map(({ mediaType, name }) => ({ mediaType, name })), [
+    { mediaType: 'image/png', name: 'shot.png' },
+  ])
+  assert.deepEqual(sent.filter((message) => message.kind === 'input-status'), [
+    { kind: 'input-status', requestId: 21, status: 'sent' },
+  ])
+})
+
+test('rejects input whose image upload fails', async () => {
+  const sent = []
+  const followups = []
+  const dsh = createDsh({
+    attachments: { saveImage: async () => { throw new Error('admission rejected') } },
+    agent: { status: 'idle', followup: (message) => followups.push(message) },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({
+    requestId: 22,
+    text: '',
+    attachments: [{ type: 'image', mediaType: 'image/jpeg', base64: 'AAAA' }],
+  })
+
+  assert.equal(followups.length, 0)
+  assert.deepEqual(sent.filter((message) => message.kind === 'input-status'), [
+    { kind: 'input-status', requestId: 22, status: 'rejected' },
+  ])
+})
+
+test('accepts an image-only input with empty text', async () => {
+  const sent = []
+  const followups = []
+  const dsh = createDsh({
+    attachments: { saveImage: async () => ({ attachmentId: 'a-1', mediaType: 'image/png', bytes: 3, width: 10, height: 10 }) },
+    agent: { status: 'idle', followup: (message) => followups.push(message) },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({
+    requestId: 23,
+    text: '',
+    attachments: [{ type: 'image', mediaType: 'image/png', base64: 'AAAA' }],
+  })
+
+  assert.equal(followups.length, 1)
+  assert.deepEqual(followups[0].content.map((block) => block.type), ['image'])
+})
+
+test('stops a running agent turn with a user cancel', async () => {
+  const sent = []
+  const cancels = []
+  const dsh = createDsh({ agent: { status: 'running', followup: () => {}, cancel: (cause) => cancels.push(cause) } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 30, text: 'input omitted' })
+  controller.stop(30)
+
+  assert.deepEqual(cancels, [{ kind: 'user' }])
+  assert.equal(sent.filter((message) => message.kind === 'input-status').length, 1)
+})
+
+test('finalizes a queued stop locally when the agent is idle', async () => {
+  const sent = []
+  const dsh = createDsh({ agent: { status: 'idle', followup: () => {} } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 31, text: 'input omitted' })
+  controller.stop(31)
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'input-status').map((message) => message.status), ['sent', 'stopped'])
+})
+
+test('maps aborted and interrupted turn endings to terminal statuses without a stale reply', async () => {
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '之前完整回复' }] } } },
+  ]
+  const aborted = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
+  const interrupted = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
+  const abortedSent = []
+  const interruptedSent = []
+  const abortedController = new DialogueController(aborted.context, (message) => abortedSent.push(message))
+  const interruptedController = new DialogueController(interrupted.context, (message) => interruptedSent.push(message))
+
+  await abortedController.acceptInput({ requestId: 40, text: 'hi' })
+  abortedController.observeEvent('s-1', { type: 'turn/end', data: { turn: 4, reason: { kind: 'aborted', reason: { kind: 'user' } } } })
+
+  await interruptedController.acceptInput({ requestId: 41, text: 'hi' })
+  interruptedController.observeEvent('s-1', { type: 'turn/end', data: { turn: 4, reason: { kind: 'interrupted' } } })
+
+  assert.deepEqual(abortedSent.filter((message) => message.kind === 'input-status').map((message) => message.status), ['sent', 'stopped'])
+  assert.deepEqual(interruptedSent.filter((message) => message.kind === 'input-status').map((message) => message.status), ['sent', 'interrupted'])
+  assert.equal(abortedSent.filter((message) => message.kind === 'reply').length, 0)
+  assert.equal(interruptedSent.filter((message) => message.kind === 'reply').length, 0)
+})
+
+test('maps failed turn endings to a failed status without publishing a stale reply', async () => {
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '之前完整回复' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: () => {}, session: { events } } })
+  const sent = []
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 42, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 4, reason: { kind: 'error', error: { message: 'boom' } } } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'input-status').map((message) => message.status), ['sent', 'failed'])
+  assert.equal(sent.filter((message) => message.kind === 'reply').length, 0)
+})
+
+test('publishes a tool-only turn as a placeholder reply', async () => {
+  const sent = []
+  const followups = []
+  const events = [
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { turn: 4, message: { content: [{ type: 'tool-call', id: 'c1', name: 'bash', arguments: '{}' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: (message) => followups.push(message), session: { events } } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 3, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 4 } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'reply'), [
+    { kind: 'reply', requestId: 3, text: '调用了 bash', completed: true },
+  ])
+})
+
+test('binds the final reply to the ended turn instead of a stale assistant message', async () => {
+  const sent = []
+  const followups = []
+  const events = [
+    { type: 'assistant/message', data: { turn: 2, message: { content: [{ type: 'text', text: '旧回复' }] } } },
+    { type: 'user/message', data: { content: [{ type: 'text', text: 'hi' }], source: { kind: 'user' } } },
+    { type: 'assistant/message', data: { turn: 4, message: { content: [{ type: 'text', text: '新回复' }] } } },
+  ]
+  const dsh = createDsh({ agent: { status: 'idle', followup: (message) => followups.push(message), session: { events } } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 3, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 4 } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'reply'), [
+    { kind: 'reply', requestId: 3, text: '新回复', completed: true },
+  ])
+})
+
+test('publishes the partial preview before a stopped turn ending', async () => {
+  const sent = []
+  const followups = []
+  const dsh = createDsh({ agent: { status: 'idle', followup: (message) => followups.push(message) } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 43, text: 'hi' })
+  controller.observeEvent('s-1', { type: 'user/message', data: { id: followups[0].id } })
+  controller.observeEvent('s-1', { type: 'turn/start', data: { turn: 5 } })
+  controller.observeEvent('s-1', { type: 'assistant/chunk', data: { turn: 5, chunk: { type: 'text-delta', text: '部分' } } })
+  controller.observeEvent('s-1', { type: 'turn/end', data: { turn: 5, reason: { kind: 'aborted', reason: { kind: 'user' } } } })
+
+  const previews = sent.filter((message) => message.kind === 'reply-preview')
+  assert.deepEqual(previews.map(({ text, completed }) => ({ text, completed })), [
+    { text: '部分', completed: false },
+    { text: '部分', completed: true },
+  ])
+  assert.deepEqual(sent.filter((message) => message.kind === 'input-status').map((message) => message.status), ['sent', 'stopped'])
 })
 
 test('publishes the default session id with the conversation config', () => {
@@ -398,6 +669,6 @@ test('publishes the default session id with the conversation config', () => {
   controller.publishConversationConfig()
 
   assert.deepEqual(sent.filter((message) => message.kind === 'conversation-config'), [
-    { kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: 's-1' },
+    { kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: 's-1', defaultWorkspaceId: 'w-1' },
   ])
 })

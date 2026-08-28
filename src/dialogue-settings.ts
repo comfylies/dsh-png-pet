@@ -2,26 +2,31 @@ import z from '@deepseek-ai/schemastery'
 
 export type DialogueSettings = {
   defaultSessionId: string | null
+  /** Prompt/hint only: the session list's default landing workspace. Never the conversation target. */
+  defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
 }
 
 export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freeze({
   defaultSessionId: null,
-  previewEnabled: false,
-  previewMaxChars: 480,
+  defaultWorkspaceId: null,
+  previewEnabled: true,
+  previewMaxChars: 2000,
 })
 
 export const dialogueSettingsSchema = z.transform(
   z.object({
     defaultSessionId: z.union([z.string().min(1), z.const(null)]).default(null),
-    previewEnabled: z.boolean().default(false),
-    previewMaxChars: z.number().step(1).min(80).max(2000).default(480),
+    defaultWorkspaceId: z.union([z.string().min(1), z.const(null)]).default(null),
+    previewEnabled: z.boolean().default(true),
+    previewMaxChars: z.number().step(1).min(80).max(8000).default(2000),
   }).default(dialogueSettingsDefaults),
   (settings) => ({
     defaultSessionId: settings.defaultSessionId ?? null,
-    previewEnabled: settings.previewEnabled ?? false,
-    previewMaxChars: settings.previewMaxChars ?? 480,
+    defaultWorkspaceId: settings.defaultWorkspaceId ?? null,
+    previewEnabled: settings.previewEnabled ?? true,
+    previewMaxChars: settings.previewMaxChars ?? 2000,
   }),
 ).default(dialogueSettingsDefaults)
 

@@ -1,0 +1,178 @@
+<Window x:Class="PetHelper.TargetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="340" Height="460" WindowStartupLocation="Manual"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
+        AllowDrop="True"
+        DragEnter="TargetWindow_DragEnter" DragOver="TargetWindow_DragOver" Drop="TargetWindow_Drop"
+        MouseLeftButtonDown="TargetWindow_MouseLeftButtonDown">
+  <Window.Resources>
+    <Style x:Key="TargetButton" TargetType="{x:Type Button}">
+      <Setter Property="Background" Value="#4D6BFE" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="border" Background="{TemplateBinding Background}"
+                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="border" Property="Background" Value="#3A55E8" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="border" Property="Background" Value="#2E45C4" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="border" Property="Background" Value="#C9CDD6" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="GhostButton" TargetType="{x:Type Button}">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#4D6BFE" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#4D6BFE" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="border" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="border" Property="Background" Value="#144D6BFE" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="border" Property="Background" Value="#244D6BFE" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="TargetRow" TargetType="{x:Type ListBoxItem}">
+      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type ListBoxItem}">
+            <Border x:Name="row" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="row" Property="Background" Value="#144D6BFE" />
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="row" Property="Background" Value="#264D6BFE" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="TargetScroll" TargetType="{x:Type ScrollViewer}">
+      <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+    </Style>
+  </Window.Resources>
+  <Border Background="#F0FFFFFF" CornerRadius="12" BorderBrush="#40000000" BorderThickness="1" Margin="1">
+    <Grid Margin="12">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+      <DockPanel Grid.Row="0">
+        <Button DockPanel.Dock="Left" x:Name="BackButton" Content="←" Style="{StaticResource GhostButton}"
+                Padding="8,2" Margin="0,0,8,0" Visibility="Collapsed" Click="BackButton_Click"
+                ToolTip="返回工作区列表" />
+        <Button DockPanel.Dock="Right" Content="×" Style="{StaticResource GhostButton}"
+                Padding="6,2" Click="CloseButton_Click" ToolTip="关闭" />
+        <TextBlock x:Name="CardTitle" Text="目标选择" Foreground="#CC222222" FontWeight="SemiBold"
+                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+
+      <Grid Grid.Row="1" Margin="0,10,0,0">
+        <!-- 加载中 -->
+        <TextBlock x:Name="LoadingView" Text="加载中…" Foreground="#88000000"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- 错误态 -->
+        <StackPanel x:Name="ErrorView" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock x:Name="ErrorLabel" Foreground="#AA000000" TextWrapping="Wrap"
+                     TextAlignment="Center" MaxWidth="280" />
+          <Button Content="重试" Style="{StaticResource TargetButton}" Margin="0,10,0,0"
+                  HorizontalAlignment="Center" Click="RetryButton_Click" />
+        </StackPanel>
+
+        <!-- 一级：工作区列表 -->
+        <Grid x:Name="LevelOneView" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <ScrollViewer Style="{StaticResource TargetScroll}">
+            <StackPanel>
+              <TextBlock Text="工作区" Foreground="#88000000" FontSize="12" Margin="2,0,0,4" />
+              <ListBox x:Name="WorkspaceList" BorderThickness="0" Background="Transparent"
+                       ItemContainerStyle="{StaticResource TargetRow}" SelectionChanged="WorkspaceList_SelectionChanged"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Margin="0,8,0,0">
+            <Button x:Name="UngroupedButton" Content="未分组会话" Style="{StaticResource GhostButton}"
+                    HorizontalAlignment="Left" Margin="0,0,0,6" Visibility="Collapsed"
+                    Click="UngroupedButton_Click" />
+            <TextBlock Text="将文件夹拖入桌宠或卡片可新建工作区" Foreground="#88000000" FontSize="11"
+                       TextWrapping="Wrap" Margin="2,0,0,6" />
+            <Button x:Name="CreateWorkspaceButton" Content="＋ 新建工作区" Style="{StaticResource TargetButton}"
+                    Click="CreateWorkspaceButton_Click" />
+          </StackPanel>
+        </Grid>
+
+        <!-- 二级：会话列表 -->
+        <Grid x:Name="LevelTwoView" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <ScrollViewer Style="{StaticResource TargetScroll}">
+            <StackPanel>
+              <TextBlock x:Name="SessionBucketLabel" Foreground="#88000000" FontSize="12" Margin="2,0,0,4" />
+              <ListBox x:Name="SessionList" BorderThickness="0" Background="Transparent"
+                       ItemContainerStyle="{StaticResource TargetRow}" SelectionChanged="SessionList_SelectionChanged"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled" />
+            </StackPanel>
+          </ScrollViewer>
+          <Button Grid.Row="1" x:Name="NewSessionButton" Content="＋ 新对话" Style="{StaticResource TargetButton}"
+                  Margin="0,8,0,0" Click="NewSessionButton_Click" />
+        </Grid>
+
+        <!-- 三级：新建工作区 -->
+        <Grid x:Name="CreateView" Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock Text="新建工作区（选择一个已存在的目录，或将文件夹拖入）" Foreground="#88000000"
+                       FontSize="12" TextWrapping="Wrap" Margin="2,0,0,8" />
+            <Button Content="浏览目录…" Style="{StaticResource TargetButton}"
+                    HorizontalAlignment="Left" Click="BrowseButton_Click" />
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>
