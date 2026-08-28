@@ -28,7 +28,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parses_an_outputting_active_state()
     {
-        var message = ProtocolReader.Parse("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"responding\"],\"label\":\"输出中…\",\"sequence\":4}");
+        var message = ProtocolReader.Parse("{\"version\":6,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"responding\"],\"label\":\"输出中…\",\"sequence\":4}");
 
         var state = Assert.IsType<StateMessage>(message);
         Assert.Equal("active", state.State);
@@ -40,7 +40,7 @@ public sealed class ProtocolReaderTests
     [Fact]
     public void Parses_a_question_state()
     {
-        var message = ProtocolReader.Parse("{\"version\":5,\"kind\":\"state\",\"state\":\"question\",\"activities\":[],\"label\":\"等你回答…\",\"sequence\":4}");
+        var message = ProtocolReader.Parse("{\"version\":6,\"kind\":\"state\",\"state\":\"question\",\"activities\":[],\"label\":\"等你回答…\",\"sequence\":4}");
 
         var state = Assert.IsType<StateMessage>(message);
         Assert.Equal("question", state.State);

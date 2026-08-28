@@ -103,7 +103,6 @@ test('packed Helper completes a ready, config, state, and shutdown handshake', a
           child.stdin.write('{"version":6,"kind":"config","scale":1,"reducedMotion":false}\n')
           child.stdin.write('{"version":6,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
           child.stdin.write('{"version":6,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
-        }
           setTimeout(() => {
             shutdownSent = true
             child.stdin.write('{"version":6,"kind":"shutdown"}\n')
@@ -137,4 +136,3 @@ test('packed Helper completes a ready, config, state, and shutdown handshake', a
   assert.equal(existsSync(packageDirectory), false)
   assert.equal(existsSync(extractionDirectory), false)
 })
-
