@@ -14,7 +14,7 @@ public sealed class PetWindowStateTests
         Assert.Equal(200d, state.Top);
         Assert.Equal(1.25d, state.Scale);
         Assert.Equal(275d, state.Width);
-        Assert.Equal(275d, state.Height);
+        Assert.Equal(325d, state.Height);
     }
 
     [Theory]

@@ -18,9 +18,11 @@ public sealed class PetAnimationPlaybackTests
 
         playback.Advance();
         Assert.Equal("Animations/thinking/002.png", playback.Frame);
+        Assert.Equal(PetStatusAnchor.Default, playback.StatusAnchor);
 
         playback.Advance();
         Assert.Equal("Animations/thinking/001.png", playback.Frame);
+        Assert.Equal(PetStatusAnchor.Default, playback.StatusAnchor);
     }
 
     [Fact]

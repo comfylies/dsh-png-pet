@@ -99,7 +99,8 @@ public sealed class PetClipPlaybackTests
             "Animations/idle/002.png",
             "Animations/idle/003.png"),
         160,
-        PetClipPlaybackMode.Once);
+        PetClipPlaybackMode.Once,
+        PetStatusAnchor.Default);
 
     private static readonly ResolvedClip LoopClip = OnceClip with
     {
@@ -112,5 +113,6 @@ public sealed class PetClipPlaybackTests
         "idle-blink",
         ImmutableArray.Create("Animations/idle/001.png"),
         160,
-        PetClipPlaybackMode.Once);
+        PetClipPlaybackMode.Once,
+        PetStatusAnchor.Default);
 }

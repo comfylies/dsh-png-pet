@@ -9,10 +9,16 @@ test('names the pet image for runtime animation without a fixed source', () => {
   assert.doesNotMatch(xaml, /<Image[^>]*Source="Assets\/placeholder-a\.png"/)
 })
 
-test('renders the state bubble above the pet image', () => {
+test('anchors the state bubble above the pet image instead of using a fixed margin', () => {
   const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 
   assert.ok(xaml.indexOf('<Image') < xaml.indexOf('x:Name="StateBubble"'))
+  assert.match(xaml, /<Canvas\s+x:Name="StateBubbleCanvas"/)
+  assert.doesNotMatch(xaml, /x:Name="StateBubble"[^>]*Margin=/)
+  assert.match(code, /Canvas\.SetLeft\(StateBubble/)
+  assert.match(code, /Canvas\.SetTop\(StateBubble/)
+  assert.match(code, /animationPlayer\.StatusAnchor/)
 })
 
 test('scales the pet window and its state bubble', () => {

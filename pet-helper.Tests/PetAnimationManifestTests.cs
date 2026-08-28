@@ -43,6 +43,7 @@ public sealed class PetAnimationManifestTests
         Assert.Equal(
             new[] { "Animations/idle/breathe/001.png", "Animations/idle/breathe/002.png" },
             resolved.Frames);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.11d), resolved.StatusAnchor);
     }
 
     [Fact]
@@ -139,6 +140,7 @@ public sealed class PetAnimationManifestTests
         Assert.Equal(PetAnimationKey.Thinking, resolved.Key);
         Assert.Equal(new[] { "Animations/thinking/001.png", "Animations/thinking/002.png" }, resolved.Frames);
         Assert.Equal(500, resolved.IntervalMs);
+        Assert.Equal(PetStatusAnchor.Default, resolved.StatusAnchor);
     }
 
     [Fact]
@@ -287,5 +289,58 @@ public sealed class PetAnimationManifestTests
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(1000, resolved.IntervalMs);
+    }
+
+    [Fact]
+    public void Resolves_the_status_anchor_from_the_effective_version_three_fallback_action()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            {
+              "formatVersion": 3,
+              "actions": {
+                "idle": { "manifest": "Animations/idle/animation.json" },
+                "thinking": { "manifest": "Animations/thinking/animation.json", "fallback": "idle" },
+                "working": { "manifest": "Animations/working/animation.json", "fallback": "idle" },
+                "thinking-working": { "manifest": "Animations/thinking-working/animation.json", "fallback": "working" },
+                "responding": { "manifest": "Animations/responding/animation.json", "fallback": "idle" },
+                "waiting": { "manifest": "Animations/waiting/animation.json", "fallback": "idle" },
+                "question": { "manifest": "Animations/question/animation.json", "fallback": "waiting" },
+                "success": { "manifest": "Animations/success/animation.json", "fallback": "idle" },
+                "error": { "manifest": "Animations/error/animation.json", "fallback": "idle" },
+                "disconnected": { "manifest": "Animations/disconnected/animation.json", "fallback": "idle" }
+              }
+            }
+            """, path => path == "Animations/idle/animation.json" ? """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 1000,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.08 }
+                }
+              }
+            }
+            """ : "{ \"clips\": {} }");
+
+        var resolved = manifest.Resolve(PetAnimationKey.Working, _ => true);
+
+        Assert.Equal(PetAnimationKey.Idle, resolved.Key);
+        Assert.Equal(new PetStatusAnchor(0.5d, 0.08d), resolved.StatusAnchor);
+    }
+
+    [Theory]
+    [InlineData("{ \"frames\": [\"Animations/idle/001.png\"], \"frameDurationMs\": 1000, \"playback\": \"loop\" }")]
+    [InlineData("{ \"frames\": [\"Animations/idle/001.png\"], \"frameDurationMs\": 1000, \"playback\": \"loop\", \"statusAnchor\": { \"x\": -0.1, \"y\": 0.1 } }")]
+    [InlineData("{ \"frames\": [\"Animations/idle/001.png\"], \"frameDurationMs\": 1000, \"playback\": \"loop\", \"statusAnchor\": { \"x\": 0.5 } }")]
+    public void Rejects_missing_or_invalid_status_anchors_for_version_two_clips(string clip)
+    {
+        Assert.Throws<FormatException>(() => PetAnimationManifest.Parse($$"""
+            {
+              "formatVersion": 2,
+              "clips": { "idle-default": {{clip}} },
+              "actions": { "idle": { "clips": ["idle-default"] } }
+            }
+            """));
     }
 }

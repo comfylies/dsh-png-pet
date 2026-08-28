@@ -19,6 +19,8 @@ public sealed class PetAnimationPlayback
 
     public int IntervalMs => clipPlayback.FrameDurationMs;
 
+    public PetStatusAnchor StatusAnchor => CurrentClip.StatusAnchor;
+
     public bool IsAnimating => clipPlayback.IsAnimating;
 
     public event EventHandler? Completed

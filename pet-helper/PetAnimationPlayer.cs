@@ -115,6 +115,8 @@ public sealed class PetAnimationPlayer
 
     internal bool IsTimerRunning => timer.IsEnabled;
 
+    public PetStatusAnchor StatusAnchor => playback?.StatusAnchor ?? PetStatusAnchor.Default;
+
     private void Timer_Tick(object? sender, EventArgs e)
     {
         if (playback is null)

@@ -10,7 +10,8 @@ public sealed record ResolvedClip(
     string Id,
     ImmutableArray<string> Frames,
     int FrameDurationMs,
-    PetClipPlaybackMode Playback)
+    PetClipPlaybackMode Playback,
+    PetStatusAnchor StatusAnchor)
 {
     // Retained for the existing WPF player and its tests while callers migrate to Clip naming.
     public int IntervalMs => FrameDurationMs;
@@ -94,7 +95,13 @@ public sealed class PetAnimationManifest
                 var clip = clips[clipId];
                 if (clip.Frames.All(isFrameAvailable))
                 {
-                    return new ResolvedClip(current, clipId, clip.Frames, clip.FrameDurationMs, clip.Playback);
+                    return new ResolvedClip(
+                        current,
+                        clipId,
+                        clip.Frames,
+                        clip.FrameDurationMs,
+                        clip.Playback,
+                        clip.StatusAnchor);
                 }
             }
             if (action.Fallback is not { } fallback) break;
@@ -287,7 +294,8 @@ public sealed class PetAnimationManifest
                 clips.Add(clipId, new ClipDefinition(
                     legacy.Frames,
                     CalculateLegacyFrameDurationMs(legacy.Frames.Length),
-                    PetClipPlaybackMode.Loop));
+                    PetClipPlaybackMode.Loop,
+                    PetStatusAnchor.Default));
                 clipIds = ImmutableArray.Create(clipId);
             }
             actions.Add(key, new ActionDefinition(clipIds, legacy.Fallback));
@@ -363,7 +371,7 @@ public sealed class PetAnimationManifest
         ImmutableArray<string>? frames = null;
         int? frameDurationMs = null;
         PetClipPlaybackMode? playback = null;
-        var hasStatusAnchor = false;
+        PetStatusAnchor? statusAnchor = null;
         var seenFields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in element.EnumerateObject())
         {
@@ -373,15 +381,15 @@ public sealed class PetAnimationManifest
                 case "frames": frames = ParseFrames(field.Value, allFrames, ref totalFrames, framePrefix); break;
                 case "frameDurationMs": frameDurationMs = ParseFrameDuration(field.Value); break;
                 case "playback": playback = ParsePlayback(field.Value); break;
-                case "statusAnchor": ParseStatusAnchor(field.Value); hasStatusAnchor = true; break;
+                case "statusAnchor": statusAnchor = ParseStatusAnchor(field.Value); break;
                 default: throw InvalidManifest();
             }
         }
-        if (!hasStatusAnchor) throw InvalidManifest();
         return new ClipDefinition(
             frames ?? throw InvalidManifest(),
             frameDurationMs ?? throw InvalidManifest(),
-            playback ?? throw InvalidManifest());
+            playback ?? throw InvalidManifest(),
+            statusAnchor ?? throw InvalidManifest());
     }
 
     private static ImmutableArray<string> ParseFrames(
@@ -440,7 +448,7 @@ public sealed class PetAnimationManifest
             }
             : throw InvalidManifest();
 
-    private static void ParseStatusAnchor(JsonElement element)
+    private static PetStatusAnchor ParseStatusAnchor(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object) throw InvalidManifest();
         double? x = null;
@@ -458,7 +466,9 @@ public sealed class PetAnimationManifest
                 default: throw InvalidManifest();
             }
         }
-        if (x is null || y is null) throw InvalidManifest();
+        return x is { } anchorX && y is { } anchorY
+            ? new PetStatusAnchor(anchorX, anchorY)
+            : throw InvalidManifest();
     }
 
     private static void ValidateActions(
@@ -518,5 +528,6 @@ public sealed class PetAnimationManifest
     private sealed record ClipDefinition(
         ImmutableArray<string> Frames,
         int FrameDurationMs,
-        PetClipPlaybackMode Playback);
+        PetClipPlaybackMode Playback,
+        PetStatusAnchor StatusAnchor);
 }
