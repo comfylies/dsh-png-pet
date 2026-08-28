@@ -9,8 +9,6 @@ test('maps whitelisted DSH event types to safe facts', () => {
   const cases = [
     ['turn/start', 'thinking'],
     ['step/start', 'thinking'],
-    ['assistant/chunk', 'thinking'],
-    ['assistant/message', 'thinking'],
     ['step/end', 'thinking'],
     ['tool/call', 'work-start'],
     ['tool/code-dispatch-start', 'work-start'],
@@ -28,6 +26,23 @@ test('maps whitelisted DSH event types to safe facts', () => {
   }
 })
 
+test('maps only user-visible assistant text to responding', () => {
+  const cases = [
+    [{ type: 'assistant/chunk', seq: 1, data: { chunk: { type: 'reasoning-delta', text: 'private reasoning' } } }, 'thinking'],
+    [{ type: 'assistant/chunk', seq: 2, data: { chunk: { type: 'tool-call-delta', text: 'private tool data' } } }, 'thinking'],
+    [{ type: 'assistant/chunk', seq: 3, data: { chunk: { type: 'text-delta', text: 'visible reply' } } }, 'responding'],
+    [{ type: 'assistant/message', seq: 4, data: { message: { content: [{ type: 'reasoning', text: 'private reasoning' }] } } }, 'thinking'],
+    [{ type: 'assistant/message', seq: 5, data: { message: { content: [{ type: 'reasoning', text: 'private reasoning' }, { type: 'text', text: 'visible reply' }] } } }, 'responding'],
+  ]
+
+  for (const [event, kind] of cases) {
+    const fact = adaptSessionEvent(topLevelSession, event)
+    assert.equal(fact.kind, kind)
+    assert.equal(JSON.stringify(fact).includes('private'), false)
+    assert.equal(JSON.stringify(fact).includes('visible'), false)
+  }
+})
+
 test('does not retain tool payload data in tool facts', () => {
   for (const type of ['tool/call', 'tool/code-dispatch-start', 'tool/result', 'tool/code-dispatch']) {
     const fact = adaptSessionEvent(topLevelSession, {
@@ -39,6 +54,21 @@ test('does not retain tool payload data in tool facts', () => {
     assert.equal(JSON.stringify(fact).includes('private'), false)
     assert.equal(JSON.stringify(fact).includes('sensitive output'), false)
   }
+})
+
+test('maps only the ask-user tool call to a question without retaining its payload', () => {
+  const question = adaptSessionEvent(topLevelSession, {
+    type: 'tool/call',
+    seq: 10,
+    data: { name: 'ask_user_question', arguments: { question: 'secret question', options: ['secret option'] } },
+  })
+  const regularTool = adaptSessionEvent(topLevelSession, {
+    type: 'tool/call', seq: 11, data: { name: 'bash', arguments: { command: 'secret command' } },
+  })
+
+  assert.deepEqual(question, { sessionId: 'root', seq: 10, isSubagent: false, kind: 'question' })
+  assert.equal(regularTool.kind, 'work-start')
+  assert.equal(JSON.stringify(question).includes('secret'), false)
 })
 
 test('maps completed and failed turn endings without retaining error data', () => {

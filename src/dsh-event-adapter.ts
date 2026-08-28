@@ -1,10 +1,10 @@
 import type { ReducibleState, SessionFact } from './companion-reducer.js'
 
+const questionToolNames = new Set(['ask_user_question'])
+
 const eventKinds: Readonly<Record<string, ReducibleState>> = {
   'turn/start': 'thinking',
   'step/start': 'thinking',
-  'assistant/chunk': 'thinking',
-  'assistant/message': 'thinking',
   'step/end': 'thinking',
   'tool/call': 'work-start',
   'tool/code-dispatch-start': 'work-start',
@@ -20,7 +20,13 @@ export function adaptSessionEvent(session: unknown, event: unknown): SessionFact
   const type = readString(event, 'type')
   if (sessionId === undefined || seq === undefined || type === undefined) return undefined
 
-  const kind = type === 'turn/end' ? mapTurnEnd(event) : eventKinds[type]
+  const kind = type === 'turn/end'
+    ? mapTurnEnd(event)
+    : type === 'assistant/chunk' || type === 'assistant/message'
+      ? mapAssistantActivity(type, event)
+    : type === 'tool/call' && questionToolNames.has(readString(readRecord(event, 'data'), 'name') ?? '')
+      ? 'question'
+      : eventKinds[type]
   if (kind === undefined) return undefined
 
   return {
@@ -43,6 +49,16 @@ function mapTurnEnd(event: unknown): ReducibleState | undefined {
   return 'idle'
 }
 
+function mapAssistantActivity(type: 'assistant/chunk' | 'assistant/message', event: unknown): ReducibleState {
+  const data = readRecord(event, 'data')
+  if (type === 'assistant/chunk') {
+    return readString(readRecord(data, 'chunk'), 'type') === 'text-delta' ? 'responding' : 'thinking'
+  }
+
+  const content = readArray(readRecord(data, 'message'), 'content')
+  return content?.some((block) => readString(block, 'type') === 'text') ? 'responding' : 'thinking'
+}
+
 function readRecord(value: unknown, key: string): Record<string, unknown> | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
 
@@ -55,6 +71,12 @@ function readString(value: unknown, key: string): string | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const candidate = (value as Record<string, unknown>)[key]
   return typeof candidate === 'string' ? candidate : undefined
+}
+
+function readArray(value: unknown, key: string): readonly unknown[] | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const candidate = (value as Record<string, unknown>)[key]
+  return Array.isArray(candidate) ? candidate : undefined
 }
 
 function readNonEmptyString(value: unknown, key: string): string | undefined {

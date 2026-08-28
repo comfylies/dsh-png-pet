@@ -1,0 +1,10 @@
+{
+  "clips": {
+    "wait-answer": {
+      "frames": ["wait-answer.png"],
+      "frameDurationMs": 1000,
+      "playback": "loop",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    }
+  }
+}

@@ -72,6 +72,17 @@ test('publishes composite thinking and working activities with a fixed working l
   ])
 })
 
+test('publishes a fixed outputting activity after an assistant text event', () => {
+  const sent = []
+  const bridge = new CompanionBridge((message) => sent.push(message))
+
+  bridge.apply({ sessionId: 's', seq: 1, isSubagent: false, kind: 'responding' })
+
+  assert.deepEqual(sent, [
+    { kind: 'state', state: 'active', label: '输出中…', activities: ['responding'], sequence: 1 },
+  ])
+})
+
 test('adapts events through observers without forwarding their data', () => {
   const sent = []
   const bridge = new CompanionBridge((message) => sent.push(message))

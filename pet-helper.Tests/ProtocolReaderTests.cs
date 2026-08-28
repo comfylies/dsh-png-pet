@@ -26,6 +26,30 @@ public sealed class ProtocolReaderTests
     }
 
     [Fact]
+    public void Parses_an_outputting_active_state()
+    {
+        var message = ProtocolReader.Parse("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"responding\"],\"label\":\"输出中…\",\"sequence\":4}");
+
+        var state = Assert.IsType<StateMessage>(message);
+        Assert.Equal("active", state.State);
+        Assert.Equal(new[] { "responding" }, state.Activities);
+        Assert.Equal("输出中…", state.Label);
+        Assert.Equal(4, state.Sequence);
+    }
+
+    [Fact]
+    public void Parses_a_question_state()
+    {
+        var message = ProtocolReader.Parse("{\"version\":5,\"kind\":\"state\",\"state\":\"question\",\"activities\":[],\"label\":\"等你回答…\",\"sequence\":4}");
+
+        var state = Assert.IsType<StateMessage>(message);
+        Assert.Equal("question", state.State);
+        Assert.Empty(state.Activities);
+        Assert.Equal("等你回答…", state.Label);
+        Assert.Equal(4, state.Sequence);
+    }
+
+    [Fact]
     public void Parsed_activities_are_immutable()
     {
         var message = ProtocolReader.Parse("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4}");
@@ -70,6 +94,7 @@ public sealed class ProtocolReaderTests
     [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"thinking\"],\"label\":\"思考中/思考中\",\"sequence\":4}")]
     [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"working\",\"thinking\"],\"label\":\"思考中/工作中\",\"sequence\":4}")]
     [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"工作中…\",\"sequence\":4}")]
+    [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\",\"responding\"],\"label\":\"输出中…\",\"sequence\":4}")]
     [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":4,\"extra\":true}")]
     [InlineData("{\"version\":5,\"kind\":\"state\",\"state\":\"active\",\"activities\":[\"thinking\"],\"label\":\"思考中…\",\"sequence\":9007199254740992}")]
     public void Rejects_an_invalid_v5_state(string line)

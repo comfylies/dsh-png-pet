@@ -8,7 +8,9 @@ test('maps every supported state to a presentation', () => {
     ['idle', 'idle', [], false],
     ['thinking', 'active', ['thinking'], false],
     ['work-start', 'active', ['working'], false],
+    ['responding', 'active', ['responding'], false],
     ['waiting', 'waiting', [], false],
+    ['question', 'question', [], false],
     ['success', 'success', [], true],
     ['error', 'error', [], true],
   ]
@@ -20,6 +22,70 @@ test('maps every supported state to a presentation', () => {
       { state, activities, sequence: 1, terminal },
     )
   }
+})
+
+test('question is an exclusive user-blocked state and resumes thinking after its tool result', () => {
+  const reducer = new CompanionReducer()
+  reducer.apply({ sessionId: 'root', seq: 1, isSubagent: false, kind: 'work-start' })
+
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'root', seq: 2, isSubagent: false, kind: 'question' }),
+    { state: 'question', activities: [], sequence: 2, terminal: false },
+  )
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'root', seq: 3, isSubagent: false, kind: 'work-finish' }),
+    { state: 'active', activities: ['thinking'], sequence: 3, terminal: false },
+  )
+})
+
+test('question outranks background activity but not an approval request', () => {
+  const reducer = new CompanionReducer()
+  reducer.apply({ sessionId: 'background', seq: 8, isSubagent: false, kind: 'work-start' })
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'root', seq: 4, isSubagent: false, kind: 'question' }),
+    { state: 'question', activities: [], sequence: 4, terminal: false },
+  )
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'approval', seq: 1, isSubagent: false, kind: 'waiting' }),
+    { state: 'waiting', activities: [], sequence: 1, terminal: false },
+  )
+})
+
+test('cancelled and failed question turns do not leave a stale question state', () => {
+  const reducer = new CompanionReducer()
+  reducer.apply({ sessionId: 'cancelled', seq: 1, isSubagent: false, kind: 'question' })
+
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'cancelled', seq: 2, isSubagent: false, kind: 'idle' }),
+    { state: 'idle', activities: [], sequence: 2, terminal: false },
+  )
+
+  reducer.apply({ sessionId: 'failed', seq: 1, isSubagent: false, kind: 'question' })
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'failed', seq: 2, isSubagent: false, kind: 'error' }),
+    { state: 'error', activities: [], sequence: 2, terminal: true },
+  )
+})
+
+test('keeps outputting visible until the turn ends after a text event', () => {
+  const reducer = new CompanionReducer()
+  reducer.apply({ sessionId: 'root', seq: 1, isSubagent: false, kind: 'thinking' })
+  reducer.apply({ sessionId: 'root', seq: 2, isSubagent: false, kind: 'responding' })
+
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'root', seq: 3, isSubagent: false, kind: 'thinking' }),
+    { state: 'active', activities: ['responding'], sequence: 3, terminal: false },
+  )
+})
+
+test('a new tool call interrupts outputting until the next text event', () => {
+  const reducer = new CompanionReducer()
+  reducer.apply({ sessionId: 'root', seq: 1, isSubagent: false, kind: 'responding' })
+
+  assert.deepEqual(
+    reducer.apply({ sessionId: 'root', seq: 2, isSubagent: false, kind: 'work-start' }),
+    { state: 'active', activities: ['working'], sequence: 2, terminal: false },
+  )
 })
 
 test('keeps thinking visible while a tool is running', () => {

@@ -17,6 +17,20 @@ test('encodes a v5 canonical composite active state presentation', () => {
   )
 })
 
+test('encodes a v5 canonical outputting active state presentation', () => {
+  assert.equal(
+    encodeHostMessage({ kind: 'state', state: 'active', activities: ['responding'], label: '输出中…', sequence: 42 }),
+    '{"version":5,"kind":"state","state":"active","activities":["responding"],"label":"输出中…","sequence":42}\n',
+  )
+})
+
+test('encodes a v5 question state with its fixed label', () => {
+  assert.equal(
+    encodeHostMessage({ kind: 'state', state: 'question', activities: [], label: '等你回答…', sequence: 42 }),
+    '{"version":5,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":42}\n',
+  )
+})
+
 test('accepts a bounded helper input and encodes bounded dialogue messages', () => {
   assert.deepEqual(
     parseHelperMessage('{"version":5,"kind":"input","requestId":7,"text":"hello"}'),
@@ -145,10 +159,24 @@ test('rejects non-canonical composite activities', () => {
   )
 })
 
+test('rejects a mixed outputting activity presentation', () => {
+  assert.throws(
+    () => parseHostMessage('{"version":5,"kind":"state","state":"active","activities":["thinking","responding"],"label":"输出中…","sequence":1}'),
+    /activities/,
+  )
+})
+
 test('rejects activities for an exclusive state', () => {
   assert.throws(
     () => parseHostMessage('{"version":5,"kind":"state","state":"waiting","activities":["thinking"],"label":"等待你的操作","sequence":1}'),
     /activities/,
+  )
+})
+
+test('rejects a question state with a mismatched label', () => {
+  assert.throws(
+    () => parseHostMessage('{"version":5,"kind":"state","state":"question","activities":[],"label":"等待你的操作","sequence":1}'),
+    /label/,
   )
 })
 

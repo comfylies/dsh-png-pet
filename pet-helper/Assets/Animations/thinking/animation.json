@@ -1,1 +1,19 @@
-{ "clips": {} }
+{
+  "clips": {
+    "ponder": {
+      "frames": [
+        "ponder/001.png", "ponder/002.png", "ponder/003.png", "ponder/004.png",
+        "ponder/005.png", "ponder/006.png", "ponder/007.png", "ponder/008.png",
+        "ponder/009.png", "ponder/010.png", "ponder/011.png", "ponder/012.png",
+        "ponder/013.png", "ponder/014.png", "ponder/015.png", "ponder/016.png",
+        "ponder/017.png", "ponder/018.png", "ponder/019.png", "ponder/020.png",
+        "ponder/021.png", "ponder/022.png", "ponder/023.png", "ponder/024.png",
+        "ponder/025.png", "ponder/026.png", "ponder/027.png", "ponder/028.png",
+        "ponder/029.png", "ponder/030.png", "ponder/031.png", "ponder/032.png"
+      ],
+      "frameDurationMs": 125,
+      "playback": "loop",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    }
+  }
+}

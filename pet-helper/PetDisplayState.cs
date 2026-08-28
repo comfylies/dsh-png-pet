@@ -8,7 +8,9 @@ public sealed record PetDisplayState(string State, string Label, long Sequence)
         ("active", "思考中…") => PetAnimationKey.Thinking,
         ("active", "工作中…") => PetAnimationKey.Working,
         ("active", "思考中/工作中") => PetAnimationKey.ThinkingWorking,
+        ("active", "输出中…") => PetAnimationKey.Responding,
         ("waiting", "等待你的操作") => PetAnimationKey.Waiting,
+        ("question", "等你回答…") => PetAnimationKey.Question,
         ("success", "已完成") => PetAnimationKey.Success,
         ("error", "发生错误") => PetAnimationKey.Error,
         ("disconnected", "未连接") => PetAnimationKey.Disconnected,
@@ -20,6 +22,7 @@ public sealed record PetDisplayState(string State, string Label, long Sequence)
         {
             ["idle"] = string.Empty,
             ["waiting"] = "等待你的操作",
+            ["question"] = "等你回答…",
             ["success"] = "已完成",
             ["error"] = "发生错误",
             ["disconnected"] = "未连接",
@@ -40,6 +43,7 @@ public sealed record PetDisplayState(string State, string Label, long Sequence)
             {
                 1 when activities[0] == "thinking" => "思考中…",
                 1 when activities[0] == "working" => "工作中…",
+                1 when activities[0] == "responding" => "输出中…",
                 2 when activities[0] == "thinking" && activities[1] == "working" => "思考中/工作中",
                 _ => null,
             };

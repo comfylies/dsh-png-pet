@@ -67,9 +67,12 @@ public partial class MainWindow : Window
         lastDisplayState = state;
         StateLabel.Text = state.Label;
         StateBubble.Visibility = state.State == "idle" ? Visibility.Collapsed : Visibility.Visible;
-        StateBubble.Background = state.State == "waiting"
-            ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29))
-            : new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95));
+        StateBubble.Background = state.State switch
+        {
+            "waiting" => new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29)),
+            "question" => new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 105, 67, 150)),
+            _ => new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 43, 75, 95)),
+        };
         animationPlayer.Apply(state.AnimationKey, reducedMotion);
     }
 

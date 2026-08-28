@@ -10,6 +10,7 @@ export type HistoryMessage = { role: HistoryRole, text: string }
 export const displayLabels = {
   idle: '',
   waiting: '等待你的操作',
+  question: '等你回答…',
   success: '已完成',
   error: '发生错误',
   disconnected: '未连接',
@@ -18,6 +19,7 @@ export const displayLabels = {
 const activityLabels = {
   thinking: '思考中…',
   working: '工作中…',
+  responding: '输出中…',
 } as const
 
 export type Activity = keyof typeof activityLabels
@@ -77,7 +79,7 @@ const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
 const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
-const canonicalActivities: readonly Activity[] = ['thinking', 'working']
+const compositeActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
 
@@ -270,9 +272,9 @@ function isCanonicalActivities(state: State, value: unknown): value is readonly 
   }
 
   if (state !== 'active') return value.length === 0
-
-  const expected = canonicalActivities.filter((activity) => value.includes(activity))
-  return value.length === expected.length && value.every((activity, index) => activity === expected[index])
+  if (value.length === 1) return true
+  return value.length === compositeActivities.length
+    && value.every((activity, index) => activity === compositeActivities[index])
 }
 
 function parseObject(line: string, subject: string): Record<string, unknown> {

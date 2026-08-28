@@ -16,7 +16,9 @@ public sealed class PetAnimationManifestTests
                 "thinking": { "manifest": "Animations/thinking/animation.json", "fallback": "idle" },
                 "working": { "manifest": "Animations/working/animation.json", "fallback": "idle" },
                 "thinking-working": { "manifest": "Animations/thinking-working/animation.json", "fallback": "working" },
+                "responding": { "manifest": "Animations/responding/animation.json", "fallback": "idle" },
                 "waiting": { "manifest": "Animations/waiting/animation.json", "fallback": "idle" },
+                "question": { "manifest": "Animations/question/animation.json", "fallback": "waiting" },
                 "success": { "manifest": "Animations/success/animation.json", "fallback": "idle" },
                 "error": { "manifest": "Animations/error/animation.json", "fallback": "idle" },
                 "disconnected": { "manifest": "Animations/disconnected/animation.json", "fallback": "idle" }
@@ -162,7 +164,9 @@ public sealed class PetAnimationManifestTests
     [InlineData(PetAnimationKey.Thinking)]
     [InlineData(PetAnimationKey.Working)]
     [InlineData(PetAnimationKey.ThinkingWorking)]
+    [InlineData(PetAnimationKey.Responding)]
     [InlineData(PetAnimationKey.Waiting)]
+    [InlineData(PetAnimationKey.Question)]
     [InlineData(PetAnimationKey.Success)]
     [InlineData(PetAnimationKey.Error)]
     [InlineData(PetAnimationKey.Disconnected)]
@@ -230,11 +234,18 @@ public sealed class PetAnimationManifestTests
         var idleFrames = Enumerable.Range(1, 32)
             .Select(i => $"Animations/idle/breathe/{i:D3}.png")
             .ToArray();
-        var resolved = manifest.Resolve(PetAnimationKey.Idle, idleFrames.Contains);
+        var questionFrame = "Animations/question/wait-answer.png";
+        var resolved = manifest.Resolve(PetAnimationKey.Idle, frame => idleFrames.Contains(frame) || frame == questionFrame);
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(idleFrames, resolved.Frames);
         Assert.Equal(125, resolved.IntervalMs);
+
+        var question = manifest.Resolve(PetAnimationKey.Question, frame => idleFrames.Contains(frame) || frame == questionFrame);
+
+        Assert.Equal(PetAnimationKey.Question, question.Key);
+        Assert.Equal(new[] { questionFrame }, question.Frames);
+        Assert.Equal(1000, question.IntervalMs);
     }
 
     [Fact]

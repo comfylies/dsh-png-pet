@@ -62,6 +62,7 @@ dsh plugin --profile web list
 ## 环境注意事项
 
 - 使用 .NET 10 SDK；项目内的 NuGet.Config、Directory.Build.props 和 Directory.Build.targets 用于避开机器级失效的 NuGet fallback 路径，不要删除。
+- 当前终端的 PATH 不包含全局 npm bin；调用 DSH CLI 时使用 `C:\\Users\\root\\AppData\\Roaming\\npm\\dsh.cmd`，不要假设裸命令 `dsh` 可用。
 - pet-helper.exe 单文件发布必须保留 IncludeNativeLibrariesForSelfExtract=true。
 - 运行 DSH 或 Codex 子进程时可能缺少 WINDIR；App.xaml.cs 已从有效的 SystemRoot 补齐该环境变量。
 - Git 可能提示无法访问 C:\Users\root\.config\git\ignore；这是环境权限警告，不要为此修改项目文件。

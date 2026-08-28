@@ -29,6 +29,12 @@ if (-not (Test-Path -LiteralPath $localPython -PathType Leaf)) {
     throw "rembg is not installed. Run scripts\\install-rembg.ps1 first."
 }
 
+# Keep model downloads inside the project by default. Some Windows environments
+# deny writes to the user-profile cache path rembg otherwise chooses.
+if ([string]::IsNullOrWhiteSpace($env:U2NET_HOME)) {
+    $env:U2NET_HOME = Join-Path $PSScriptRoot '..\\.tools\\u2net-models'
+}
+
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 & $localPython (Join-Path $PSScriptRoot 'remove-backgrounds.py') $resolvedInput $resolvedOutput --model $Model
 if ($LASTEXITCODE -ne 0) {

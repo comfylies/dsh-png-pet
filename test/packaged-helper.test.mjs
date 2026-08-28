@@ -51,7 +51,7 @@ test('published Helper completes ready and shutdown handshakes', async () => {
   }
 })
 
-test('published Helper remains alive after a valid composite active state', async () => {
+test('published Helper remains alive after a valid outputting active state', async () => {
   const child = spawn(helperPath, [], {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -70,7 +70,8 @@ test('published Helper remains alive after a valid composite active state', asyn
         if (line === '{"version":5,"kind":"ready"}') {
           child.stdin.write('{"version":5,"kind":"hello"}\n')
           child.stdin.write('{"version":5,"kind":"config","scale":1,"reducedMotion":false}\n')
-          child.stdin.write('{"version":5,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
+          child.stdin.write('{"version":5,"kind":"state","state":"active","activities":["responding"],"label":"输出中…","sequence":1}\n')
+          child.stdin.write('{"version":5,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
           setTimeout(() => {
             shutdownSent = true
             child.stdin.write('{"version":5,"kind":"shutdown"}\n')
