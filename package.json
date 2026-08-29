@@ -1,6 +1,6 @@
 {
   "name": "dsh-png-pet",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "private": true,
   "description": "A Windows desktop pet companion for DeepSeek Harness.",
   "type": "module",
@@ -16,6 +16,7 @@
     "lib/",
     "runtime/",
     "assets/",
+    "licenses/",
     "cordis.patch.yml",
     "README.md"
   ],

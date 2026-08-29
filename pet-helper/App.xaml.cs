@@ -12,6 +12,7 @@ public partial class App : System.Windows.Application
     private PetTrayIcon? trayIcon;
     private DialogueWindow? dialogue;
     private TargetWindow? targetWindow;
+    private PeakValleyCardWindow? peakValleyCard;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -29,6 +30,10 @@ public partial class App : System.Windows.Application
         dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
         dialogueWindow.StopRequested += (_, stop) => WriteStop(stop);
         window.AttachDialogueWindow(dialogueWindow);
+
+        var priceCard = new PeakValleyCardWindow();
+        peakValleyCard = priceCard;
+        window.AttachPeakValleyCard(priceCard);
 
         var target = new TargetWindow();
         targetWindow = target;
@@ -59,6 +64,7 @@ public partial class App : System.Windows.Application
 
         dialogue?.SaveState();
         (MainWindow as MainWindow)?.SaveState();
+        peakValleyCard?.CloseCard();
         trayIcon?.Dispose();
         base.OnExit(e);
     }

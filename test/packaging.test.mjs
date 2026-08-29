@@ -48,6 +48,7 @@ test('packed archive includes the helper executable and default idle asset', () 
 
     assert.ok(archiveEntries.includes('package/runtime/bin/win32-x64/pet-helper.exe'))
     assert.ok(archiveEntries.includes('package/assets/placeholder-a.png'))
+    assert.ok(archiveEntries.includes('package/licenses/ZCOOL-KuaiLe-OFL.txt'))
   } finally {
     rmSync(packageDirectory, { recursive: true, force: true })
   }

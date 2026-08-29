@@ -122,11 +122,32 @@ test('links the dialogue window to double-click and Ctrl-combined pet dragging',
 
   assert.match(code, /ToggleDialogueWindow\(\)/)
   assert.match(code, /ClickCount\s*==\s*2/)
-  // Native DragMove keeps the pet smooth; Ctrl combines the dialogue by the applied delta.
+  // Native DragMove keeps the pet smooth; Ctrl is captured when the pointer gesture starts.
   assert.match(code, /DragMove\(\)/)
-  assert.match(code, /combinedDrag\s*=\s*\(Keyboard\.Modifiers\s*&/)
+  assert.match(code, /pointerGesture\.Begin\([\s\S]*Keyboard\.Modifiers\s*&/)
+  assert.match(code, /StartPetDrag\(useCombinedDrag\)/)
   assert.match(code, /WindowMover\.Move\(dialogueWindow/)
   assert.doesNotMatch(code, /dialogueWindow\.Left\s*=\s*Left\s*\+\s*Width\s*\+\s*8/)
+})
+
+test('shows a five-second peak valley card from a short left click', () => {
+  const card = readFileSync(new URL('../pet-helper/PeakValleyCardWindow.xaml', import.meta.url), 'utf8')
+  const cardCode = readFileSync(new URL('../pet-helper/PeakValleyCardWindow.xaml.cs', import.meta.url), 'utf8')
+  const pet = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const petCode = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(card, /ShowActivated="False"/)
+  assert.match(card, /Content="×"/)
+  assert.match(card, /AutomationProperties\.Name="关闭峰谷提示"/)
+  assert.match(cardCode, /TimeSpan\.FromSeconds\(5\)/)
+  assert.match(cardCode, /"梁文峰"/)
+  assert.match(cardCode, /"梁文谷"/)
+  assert.match(cardCode, /ZCOOL KuaiLe/)
+  assert.match(pet, /MouseMove="Pet_MouseMove"/)
+  assert.match(pet, /MouseLeftButtonUp="Pet_MouseLeftButtonUp"/)
+  assert.match(petCode, /SystemParameters\.MinimumHorizontalDragDistance/)
+  assert.match(petCode, /ShowPeakValleyCard\(\)/)
+  assert.match(petCode, /PeakValleySchedule\.Current\(\)/)
 })
 
 test('lets the dialogue window drag, resize, and remember its position', () => {

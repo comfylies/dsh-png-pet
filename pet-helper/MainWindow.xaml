@@ -91,7 +91,8 @@
     </ContextMenu>
   </Window.ContextMenu>
   <Grid x:Name="PetLayout" MouseLeftButtonDown="Pet_MouseLeftButtonDown"
-        SizeChanged="PetLayout_SizeChanged" AllowDrop="True"
+        MouseMove="Pet_MouseMove" MouseLeftButtonUp="Pet_MouseLeftButtonUp"
+        LostMouseCapture="Pet_LostMouseCapture" SizeChanged="PetLayout_SizeChanged" AllowDrop="True"
         DragEnter="Pet_DragEnter" DragOver="Pet_DragOver" Drop="Pet_Drop">
     <Image x:Name="PetImage" Stretch="Uniform" VerticalAlignment="Bottom" Margin="0,20,0,0" />
     <Canvas x:Name="StateBubbleCanvas" IsHitTestVisible="False" Panel.ZIndex="1">

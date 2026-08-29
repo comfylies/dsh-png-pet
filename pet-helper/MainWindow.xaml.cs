@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private bool reducedMotion;
     private bool restoringState = true;
     private DialogueWindow? dialogueWindow;
+    private PeakValleyCardWindow? peakValleyCard;
+    private readonly PetPointerGesture pointerGesture = new();
 
     private bool dragging;
     private bool combinedDrag;
@@ -48,12 +50,21 @@ public partial class MainWindow : Window
         RestoreState();
         restoringState = false;
         Loaded += (_, _) => UpdateStateBubblePosition();
-        Closed += (_, _) => animationPlayer.Stop();
+        Closed += (_, _) =>
+        {
+            animationPlayer.Stop();
+            peakValleyCard?.CloseCard();
+        };
     }
 
     public void AttachDialogueWindow(DialogueWindow window)
     {
         dialogueWindow = window;
+    }
+
+    public void AttachPeakValleyCard(PeakValleyCardWindow window)
+    {
+        peakValleyCard = window;
     }
 
     public void ToggleDialogueWindow()
@@ -89,6 +100,7 @@ public partial class MainWindow : Window
         reducedMotion = config.ReducedMotion;
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
+        peakValleyCard?.Dismiss();
         UpdateStateBubblePosition();
         SaveState();
     }
@@ -138,17 +150,82 @@ public partial class MainWindow : Window
 
     private Rect CurrentRect() => new(Left, Top, ActualWidth, ActualHeight);
 
+    private Rect CurrentHeadRect()
+    {
+        var pet = CurrentRect();
+        // The art has a large transparent shoulder/body area.  A third of the scaled pet
+        // width produces a head-sized card height without coupling the card to a PNG frame.
+        var height = Math.Clamp(pet.Width * 0.33d, 48d, 96d);
+        return new Rect(
+            pet.Left + (pet.Width - height) / 2d,
+            pet.Top + Math.Max(0d, pet.Height * 0.08d),
+            height,
+            height);
+    }
+
     private void Pet_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
         if (e.ClickCount == 2)
         {
+            pointerGesture.Cancel();
+            if (IsMouseCaptured) ReleaseMouseCapture();
+            peakValleyCard?.Dismiss();
             ToggleDialogueWindow();
+            e.Handled = true;
             return;
         }
 
-        combinedDrag = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        pointerGesture.Begin(
+            e.GetPosition(this),
+            combinedDrag: (Keyboard.Modifiers & ModifierKeys.Control) != 0);
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void Pet_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+        if (pointerGesture.Move(
+                e.GetPosition(this),
+                SystemParameters.MinimumHorizontalDragDistance,
+                SystemParameters.MinimumVerticalDragDistance) != PetPointerAction.StartDrag)
+        {
+            return;
+        }
+
+        var useCombinedDrag = pointerGesture.CombinedDrag;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        StartPetDrag(useCombinedDrag);
+    }
+
+    private void Pet_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        var action = pointerGesture.Release();
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (action == PetPointerAction.ShowPeakValleyCard)
+        {
+            ShowPeakValleyCard();
+        }
+        e.Handled = true;
+    }
+
+    private void Pet_LostMouseCapture(object sender, MouseEventArgs e) => pointerGesture.Cancel();
+
+    private void ShowPeakValleyCard()
+    {
+        if (peakValleyCard is null) return;
+        var head = CurrentHeadRect();
+        peakValleyCard.ShowPeriod(PeakValleySchedule.Current(), head, screenLayout, head.Height);
+    }
+
+    private void StartPetDrag(bool useCombinedDrag)
+    {
+        peakValleyCard?.Dismiss();
+        combinedDrag = useCombinedDrag;
         dragStartPetRect = CurrentRect();
+        lastMovedDialogueRect = null;
         if (combinedDrag && dialogueWindow is { IsVisible: true })
         {
             dragStartDialogueRect = new Rect(
@@ -170,6 +247,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            pointerGesture.Cancel();
             dragging = false;
             animationPlayer.Resume();
             ClampPetIntoProtrusion();
@@ -274,6 +352,7 @@ public partial class MainWindow : Window
 
     private void HideMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        peakValleyCard?.Dismiss();
         SaveState();
         Hide();
         HiddenToTray?.Invoke(this, EventArgs.Empty);
