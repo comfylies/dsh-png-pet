@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:PetHelper"
-        Width="280" Height="380" MinWidth="220" MinHeight="240" MaxWidth="800" MaxHeight="900" WindowStartupLocation="Manual"
+        Width="280" Height="380" MinWidth="220" MinHeight="240" WindowStartupLocation="Manual"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="CanResize"
         AllowDrop="True"
+        SizeChanged="DialogueWindow_SizeChanged" LocationChanged="DialogueWindow_LocationChanged"
         DragEnter="Window_DragEnter" DragOver="Window_DragOver" Drop="Window_Drop"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseMove="Window_MouseMove">
