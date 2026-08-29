@@ -38,8 +38,10 @@
       </Grid.RowDefinitions>
       <TextBlock Text="现在是：" Foreground="#101828" FontFamily="Microsoft YaHei UI"
                  FontSize="14" FontWeight="Normal" HorizontalAlignment="Left" />
-      <TextBlock x:Name="PeriodLabel" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center"
-                 Margin="20,0,0,2" FontSize="30" FontWeight="SemiBold" />
+      <Viewbox x:Name="PeriodHost" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center"
+               StretchDirection="DownOnly" Margin="20,0,0,2">
+        <TextBlock x:Name="PeriodLabel" FontSize="30" FontWeight="SemiBold" />
+      </Viewbox>
       <Button x:Name="CloseButton" HorizontalAlignment="Right" VerticalAlignment="Top"
               Width="26" Height="26" Content="×" FontSize="18" FontWeight="Normal"
               Style="{StaticResource PeakValleyCloseButton}"

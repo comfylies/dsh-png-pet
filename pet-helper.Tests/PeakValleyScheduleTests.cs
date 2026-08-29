@@ -34,10 +34,25 @@ public sealed class PeakValleyScheduleTests
         var pet = new Rect(300, 200, 220, 260);
         var workArea = new Rect(0, 0, 1920, 1040);
 
-        var card = PeakValleyCardPlacement.Place(pet, workArea, headHeight: 72);
+        var card = PeakValleyCardPlacement.Place(pet, workArea, headHeight: 96);
 
-        Assert.Equal(144, card.Width);
-        Assert.Equal(72, card.Height);
+        Assert.Equal(192, card.Width);
+        Assert.Equal(96, card.Height);
+        Assert.Equal(pet.Right + PlacementPlanner.PetGap, card.Left);
+    }
+
+    [Fact]
+    public void Card_never_shrinks_below_the_readable_minimum()
+    {
+        var pet = new Rect(300, 200, 220, 260);
+        var workArea = new Rect(0, 0, 1920, 1040);
+
+        // The 75% pet scale makes the head ~69px tall; the card must not follow it down,
+        // or the period text gets clipped.
+        var card = PeakValleyCardPlacement.Place(pet, workArea, headHeight: 69);
+
+        Assert.Equal(PeakValleyCardPlacement.MinCardHeight, card.Height);
+        Assert.Equal(PeakValleyCardPlacement.MinCardHeight * PeakValleyCardPlacement.WidthPerHeight, card.Width);
         Assert.Equal(pet.Right + PlacementPlanner.PetGap, card.Left);
     }
 

@@ -37,7 +37,10 @@ public partial class PeakValleyCardWindow : Window
             period == PeakValleyPeriod.Peak ? (byte)217 : (byte)3,
             period == PeakValleyPeriod.Peak ? (byte)45 : (byte)152,
             period == PeakValleyPeriod.Peak ? (byte)32 : (byte)85));
-        PeriodLabel.FontSize = Math.Max(24d, placement.Height * 0.42d);
+        // The label is hosted in a DownOnly Viewbox, so an oversized glyph run shrinks
+        // instead of being clipped; the size cap keeps the large text from dominating the
+        // card at the bigger pet scales.
+        PeriodLabel.FontSize = Math.Clamp(placement.Height * 0.42d, 24d, 30d);
 
         if (!IsVisible) Show();
         closeTimer.Stop();
