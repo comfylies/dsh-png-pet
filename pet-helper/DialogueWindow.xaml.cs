@@ -32,11 +32,6 @@ public partial class DialogueWindow : Window
     private bool atBottom = true;
 
     private bool inSystemDrag;
-    private bool resizingWindow;
-    private ResizeEdge activeResizeEdge;
-    private System.Windows.Point dragStartCursor;
-    private Rect dragStartRect;
-    private Rect lastAppliedRect;
 
     public event EventHandler<InputSubmittedEventArgs>? InputSubmitted;
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
@@ -228,6 +223,13 @@ public partial class DialogueWindow : Window
             SubmitInput();
             e.Handled = true;
         }
+    }
+
+    private void InputTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        InputHint.Visibility = InputTextBox.Text.Length == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => CloseToHidden();
@@ -491,12 +493,12 @@ public partial class DialogueWindow : Window
     {
         if (conversationState.HasActiveTurn)
         {
-            SendButton.Content = "停止";
+            SendGlyph.Data = Geometry.Parse("M 4,4 L 12,4 L 12,12 L 4,12 Z");
             SendButton.ToolTip = "停止生成";
         }
         else
         {
-            SendButton.Content = "发送";
+            SendGlyph.Data = Geometry.Parse("M 8,1 L 1,9 L 5.5,9 L 5.5,15 L 10.5,15 L 10.5,9 L 15,9 Z");
             SendButton.ToolTip = "发送（Enter）";
         }
     }
@@ -515,12 +517,17 @@ public partial class DialogueWindow : Window
         var edge = WindowResizeMath.HitTest(point, new Rect(0, 0, ActualWidth, ActualHeight));
         if (edge != ResizeEdge.None)
         {
-            resizingWindow = true;
-            activeResizeEdge = edge;
-            dragStartCursor = Mouse.GetPosition(null);
-            dragStartRect = CurrentRect();
-            lastAppliedRect = dragStartRect;
-            CaptureMouse();
+            inSystemDrag = true;
+            try
+            {
+                WindowMover.BeginNativeResize(this, edge);
+            }
+            finally
+            {
+                inSystemDrag = false;
+                ClampDialogueOnScreen();
+                SaveState();
+            }
             e.Handled = true;
             return;
         }
@@ -543,46 +550,10 @@ public partial class DialogueWindow : Window
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
-        if (resizingWindow)
-        {
-            var current = Mouse.GetPosition(null);
-            var delta = current - dragStartCursor;
-            var probe = new Rect(
-                dragStartRect.X + delta.X,
-                dragStartRect.Y + delta.Y,
-                dragStartRect.Width,
-                dragStartRect.Height);
-            var rect = WindowResizeMath.ResizeFrom(
-                dragStartRect,
-                delta,
-                activeResizeEdge,
-                MinSize,
-                MaxSize,
-                screenLayout.WorkAreaFor(probe),
-                PlacementPlanner.ScreenMargin);
-            lastAppliedRect = rect;
-            WindowMover.MoveAndResize(this, rect);
-            e.Handled = true;
-            return;
-        }
-
         if (!inSystemDrag)
         {
             UpdateHoverCursor(e);
         }
-    }
-
-    private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-        if (!resizingWindow) return;
-
-        resizingWindow = false;
-        activeResizeEdge = ResizeEdge.None;
-        ReleaseMouseCapture();
-        // Re-sync WPF's property state after the Win32 resize performed during the drag.
-        ApplyRect(lastAppliedRect);
-        SaveState();
     }
 
     /// <summary>Pulls the dialogue fully back on screen after a native drag.</summary>
@@ -611,14 +582,6 @@ public partial class DialogueWindow : Window
     }
 
     private Rect CurrentRect() => new(Left, Top, ActualWidth, ActualHeight);
-
-    private void ApplyRect(Rect rect)
-    {
-        Left = rect.X;
-        Top = rect.Y;
-        Width = rect.Width;
-        Height = rect.Height;
-    }
 
     internal static bool IsInteractiveTarget(DependencyObject? target)
     {

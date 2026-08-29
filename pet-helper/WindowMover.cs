@@ -19,6 +19,7 @@ internal static class WindowMover
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint WM_NCLBUTTONDOWN = 0x00A1;
 
     /// <summary>Repositions the window without changing its size, Z order, or activation.</summary>
     public static void Move(Window window, double left, double top)
@@ -54,6 +55,26 @@ internal static class WindowMover
             SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
+    /// <summary>
+    /// Lets Windows own an interactive resize. This keeps left and top edges stable because
+    /// the OS updates window position and size as one operation instead of racing WPF layout.
+    /// </summary>
+    public static void BeginNativeResize(Window window, ResizeEdge edge)
+    {
+        var hitTestCode = WindowResizeMath.NativeHitTestCode(edge);
+        var handle = new WindowInteropHelper(window).Handle;
+        if (hitTestCode == 0 || handle == IntPtr.Zero) return;
+
+        ReleaseCapture();
+        SendMessage(handle, WM_NCLBUTTONDOWN, (IntPtr)hitTestCode, IntPtr.Zero);
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }

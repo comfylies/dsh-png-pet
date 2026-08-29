@@ -28,10 +28,10 @@ test('scales the pet window and its state bubble', () => {
   assert.match(code, /StateBubble\.LayoutTransform\s*=\s*new\s+ScaleTransform/)
 })
 
-test('renders the white translucent dialogue window with a message list and input', () => {
+test('renders an opaque dialogue surface with a message list and composer', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
 
-  assert.match(xaml, /Background="#F0FFFFFF"/)
+  assert.match(xaml, /Background="#FFF8F9FC"/)
   assert.match(xaml, /ResizeMode="CanResize"/)
   assert.match(xaml, /x:Name="InputTextBox"/)
   assert.match(xaml, /x:Name="MessageList"/)
@@ -50,6 +50,34 @@ test('renders assistant markdown into a read-only rich text host', () => {
   assert.match(xaml, /IsReadOnly="True"/)
   assert.match(xaml, /IsDocumentEnabled="True"/)
   assert.match(xaml, /VirtualizingStackPanel/)
+})
+
+test('uses a Codex-style document flow with only user messages in bubbles', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Key="UserBubbleTemplate"/)
+  assert.match(xaml, /x:Key="AssistantTextTemplate"/)
+  assert.match(xaml, /x:Key="AssistantMarkdownTemplate"/)
+  assert.doesNotMatch(xaml, /x:Key="AssistantBubbleTemplate"/)
+  assert.match(xaml, /Background="#FFF8F9FC"/)
+})
+
+test('uses a single translucent frosted composer rather than separate input controls', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Name="InputComposer"/)
+  assert.match(xaml, /Background="#D9FFFFFF"/)
+  assert.match(xaml, /CornerRadius="18"/)
+  assert.match(xaml, /Text="给智能体发消息"/)
+  assert.match(xaml, /x:Name="SendButton"[\s\S]*Width="26"[\s\S]*Height="26"/)
+  assert.match(xaml, /x:Name="SendGlyph"/)
+  assert.match(xaml, /<Thumb Background="Transparent" \/>/)
+  assert.match(xaml, /Visibility="Collapsed"/)
+  assert.match(code, /SendGlyph\.Data/)
+  assert.match(xaml, /x:Key="SubtleIconButton"/)
+  assert.match(xaml, /Background" Value="#14000000"/)
+  assert.match(xaml, /Content="＋"[\s\S]*Style="\{StaticResource SubtleIconButton\}"/)
 })
 
 test('accepts dropped and picked attachments in the dialogue window', () => {
@@ -105,12 +133,31 @@ test('lets the dialogue window drag, resize, and remember its position', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
   const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
 
-  assert.match(code, /CaptureMouse\(\)/)
-  assert.match(code, /Mouse\.GetPosition\(null\)/)
+  assert.match(code, /WindowMover\.BeginNativeResize/)
   assert.match(code, /stateStore\.Save\(/)
   assert.match(code, /stateStore\.Load\(\)/)
-  // Whole-window dragging, edge/corner resize, and wake placement replace per-move saves.
+  // Native non-client resizing keeps west/north edges from fighting WPF layout.
   assert.match(code, /WindowResizeMath\.HitTest/)
   assert.match(code, /ShowDialogue\(/)
+  assert.doesNotMatch(code, /CaptureMouse\(\)/)
+  assert.doesNotMatch(code, /WindowMover\.MoveAndResize/)
   assert.doesNotMatch(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)
+  assert.match(xaml, /MinWidth="220"/)
+  assert.match(xaml, /MaxHeight="900"/)
+})
+
+test('uses the dialogue visual language for the pet menu and collapsed target tree', () => {
+  const pet = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const target = readFileSync(new URL('../pet-helper/TargetWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/TargetWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(pet, /x:Key="PetContextMenu"/)
+  assert.match(pet, /x:Key="PetContextMenuItem"/)
+  assert.match(pet, /#14000000/)
+  assert.match(target, /x:Name="WorkspaceTree"/)
+  assert.match(target, /x:Key="WorkspaceAccordion"/)
+  assert.match(target, /x:Name="UngroupedExpander"/)
+  assert.match(target, /#14000000/)
+  assert.match(code, /ShowTargetTree\(\)/)
+  assert.doesNotMatch(code, /ShowLevelTwo\(/)
 })

@@ -89,4 +89,18 @@ public static class WindowResizeMath
             _ => Cursors.Arrow,
         };
     }
+
+    /// <summary>Maps a resize edge to the Win32 non-client hit-test code used by the native resize loop.</summary>
+    public static int NativeHitTestCode(ResizeEdge edge) => edge switch
+    {
+        ResizeEdge.West => 10, // HTLEFT
+        ResizeEdge.East => 11, // HTRIGHT
+        ResizeEdge.North => 12, // HTTOP
+        ResizeEdge.NorthWest => 13, // HTTOPLEFT
+        ResizeEdge.NorthEast => 14, // HTTOPRIGHT
+        ResizeEdge.South => 15, // HTBOTTOM
+        ResizeEdge.SouthWest => 16, // HTBOTTOMLEFT
+        ResizeEdge.SouthEast => 17, // HTBOTTOMRIGHT
+        _ => 0,
+    };
 }

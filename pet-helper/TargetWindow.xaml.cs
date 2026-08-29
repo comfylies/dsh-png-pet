@@ -45,8 +45,6 @@ public partial class TargetWindow : Window
     private long currentRequestId;
     private bool dataReady;
     private string? pendingWorkspacePath;
-    private string? selectedWorkspaceId;
-    private bool viewingUngrouped;
     private ImmutableArray<TargetWorkspaceInfo> workspaces = [];
     private ImmutableDictionary<string, ImmutableArray<TargetSessionInfo>> sessionsByWorkspace =
         ImmutableDictionary<string, ImmutableArray<TargetSessionInfo>>.Empty;
@@ -108,22 +106,15 @@ public partial class TargetWindow : Window
             return;
         }
 
-        // Default landing: the configured workspace's sessions when it still exists.
-        if (defaultWorkspaceId is { } workspaceId && workspaces.Any((workspace) => workspace.Id == workspaceId))
-        {
-            ShowLevelTwo(workspaceId, viewingUngrouped: false);
-            return;
-        }
-
-        ShowLevelOne();
+        // Always start collapsed. The configured default remains marked inside its workspace.
+        ShowTargetTree();
     }
 
     private void ShowLoading()
     {
         LoadingView.Visibility = Visibility.Visible;
         ErrorView.Visibility = Visibility.Collapsed;
-        LevelOneView.Visibility = Visibility.Collapsed;
-        LevelTwoView.Visibility = Visibility.Collapsed;
+        TargetTreeView.Visibility = Visibility.Collapsed;
         CreateView.Visibility = Visibility.Collapsed;
         BackButton.Visibility = Visibility.Collapsed;
     }
@@ -132,70 +123,34 @@ public partial class TargetWindow : Window
     {
         LoadingView.Visibility = Visibility.Collapsed;
         ErrorView.Visibility = Visibility.Visible;
-        LevelOneView.Visibility = Visibility.Collapsed;
-        LevelTwoView.Visibility = Visibility.Collapsed;
+        TargetTreeView.Visibility = Visibility.Collapsed;
         CreateView.Visibility = Visibility.Collapsed;
         BackButton.Visibility = Visibility.Collapsed;
         ErrorLabel.Text = message;
     }
 
-    private void ShowLevelOne()
+    private void ShowTargetTree()
     {
         LoadingView.Visibility = Visibility.Collapsed;
         ErrorView.Visibility = Visibility.Collapsed;
-        LevelOneView.Visibility = Visibility.Visible;
-        LevelTwoView.Visibility = Visibility.Collapsed;
+        TargetTreeView.Visibility = Visibility.Visible;
         CreateView.Visibility = Visibility.Collapsed;
         BackButton.Visibility = Visibility.Collapsed;
-        CardTitle.Text = "目标选择";
+        CardTitle.Text = "选择会话";
 
-        UngroupedButton.Visibility = ungrouped.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        WorkspaceList.SelectionChanged -= WorkspaceList_SelectionChanged;
-        WorkspaceList.Items.Clear();
-        foreach (var workspace in workspaces)
+        WorkspaceTree.ItemsSource = workspaces.Select(workspace =>
         {
-            WorkspaceList.Items.Add(new WorkspaceRow(workspace));
-        }
-        WorkspaceList.SelectionChanged += WorkspaceList_SelectionChanged;
-    }
+            var sessions = sessionsByWorkspace.TryGetValue(workspace.Id, out var listed) ? listed : [];
+            return new WorkspaceRow(
+                workspace,
+                sessions.Select(session => new SessionRow(session, workspace.Id, IsCurrent(session.Id))).ToImmutableArray());
+        }).ToArray();
 
-    private void ShowLevelTwo(string workspaceId, bool viewingUngrouped)
-    {
-        LoadingView.Visibility = Visibility.Collapsed;
-        ErrorView.Visibility = Visibility.Collapsed;
-        LevelOneView.Visibility = Visibility.Collapsed;
-        LevelTwoView.Visibility = Visibility.Visible;
-        CreateView.Visibility = Visibility.Collapsed;
-        BackButton.Visibility = Visibility.Visible;
-
-        this.viewingUngrouped = viewingUngrouped;
-        selectedWorkspaceId = viewingUngrouped ? null : workspaceId;
-
-        var sessions = viewingUngrouped
-            ? ungrouped
-            : sessionsByWorkspace.TryGetValue(workspaceId, out var listed) ? listed : [];
-
-        if (viewingUngrouped)
-        {
-            CardTitle.Text = "未分组会话";
-            SessionBucketLabel.Text = "未分组会话";
-        }
-        else
-        {
-            var workspace = workspaces.FirstOrDefault((entry) => entry.Id == workspaceId);
-            CardTitle.Text = workspace?.Title ?? "会话";
-            SessionBucketLabel.Text = $"“{workspace?.Title ?? "未命名"}”下的会话";
-        }
-
-        SessionList.SelectionChanged -= SessionList_SelectionChanged;
-        SessionList.Items.Clear();
-        foreach (var session in sessions)
-        {
-            var row = new SessionRow(session, IsCurrent(session.Id));
-            SessionList.Items.Add(row);
-            if (row.IsCurrent) SessionList.SelectedItem = row;
-        }
-        SessionList.SelectionChanged += SessionList_SelectionChanged;
+        UngroupedExpander.IsExpanded = false;
+        UngroupedExpander.Visibility = ungrouped.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UngroupedSessionList.ItemsSource = ungrouped
+            .Select(session => new SessionRow(session, null, IsCurrent(session.Id)))
+            .ToImmutableArray();
     }
 
     private bool IsCurrent(string sessionId) => sessionId == defaultSessionId;
@@ -204,8 +159,7 @@ public partial class TargetWindow : Window
     {
         LoadingView.Visibility = Visibility.Collapsed;
         ErrorView.Visibility = Visibility.Collapsed;
-        LevelOneView.Visibility = Visibility.Collapsed;
-        LevelTwoView.Visibility = Visibility.Collapsed;
+        TargetTreeView.Visibility = Visibility.Collapsed;
         CreateView.Visibility = Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
         CardTitle.Text = "新建工作区";
@@ -242,23 +196,15 @@ public partial class TargetWindow : Window
         }
     }
 
-    private void WorkspaceList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void NestedSessionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (WorkspaceList.SelectedItem is not WorkspaceRow row) return;
-        WorkspaceList.SelectedItem = null;
-        ShowLevelTwo(row.Workspace.Id, viewingUngrouped: false);
+        if (sender is not ListBox { SelectedItem: SessionRow row } list) return;
+        list.SelectedItem = null;
+        AnswerSession(row.Session.Id, row.WorkspaceId, newBlank: false);
     }
 
-    private void SessionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (SessionList.SelectedItem is not SessionRow row) return;
-        SessionList.SelectedItem = null;
-        AnswerSession(row.Session.Id, selectedWorkspaceId, newBlank: false);
-    }
-
-    private void UngroupedButton_Click(object sender, RoutedEventArgs e) => ShowLevelTwo(string.Empty, viewingUngrouped: true);
-
-    private void NewSessionButton_Click(object sender, RoutedEventArgs e) => AnswerSession(null, selectedWorkspaceId, newBlank: true);
+    private void NewSessionButton_Click(object sender, RoutedEventArgs e) =>
+        AnswerSession(null, (sender as FrameworkElement)?.Tag as string, newBlank: true);
 
     private void CreateWorkspaceButton_Click(object sender, RoutedEventArgs e) => ShowCreateView();
 
@@ -266,11 +212,7 @@ public partial class TargetWindow : Window
     {
         if (CreateView.Visibility == Visibility.Visible)
         {
-            ShowLevelOne();
-        }
-        else if (LevelTwoView.Visibility == Visibility.Visible)
-        {
-            ShowLevelOne();
+            ShowTargetTree();
         }
     }
 
@@ -358,7 +300,7 @@ public partial class TargetWindow : Window
     {
         while (target is not null)
         {
-            if (target is Button or TextBox or ListBox or ListBoxItem or ScrollViewer or ScrollBar) return true;
+            if (target is Button or ToggleButton or Expander or TextBox or ListBox or ListBoxItem or ScrollViewer or ScrollBar) return true;
             target = target is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(target)
                 : LogicalTreeHelper.GetParent(target);
@@ -366,14 +308,20 @@ public partial class TargetWindow : Window
         return false;
     }
 
-    private sealed record WorkspaceRow(TargetWorkspaceInfo Workspace)
+    private sealed class WorkspaceRow(TargetWorkspaceInfo workspace, ImmutableArray<SessionRow> sessions)
     {
-        public override string ToString() => Workspace.Title;
+        public TargetWorkspaceInfo Workspace { get; } = workspace;
+
+        public ImmutableArray<SessionRow> Sessions { get; } = sessions;
+
+        public int SessionCount => Sessions.Length;
+
+        public bool IsExpanded { get; set; }
     }
 
-    private sealed record SessionRow(TargetSessionInfo Session, bool IsCurrent)
+    private sealed record SessionRow(TargetSessionInfo Session, string? WorkspaceId, bool IsCurrent)
     {
-        public override string ToString() =>
+        public string DisplayTitle =>
             Session.Title.Length > 0
                 ? (IsCurrent ? "✓ " : "") + Session.Title
                 : Session.Blank ? "空白会话" : "未命名会话";

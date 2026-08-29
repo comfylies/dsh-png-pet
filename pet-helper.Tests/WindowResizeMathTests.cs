@@ -152,6 +152,22 @@ public sealed class WindowResizeMathTests
         Assert.True(result.Width <= small.Width - 2 * Margin);
     }
 
+    // ---------- Native resize mapping ----------
+
+    [Theory]
+    [InlineData(ResizeEdge.West, 10)]
+    [InlineData(ResizeEdge.East, 11)]
+    [InlineData(ResizeEdge.North, 12)]
+    [InlineData(ResizeEdge.NorthWest, 13)]
+    [InlineData(ResizeEdge.NorthEast, 14)]
+    [InlineData(ResizeEdge.South, 15)]
+    [InlineData(ResizeEdge.SouthWest, 16)]
+    [InlineData(ResizeEdge.SouthEast, 17)]
+    public void NativeHitTestCode_maps_each_resize_edge(ResizeEdge edge, int expected)
+    {
+        Assert.Equal(expected, WindowResizeMath.NativeHitTestCode(edge));
+    }
+
     // ---------- Cursor mapping ----------
 
     [Theory]
