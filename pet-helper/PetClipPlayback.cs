@@ -14,10 +14,10 @@ public sealed class PetClipPlayback
     public bool IsAnimating => !reducedMotion && CurrentClip.Frames.Length > 1 &&
         (CurrentClip.Playback == PetClipPlaybackMode.Loop || !completed);
 
-    public void Start(ResolvedClip nextClip, bool reducedMotion)
+    public void Start(ResolvedClip nextClip, bool reducedMotion, bool restart = false)
     {
         ArgumentNullException.ThrowIfNull(nextClip);
-        var identityChanged = clip is null || !string.Equals(clip.Id, nextClip.Id, StringComparison.Ordinal);
+        var identityChanged = restart || clip is null || !string.Equals(clip.Id, nextClip.Id, StringComparison.Ordinal);
         if (identityChanged)
         {
             clip = nextClip;

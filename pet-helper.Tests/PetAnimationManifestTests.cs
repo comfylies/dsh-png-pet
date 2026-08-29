@@ -236,29 +236,47 @@ public sealed class PetAnimationManifestTests
         var idleFrames = Enumerable.Range(1, 32)
             .Select(i => $"Animations/idle/breathe/{i:D3}.png")
             .ToArray();
-        var questionFrame = "Animations/question/wait-answer.png";
+        var questionRaiseFrames = Enumerable.Range(1, 30)
+            .Select(i => $"Animations/question/raise-card/{i:D3}.png")
+            .ToArray();
+        var questionHoldFrames = Enumerable.Range(1, 45)
+            .Select(i => $"Animations/question/hold-card/{i:D3}.png")
+            .ToArray();
+        var questionWithdrawFrames = Enumerable.Range(1, 22)
+            .Select(i => $"Animations/question/withdraw-card/{i:D3}.png")
+            .ToArray();
         var successFrames = Enumerable.Range(1, 60)
             .Select(i => $"Animations/success/complete/{i:D3}.png")
             .ToArray();
         var resolved = manifest.Resolve(
             PetAnimationKey.Idle,
-            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
+            frame => idleFrames.Contains(frame) || questionRaiseFrames.Contains(frame) ||
+                questionHoldFrames.Contains(frame) || questionWithdrawFrames.Contains(frame) || successFrames.Contains(frame));
 
         Assert.Equal(PetAnimationKey.Idle, resolved.Key);
         Assert.Equal(idleFrames, resolved.Frames);
         Assert.Equal(125, resolved.IntervalMs);
 
-        var question = manifest.Resolve(
+        var question = manifest.ResolveProgram(
             PetAnimationKey.Question,
-            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
+            frame => idleFrames.Contains(frame) || questionRaiseFrames.Contains(frame) ||
+                questionHoldFrames.Contains(frame) || questionWithdrawFrames.Contains(frame) || successFrames.Contains(frame));
 
-        Assert.Equal(PetAnimationKey.Question, question.Key);
-        Assert.Equal(new[] { questionFrame }, question.Frames);
-        Assert.Equal(1000, question.IntervalMs);
+        Assert.Equal(PetAnimationKey.Question, question.EffectiveKey);
+        Assert.Equal(questionRaiseFrames, question.Enter.Single().Frames);
+        Assert.Equal(questionHoldFrames, question.Loop.Single().Frames);
+        Assert.Equal(83, question.Loop.Single().IntervalMs);
+        var withdraw = Assert.Single(question.Transitions);
+        Assert.Equal(questionWithdrawFrames, Assert.Single(withdraw.Clips).Frames);
+        Assert.Contains(PetAnimationKey.Thinking, withdraw.Targets);
+        Assert.Contains(PetAnimationKey.Working, withdraw.Targets);
+        Assert.Contains(PetAnimationKey.ThinkingWorking, withdraw.Targets);
+        Assert.Contains(PetAnimationKey.Responding, withdraw.Targets);
 
         var success = manifest.Resolve(
             PetAnimationKey.Success,
-            frame => idleFrames.Contains(frame) || frame == questionFrame || successFrames.Contains(frame));
+            frame => idleFrames.Contains(frame) || questionRaiseFrames.Contains(frame) ||
+                questionHoldFrames.Contains(frame) || questionWithdrawFrames.Contains(frame) || successFrames.Contains(frame));
 
         Assert.Equal(PetAnimationKey.Success, success.Key);
         Assert.Equal(successFrames, success.Frames);

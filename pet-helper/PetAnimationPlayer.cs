@@ -10,12 +10,16 @@ public sealed class PetAnimationPlayer
 {
     private const string ManifestResourceName = "PetHelper.Assets.pet-animations.json";
     private const string ManifestUnavailableMessage = "The pet animation manifest is unavailable.";
+    // At 512px RGBA, 48 frames are about 48 MiB of decoded pixels before WPF compositor copies.
+    // Keeping this bounded prevents a long-running pet from retaining every state it has visited.
+    private const int MaximumCachedFrames = 48;
+    private const int AnimationDecodePixelWidth = 512;
 
     private readonly WpfImage image;
     private readonly Func<ImageSource?> staticPlaceholderLoader;
-    private PetAnimationPlayback? playback;
+    private PetStateAnimationCoordinator? playback;
     private readonly DispatcherTimer timer;
-    private readonly Dictionary<string, BitmapImage> imagesByFrame = new(StringComparer.Ordinal);
+    private readonly BoundedLruCache<string, BitmapImage> imagesByFrame = new(MaximumCachedFrames);
     private readonly HashSet<string> availableFrames = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
 
@@ -53,7 +57,7 @@ public sealed class PetAnimationPlayer
 
         try
         {
-            playback = new PetAnimationPlayback(
+            playback = new PetStateAnimationCoordinator(
                 LoadManifest(manifestStreamReader, manifestReaderFactory),
                 IsFrameAvailable);
             playback.Completed += Playback_Completed;
@@ -132,7 +136,12 @@ public sealed class PetAnimationPlayer
 
         playback.Advance();
         UpdateImage();
-        if (!playback.IsAnimating) timer.Stop();
+        if (!playback.IsAnimating)
+        {
+            timer.Stop();
+            return;
+        }
+        timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
     }
 
     private void Playback_Completed(object? sender, EventArgs e) => Completed?.Invoke(this, EventArgs.Empty);
@@ -149,7 +158,7 @@ public sealed class PetAnimationPlayer
 
     private bool IsFrameAvailable(string frame)
     {
-        if (imagesByFrame.ContainsKey(frame) || availableFrames.Contains(frame))
+        if (imagesByFrame.TryGetValue(frame, out _) || availableFrames.Contains(frame))
         {
             return true;
         }
@@ -184,7 +193,7 @@ public sealed class PetAnimationPlayer
         try
         {
             bitmap = LoadBitmap(FrameUri(frame));
-            imagesByFrame.Add(frame, bitmap);
+            imagesByFrame.AddOrUpdate(frame, bitmap);
             availableFrames.Add(frame);
             return bitmap;
         }
@@ -234,6 +243,10 @@ public sealed class PetAnimationPlayer
         var bitmap = new BitmapImage();
         bitmap.BeginInit();
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        // The LRU cache is the sole owner of decoded animation frames; do not let WPF retain
+        // an unbounded second cache keyed by the embedded pack URI after a frame is evicted.
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        bitmap.DecodePixelWidth = AnimationDecodePixelWidth;
         bitmap.UriSource = uri;
         bitmap.EndInit();
         bitmap.Freeze();

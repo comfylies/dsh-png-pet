@@ -17,6 +17,17 @@ public sealed record ResolvedClip(
     public int IntervalMs => FrameDurationMs;
 }
 
+public sealed record ResolvedTransition(
+    ImmutableHashSet<PetAnimationKey> Targets,
+    ImmutableArray<ResolvedClip> Clips);
+
+public sealed record ResolvedStateProgram(
+    PetAnimationKey EffectiveKey,
+    ImmutableArray<ResolvedClip> Enter,
+    ImmutableArray<ResolvedClip> Loop,
+    ImmutableArray<ResolvedTransition> Transitions,
+    bool LoopRepeats);
+
 public sealed class PetAnimationManifest
 {
     private const int LegacyTargetCycleMs = 1000;
@@ -73,6 +84,7 @@ public sealed class PetAnimationManifest
             {
                 2 => ParseVersionTwo(document.RootElement),
                 3 => ParseVersionThree(document.RootElement, actionManifestReader ?? throw InvalidManifest()),
+                4 => ParseVersionFour(document.RootElement, actionManifestReader ?? throw InvalidManifest()),
                 _ => throw InvalidManifest(),
             };
         }
@@ -84,31 +96,52 @@ public sealed class PetAnimationManifest
 
     public ResolvedClip Resolve(PetAnimationKey requested, Func<string, bool> isFrameAvailable)
     {
+        var program = ResolveProgram(requested, isFrameAvailable);
+        return program.Loop[0];
+    }
+
+    public ResolvedStateProgram ResolveProgram(PetAnimationKey requested, Func<string, bool> isFrameAvailable)
+    {
         ArgumentNullException.ThrowIfNull(isFrameAvailable);
         var visited = new HashSet<PetAnimationKey>();
         var current = actions.ContainsKey(requested) ? requested : PetAnimationKey.Idle;
         while (visited.Add(current))
         {
             if (!actions.TryGetValue(current, out var action)) break;
-            foreach (var clipId in action.ClipIds)
+            var program = action.Program ?? new ProgramDefinition(ImmutableArray<string>.Empty, action.ClipIds, false);
+            var loop = ResolveClips(current, program.Loop, isFrameAvailable);
+            if (!loop.IsEmpty)
             {
-                var clip = clips[clipId];
-                if (clip.Frames.All(isFrameAvailable))
-                {
-                    return new ResolvedClip(
-                        current,
-                        clipId,
-                        clip.Frames,
-                        clip.FrameDurationMs,
-                        clip.Playback,
-                        clip.StatusAnchor);
-                }
+                var enter = ResolveClips(current, program.Enter, isFrameAvailable);
+                var transitions = (action.Transitions ?? ImmutableArray<TransitionDefinition>.Empty)
+                    .Select(transition => new ResolvedTransition(
+                        transition.Targets,
+                        ResolveClips(current, transition.ClipIds, isFrameAvailable)))
+                    .Where(transition => !transition.Clips.IsEmpty)
+                    .ToImmutableArray();
+                return new ResolvedStateProgram(current, enter, loop, transitions, program.LoopRepeats);
             }
             if (action.Fallback is not { } fallback) break;
             current = fallback;
         }
         throw new InvalidOperationException("No available pet animation clip could be resolved.");
     }
+
+    private ImmutableArray<ResolvedClip> ResolveClips(
+        PetAnimationKey key,
+        ImmutableArray<string> clipIds,
+        Func<string, bool> isFrameAvailable) => clipIds
+        .Where(clipId => clips[clipId].Frames.All(isFrameAvailable))
+        .Select(clipId => ToResolvedClip(key, clipId, clips[clipId]))
+        .ToImmutableArray();
+
+    private static ResolvedClip ToResolvedClip(PetAnimationKey key, string id, ClipDefinition clip) => new(
+        key,
+        id,
+        clip.Frames,
+        clip.FrameDurationMs,
+        clip.Playback,
+        clip.StatusAnchor);
 
     private static PetAnimationManifest ParseVersionTwo(JsonElement root)
     {
@@ -193,6 +226,243 @@ public sealed class PetAnimationManifest
         if (actions.Count != KeysByName.Count) throw InvalidManifest();
         ValidateActions(actions, PetAnimationKey.Idle);
         return new PetAnimationManifest(actions.ToImmutable(), clips.ToImmutable());
+    }
+
+    private static PetAnimationManifest ParseVersionFour(
+        JsonElement root,
+        Func<string, string> actionManifestReader)
+    {
+        JsonElement actionsElement = default;
+        var hasActions = false;
+        var seenRootFields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in root.EnumerateObject())
+        {
+            if (!seenRootFields.Add(field.Name)) throw InvalidManifest();
+            switch (field.Name)
+            {
+                case "formatVersion":
+                    if (field.Value.ValueKind != JsonValueKind.Number ||
+                        !field.Value.TryGetInt32(out var version) || version != 4) throw InvalidManifest();
+                    break;
+                case "actions": actionsElement = field.Value; hasActions = true; break;
+                default: throw InvalidManifest();
+            }
+        }
+        if (!hasActions || actionsElement.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+
+        var allFrames = new HashSet<string>(StringComparer.Ordinal);
+        var clips = ImmutableDictionary.CreateBuilder<string, ClipDefinition>(StringComparer.Ordinal);
+        var actions = ImmutableDictionary.CreateBuilder<PetAnimationKey, ActionDefinition>();
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+        var totalFrames = 0;
+        foreach (var action in actionsElement.EnumerateObject())
+        {
+            if (!seenNames.Add(action.Name) || !KeysByName.TryGetValue(action.Name, out var key) ||
+                action.Value.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+            actions.Add(key, ParseVersionFourAction(
+                action.Name,
+                action.Value,
+                actionManifestReader,
+                clips,
+                allFrames,
+                ref totalFrames));
+        }
+
+        if (actions.Count != KeysByName.Count) throw InvalidManifest();
+        ValidateActions(actions, PetAnimationKey.Idle);
+        return new PetAnimationManifest(actions.ToImmutable(), clips.ToImmutable());
+    }
+
+    private static ActionDefinition ParseVersionFourAction(
+        string actionName,
+        JsonElement element,
+        Func<string, string> actionManifestReader,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips,
+        HashSet<string> allFrames,
+        ref int totalFrames)
+    {
+        string? manifestPath = null;
+        PetAnimationKey? fallback = null;
+        var seenFields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in element.EnumerateObject())
+        {
+            if (!seenFields.Add(field.Name)) throw InvalidManifest();
+            switch (field.Name)
+            {
+                case "manifest":
+                    if (field.Value.ValueKind != JsonValueKind.String) throw InvalidManifest();
+                    manifestPath = field.Value.GetString();
+                    break;
+                case "fallback": fallback = ParseFallback(field.Value); break;
+                default: throw InvalidManifest();
+            }
+        }
+
+        var expectedPath = $"Animations/{actionName}/animation.json";
+        if (!string.Equals(manifestPath, expectedPath, StringComparison.Ordinal)) throw InvalidManifest();
+        var childJson = actionManifestReader(expectedPath);
+        if (childJson is null) throw InvalidManifest();
+        var state = ParseVersionFourStateManifest(actionName, childJson, clips, allFrames, ref totalFrames);
+        return new ActionDefinition(state.ClipIds, fallback, state.Program, state.Transitions);
+    }
+
+    private static StateManifestDefinition ParseVersionFourStateManifest(
+        string actionName,
+        string json,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips,
+        HashSet<string> allFrames,
+        ref int totalFrames)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+            JsonElement clipsElement = default;
+            JsonElement programElement = default;
+            JsonElement transitionsElement = default;
+            var hasClips = false;
+            var hasProgram = false;
+            var hasTransitions = false;
+            var seenRootFields = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in document.RootElement.EnumerateObject())
+            {
+                if (!seenRootFields.Add(field.Name)) throw InvalidManifest();
+                switch (field.Name)
+                {
+                    case "clips": clipsElement = field.Value; hasClips = true; break;
+                    case "program": programElement = field.Value; hasProgram = true; break;
+                    case "transitions": transitionsElement = field.Value; hasTransitions = true; break;
+                    default: throw InvalidManifest();
+                }
+            }
+            if (!hasClips || clipsElement.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+
+            var localIds = new Dictionary<string, string>(StringComparer.Ordinal);
+            var clipIds = ImmutableArray.CreateBuilder<string>();
+            foreach (var clip in clipsElement.EnumerateObject())
+            {
+                var id = $"{actionName}-{clip.Name}";
+                if (!IsSafeClipId(clip.Name) || !IsSafeClipId(id) ||
+                    clip.Value.ValueKind != JsonValueKind.Object ||
+                    clipIds.Count >= MaximumClipsPerAction ||
+                    !localIds.TryAdd(clip.Name, id) ||
+                    !clips.TryAdd(id, ParseClip(
+                        clip.Value,
+                        allFrames,
+                        ref totalFrames,
+                        $"Animations/{actionName}/")))
+                {
+                    throw InvalidManifest();
+                }
+                clipIds.Add(id);
+            }
+
+            var program = hasProgram
+                ? ParseProgram(programElement, localIds, clips)
+                : new ProgramDefinition(ImmutableArray<string>.Empty, clipIds.ToImmutable(), false);
+            var transitions = hasTransitions
+                ? ParseTransitions(transitionsElement, localIds, clips)
+                : ImmutableArray<TransitionDefinition>.Empty;
+            return new StateManifestDefinition(clipIds.ToImmutable(), program, transitions);
+        }
+        catch (JsonException exception)
+        {
+            throw new FormatException("The pet state animation manifest is not valid JSON.", exception);
+        }
+    }
+
+    private static ProgramDefinition ParseProgram(
+        JsonElement element,
+        IReadOnlyDictionary<string, string> localIds,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips)
+    {
+        if (element.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+        ImmutableArray<string>? enter = null;
+        ImmutableArray<string>? loop = null;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in element.EnumerateObject())
+        {
+            if (!seen.Add(field.Name)) throw InvalidManifest();
+            switch (field.Name)
+            {
+                case "enter": enter = ParseLocalClipIds(field.Value, localIds, 4); break;
+                case "loop": loop = ParseLocalClipIds(field.Value, localIds, MaximumClipsPerAction); break;
+                default: throw InvalidManifest();
+            }
+        }
+        if (enter is null || loop is not { IsEmpty: false }) throw InvalidManifest();
+        ValidateOnceClips(enter.Value, clips);
+        ValidateOnceClips(loop.Value, clips);
+        return new ProgramDefinition(enter.Value, loop.Value, true);
+    }
+
+    private static ImmutableArray<TransitionDefinition> ParseTransitions(
+        JsonElement element,
+        IReadOnlyDictionary<string, string> localIds,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips)
+    {
+        if (element.ValueKind != JsonValueKind.Array) throw InvalidManifest();
+        var transitions = ImmutableArray.CreateBuilder<TransitionDefinition>();
+        var assignedTargets = new HashSet<PetAnimationKey>();
+        foreach (var transition in element.EnumerateArray())
+        {
+            if (transition.ValueKind != JsonValueKind.Object || transitions.Count >= MaximumClipsPerAction)
+                throw InvalidManifest();
+            JsonElement toElement = default;
+            JsonElement clipsElement = default;
+            var hasTo = false;
+            var hasClips = false;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in transition.EnumerateObject())
+            {
+                if (!seen.Add(field.Name)) throw InvalidManifest();
+                switch (field.Name)
+                {
+                    case "to": toElement = field.Value; hasTo = true; break;
+                    case "clips": clipsElement = field.Value; hasClips = true; break;
+                    default: throw InvalidManifest();
+                }
+            }
+            if (!hasTo || !hasClips || toElement.ValueKind != JsonValueKind.Array) throw InvalidManifest();
+            var targets = ImmutableHashSet.CreateBuilder<PetAnimationKey>();
+            foreach (var target in toElement.EnumerateArray())
+            {
+                if (target.ValueKind != JsonValueKind.String ||
+                    !KeysByName.TryGetValue(target.GetString() ?? string.Empty, out var key) ||
+                    !targets.Add(key) || !assignedTargets.Add(key)) throw InvalidManifest();
+            }
+            if (targets.Count == 0) throw InvalidManifest();
+            var transitionClips = ParseLocalClipIds(clipsElement, localIds, 4);
+            if (transitionClips.IsEmpty) throw InvalidManifest();
+            ValidateOnceClips(transitionClips, clips);
+            transitions.Add(new TransitionDefinition(targets.ToImmutable(), transitionClips));
+        }
+        return transitions.ToImmutable();
+    }
+
+    private static ImmutableArray<string> ParseLocalClipIds(
+        JsonElement element,
+        IReadOnlyDictionary<string, string> localIds,
+        int maximum)
+    {
+        if (element.ValueKind != JsonValueKind.Array) throw InvalidManifest();
+        var result = ImmutableArray.CreateBuilder<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String ||
+                !localIds.TryGetValue(item.GetString() ?? string.Empty, out var id) ||
+                !seen.Add(id) || result.Count >= maximum) throw InvalidManifest();
+            result.Add(id);
+        }
+        return result.ToImmutable();
+    }
+
+    private static void ValidateOnceClips(
+        ImmutableArray<string> clipIds,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips)
+    {
+        if (clipIds.Any(id => clips[id].Playback != PetClipPlaybackMode.Once)) throw InvalidManifest();
     }
 
     private static ActionDefinition ParseVersionThreeAction(
@@ -523,7 +793,22 @@ public sealed class PetAnimationManifest
 
     private static FormatException InvalidManifest() => new("The pet animation manifest has an invalid format.");
 
-    private sealed record ActionDefinition(ImmutableArray<string> ClipIds, PetAnimationKey? Fallback);
+    private sealed record ActionDefinition(
+        ImmutableArray<string> ClipIds,
+        PetAnimationKey? Fallback,
+        ProgramDefinition? Program = null,
+        ImmutableArray<TransitionDefinition>? Transitions = null);
+    private sealed record ProgramDefinition(
+        ImmutableArray<string> Enter,
+        ImmutableArray<string> Loop,
+        bool LoopRepeats);
+    private sealed record TransitionDefinition(
+        ImmutableHashSet<PetAnimationKey> Targets,
+        ImmutableArray<string> ClipIds);
+    private sealed record StateManifestDefinition(
+        ImmutableArray<string> ClipIds,
+        ProgramDefinition Program,
+        ImmutableArray<TransitionDefinition> Transitions);
     private sealed record LegacyActionDefinition(ImmutableArray<string> Frames, PetAnimationKey? Fallback);
     private sealed record ClipDefinition(
         ImmutableArray<string> Frames,

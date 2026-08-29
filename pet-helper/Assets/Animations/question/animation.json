@@ -1,10 +1,55 @@
 {
   "clips": {
-    "wait-answer": {
-      "frames": ["wait-answer.png"],
-      "frameDurationMs": 1000,
-      "playback": "loop",
+    "raise-card": {
+      "frames": [
+        "raise-card/001.png", "raise-card/002.png", "raise-card/003.png", "raise-card/004.png", "raise-card/005.png",
+        "raise-card/006.png", "raise-card/007.png", "raise-card/008.png", "raise-card/009.png", "raise-card/010.png",
+        "raise-card/011.png", "raise-card/012.png", "raise-card/013.png", "raise-card/014.png", "raise-card/015.png",
+        "raise-card/016.png", "raise-card/017.png", "raise-card/018.png", "raise-card/019.png", "raise-card/020.png",
+        "raise-card/021.png", "raise-card/022.png", "raise-card/023.png", "raise-card/024.png", "raise-card/025.png",
+        "raise-card/026.png", "raise-card/027.png", "raise-card/028.png", "raise-card/029.png", "raise-card/030.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "once",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    },
+    "hold-card": {
+      "frames": [
+        "hold-card/001.png", "hold-card/002.png", "hold-card/003.png", "hold-card/004.png", "hold-card/005.png",
+        "hold-card/006.png", "hold-card/007.png", "hold-card/008.png", "hold-card/009.png", "hold-card/010.png",
+        "hold-card/011.png", "hold-card/012.png", "hold-card/013.png", "hold-card/014.png", "hold-card/015.png",
+        "hold-card/016.png", "hold-card/017.png", "hold-card/018.png", "hold-card/019.png", "hold-card/020.png",
+        "hold-card/021.png", "hold-card/022.png", "hold-card/023.png", "hold-card/024.png", "hold-card/025.png",
+        "hold-card/026.png", "hold-card/027.png", "hold-card/028.png", "hold-card/029.png", "hold-card/030.png",
+        "hold-card/031.png", "hold-card/032.png", "hold-card/033.png", "hold-card/034.png", "hold-card/035.png",
+        "hold-card/036.png", "hold-card/037.png", "hold-card/038.png", "hold-card/039.png", "hold-card/040.png",
+        "hold-card/041.png", "hold-card/042.png", "hold-card/043.png", "hold-card/044.png", "hold-card/045.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "once",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    },
+    "withdraw-card": {
+      "frames": [
+        "withdraw-card/001.png", "withdraw-card/002.png", "withdraw-card/003.png", "withdraw-card/004.png", "withdraw-card/005.png",
+        "withdraw-card/006.png", "withdraw-card/007.png", "withdraw-card/008.png", "withdraw-card/009.png", "withdraw-card/010.png",
+        "withdraw-card/011.png", "withdraw-card/012.png", "withdraw-card/013.png", "withdraw-card/014.png", "withdraw-card/015.png",
+        "withdraw-card/016.png", "withdraw-card/017.png", "withdraw-card/018.png", "withdraw-card/019.png", "withdraw-card/020.png",
+        "withdraw-card/021.png", "withdraw-card/022.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "once",
       "statusAnchor": { "x": 0.5, "y": 0.11 }
     }
-  }
+  },
+  "program": {
+    "enter": ["raise-card"],
+    "loop": ["hold-card"]
+  },
+  "transitions": [
+    {
+      "to": ["thinking", "working", "thinking-working", "responding"],
+      "clips": ["withdraw-card"]
+    }
+  ]
 }

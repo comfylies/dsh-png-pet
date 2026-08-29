@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "actions": {
     "idle": { "manifest": "Animations/idle/animation.json" },
     "thinking": { "manifest": "Animations/thinking/animation.json", "fallback": "idle" },
