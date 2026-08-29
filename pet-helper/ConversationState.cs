@@ -13,6 +13,7 @@ namespace PetHelper;
 public sealed class ConversationState
 {
     private const int MaxPreviewChars = 8000;
+    private const int MaxMessages = 40;
 
     private string? lastDefaultSessionId;
 
@@ -141,7 +142,7 @@ public sealed class ConversationState
         HasActiveTurn = true;
         HasStreamingMessage = false;
         PendingStreamText = null;
-        Messages = Messages.Add(new DialogueMessage(requestId, "user", text, images, files));
+        Messages = AppendMessage(new DialogueMessage(requestId, "user", text, images, files));
     }
 
     private void ResetConversation()
@@ -172,7 +173,7 @@ public sealed class ConversationState
         else
         {
             // Terminal endings must never leave the dialogue blank.
-            Messages = Messages.Add(new DialogueMessage(requestId, "assistant", string.Empty, [], [], end: end));
+            Messages = AppendMessage(new DialogueMessage(requestId, "assistant", string.Empty, [], [], end: end));
         }
         HasStreamingMessage = false;
     }
@@ -184,8 +185,14 @@ public sealed class ConversationState
     {
         if (FindAssistant(requestId) is { } existing) return existing;
         var message = new DialogueMessage(requestId, "assistant", string.Empty, [], []);
-        Messages = Messages.Add(message);
+        Messages = AppendMessage(message);
         return message;
+    }
+
+    private ImmutableArray<DialogueMessage> AppendMessage(DialogueMessage message)
+    {
+        var next = Messages.Add(message);
+        return next.Length <= MaxMessages ? next : next.RemoveAt(0);
     }
 
     private static ImmutableArray<DialogueMessage> ToDialogueMessages(HistoryMessage history)

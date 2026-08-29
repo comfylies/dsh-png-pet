@@ -199,4 +199,20 @@ public sealed class ConversationStateTests
         Assert.False(state.HasActiveTurn);
         Assert.Equal(0, state.RequestId);
     }
+
+    [Fact]
+    public void Keeps_only_the_most_recent_twenty_conversation_turns()
+    {
+        var state = new ConversationState(previewEnabled: false, previewMaxChars: 80);
+
+        for (var requestId = 1; requestId <= 41; requestId++)
+        {
+            state.BeginInput(requestId, $"question-{requestId}", [], []);
+            state.Apply(new ReplyMessage(requestId, $"answer-{requestId}", true));
+        }
+
+        Assert.Equal(40, state.Messages.Length);
+        Assert.Equal(22, state.Messages[0].Id);
+        Assert.Equal(41, state.Messages[^1].Id);
+    }
 }
