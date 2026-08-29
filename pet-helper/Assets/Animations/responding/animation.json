@@ -1,1 +1,24 @@
-{ "clips": {} }
+{
+  "clips": {
+    "type": {
+      "frames": [
+        "type/001.png", "type/002.png", "type/003.png", "type/004.png",
+        "type/005.png", "type/006.png", "type/007.png", "type/008.png",
+        "type/009.png", "type/010.png", "type/011.png", "type/012.png",
+        "type/013.png", "type/014.png", "type/015.png", "type/016.png",
+        "type/017.png", "type/018.png", "type/019.png", "type/020.png",
+        "type/021.png", "type/022.png", "type/023.png", "type/024.png",
+        "type/025.png", "type/026.png", "type/027.png", "type/028.png",
+        "type/029.png", "type/030.png", "type/031.png", "type/032.png",
+        "type/033.png", "type/034.png", "type/035.png", "type/036.png",
+        "type/037.png", "type/038.png", "type/039.png", "type/040.png",
+        "type/041.png", "type/042.png", "type/043.png", "type/044.png",
+        "type/045.png", "type/046.png", "type/047.png", "type/048.png",
+        "type/049.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "loop",
+      "statusAnchor": { "x": 0.5, "y": 0.11 }
+    }
+  }
+}
