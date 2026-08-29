@@ -140,12 +140,17 @@ test('shows a five-second peak valley card from a short left click', () => {
   assert.match(card, /Content="×"/)
   assert.match(card, /AutomationProperties\.Name="关闭峰谷提示"/)
   assert.match(card, /Text="现在是："/)
-  assert.match(card, /x:Name="PeriodLabel"\s+Grid\.Row="1"/)
+  assert.match(card, /x:Name="PeriodHost"\s+Grid\.Row="1"/)
+  // The period label lives inside a DownOnly Viewbox: at the 75% pet scale the card is at
+  // its minimum size and an oversized glyph run shrinks instead of being clipped.
+  assert.match(card, /StretchDirection="DownOnly"/)
+  assert.match(card, /x:Name="PeriodLabel"/)
   assert.match(card, /x:Key="PeakValleyCloseButton"/)
   assert.match(card, /IsMouseOver" Value="True"[\s\S]*#14000000/)
   assert.match(cardCode, /TimeSpan\.FromSeconds\(5\)/)
   assert.match(cardCode, /"梁文峰"/)
   assert.match(cardCode, /"梁文谷"/)
+  assert.match(cardCode, /Math\.Clamp\(placement\.Height \* 0\.42d, 24d, 30d\)/)
   assert.match(cardCode, /ZCOOL KuaiLe/)
   assert.match(pet, /MouseMove="Pet_MouseMove"/)
   assert.match(pet, /MouseLeftButtonUp="Pet_MouseLeftButtonUp"/)
