@@ -84,6 +84,19 @@ test('publishes a fixed outputting activity after an assistant text event', () =
   ])
 })
 
+test('does not resend an unchanged visible activity for every streamed event', () => {
+  const sent = []
+  const bridge = new CompanionBridge((message) => sent.push(message))
+
+  bridge.apply({ sessionId: 's', seq: 1, isSubagent: false, kind: 'responding' })
+  bridge.apply({ sessionId: 's', seq: 2, isSubagent: false, kind: 'responding' })
+  bridge.apply({ sessionId: 's', seq: 3, isSubagent: false, kind: 'thinking' })
+
+  assert.deepEqual(sent, [
+    { kind: 'state', state: 'active', label: '输出中…', activities: ['responding'], sequence: 1 },
+  ])
+})
+
 test('adapts events through observers without forwarding their data', () => {
   const sent = []
   const bridge = new CompanionBridge((message) => sent.push(message))

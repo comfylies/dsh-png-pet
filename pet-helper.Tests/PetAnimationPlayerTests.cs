@@ -10,6 +10,23 @@ namespace PetHelper.Tests;
 public sealed class PetAnimationPlayerTests
 {
     [Fact]
+    public void Starting_a_large_clip_decodes_only_its_visible_first_frame()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var player = new PetAnimationPlayer(image);
+
+            player.Apply(PetAnimationKey.Responding, reducedMotion: false);
+
+            Assert.NotNull(image.Source);
+            Assert.Equal(1, player.CachedFrameCount);
+            Assert.True(player.IsTimerRunning);
+            player.Stop();
+        });
+    }
+
+    [Fact]
     public void Uses_the_static_placeholder_without_animation_when_the_manifest_is_missing()
     {
         AssertStaticFallback(static () => null);

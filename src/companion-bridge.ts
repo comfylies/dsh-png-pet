@@ -29,6 +29,7 @@ export class CompanionBridge {
   private readonly clock: BridgeClock
   private timer?: unknown
   private lastPresentation?: Presentation
+  private lastSentPresentation?: Presentation
 
   public constructor(
     private readonly send: (message: HostOutboundMessage) => void,
@@ -55,17 +56,18 @@ export class CompanionBridge {
       this.reducer.disposeTerminal(this.lastPresentation.sequence)
       presentation = this.reducer.current()
     }
-    if (!force && samePresentation(presentation, this.lastPresentation)) return
-
     this.clearTerminalTimer()
     this.lastPresentation = presentation
-    this.send({
-      kind: 'state',
-      state: presentation.state,
-      activities: [...presentation.activities],
-      label: labelForPresentation(presentation.state, presentation.activities),
-      sequence: presentation.sequence,
-    })
+    if (force || !sameVisiblePresentation(presentation, this.lastSentPresentation)) {
+      this.send({
+        kind: 'state',
+        state: presentation.state,
+        activities: [...presentation.activities],
+        label: labelForPresentation(presentation.state, presentation.activities),
+        sequence: presentation.sequence,
+      })
+      this.lastSentPresentation = presentation
+    }
     if (presentation.terminal) {
       this.scheduleIdle(
         presentation.sequence,
@@ -107,6 +109,19 @@ function samePresentation(first: Presentation, second: Presentation | undefined)
   return second !== undefined
     && first.state === second.state
     && first.sequence === second.sequence
+    && first.terminal === second.terminal
+    && first.activities.length === second.activities.length
+    && first.activities.every((activity, index) => activity === second.activities[index])
+}
+
+/**
+ * Session events advance their sequence for ordering, but sequence is not a visual property.
+ * In particular, a streamed reply can emit many `responding` facts per second.  Forwarding
+ * each one makes the WPF UI queue compete with its animation timer despite no visible change.
+ */
+function sameVisiblePresentation(first: Presentation, second: Presentation | undefined): boolean {
+  return second !== undefined
+    && first.state === second.state
     && first.terminal === second.terminal
     && first.activities.length === second.activities.length
     && first.activities.every((activity, index) => activity === second.activities[index])

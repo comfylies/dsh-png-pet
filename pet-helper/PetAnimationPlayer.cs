@@ -16,6 +16,7 @@ public sealed class PetAnimationPlayer
     private PetAnimationPlayback? playback;
     private readonly DispatcherTimer timer;
     private readonly Dictionary<string, BitmapImage> imagesByFrame = new(StringComparer.Ordinal);
+    private readonly HashSet<string> availableFrames = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
 
     public event EventHandler? Completed;
@@ -45,7 +46,9 @@ public sealed class PetAnimationPlayer
         this.image = image ?? throw new ArgumentNullException(nameof(image));
         this.staticPlaceholderLoader = staticPlaceholderLoader
             ?? throw new ArgumentNullException(nameof(staticPlaceholderLoader));
-        timer = new DispatcherTimer();
+        // State updates from a streaming reply arrive at normal dispatcher priority.  Render
+        // priority keeps the fixed-rate frame timer from being starved by that input burst.
+        timer = new DispatcherTimer(DispatcherPriority.Render);
         timer.Tick += Timer_Tick;
 
         try
@@ -115,6 +118,8 @@ public sealed class PetAnimationPlayer
 
     internal bool IsTimerRunning => timer.IsEnabled;
 
+    internal int CachedFrameCount => imagesByFrame.Count;
+
     public PetStatusAnchor StatusAnchor => playback?.StatusAnchor ?? PetStatusAnchor.Default;
 
     private void Timer_Tick(object? sender, EventArgs e)
@@ -139,14 +144,12 @@ public sealed class PetAnimationPlayer
             return;
         }
 
-        image.Source = imagesByFrame.TryGetValue(playback.Frame, out var bitmap)
-            ? bitmap
-            : null;
+        image.Source = TryLoadFrame(playback.Frame);
     }
 
     private bool IsFrameAvailable(string frame)
     {
-        if (imagesByFrame.ContainsKey(frame))
+        if (imagesByFrame.ContainsKey(frame) || availableFrames.Contains(frame))
         {
             return true;
         }
@@ -158,8 +161,14 @@ public sealed class PetAnimationPlayer
 
         try
         {
-            var bitmap = LoadBitmap(new Uri($"pack://application:,,,/Assets/{frame}", UriKind.Absolute));
-            imagesByFrame.Add(frame, bitmap);
+            // Resolve() checks every frame in a clip.  Decoding all 32/49 720px PNGs here
+            // blocks the UI for the whole state transition.  Opening the controlled resource
+            // is enough to establish availability; only the currently displayed frame is
+            // decoded below.
+            var resource = System.Windows.Application.GetResourceStream(FrameUri(frame));
+            if (resource?.Stream is null) throw new IOException();
+            using (resource.Stream) { }
+            availableFrames.Add(frame);
             return true;
         }
         catch
@@ -168,6 +177,26 @@ public sealed class PetAnimationPlayer
             return false;
         }
     }
+
+    private ImageSource? TryLoadFrame(string frame)
+    {
+        if (imagesByFrame.TryGetValue(frame, out var bitmap)) return bitmap;
+        try
+        {
+            bitmap = LoadBitmap(FrameUri(frame));
+            imagesByFrame.Add(frame, bitmap);
+            availableFrames.Add(frame);
+            return bitmap;
+        }
+        catch
+        {
+            unavailableFrames.Add(frame);
+            return null;
+        }
+    }
+
+    private static Uri FrameUri(string frame) =>
+        new($"pack://application:,,,/pet-helper;component/Assets/{frame}", UriKind.Absolute);
 
     private void ActivateStaticFallback()
     {
@@ -192,7 +221,7 @@ public sealed class PetAnimationPlayer
     {
         try
         {
-            return LoadBitmap(new Uri("pack://application:,,,/Assets/placeholder-a.png", UriKind.Absolute));
+            return LoadBitmap(FrameUri("placeholder-a.png"));
         }
         catch
         {
