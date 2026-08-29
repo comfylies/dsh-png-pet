@@ -12,3 +12,5 @@ pet-helper.Tests/obj/
 *.user
 *.tgz
 publish-to-github.ps1
+.vs/
+images/
