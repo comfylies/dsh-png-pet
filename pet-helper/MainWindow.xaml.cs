@@ -169,7 +169,7 @@ public partial class MainWindow : Window
         if (e.ClickCount == 2)
         {
             pointerGesture.Cancel();
-            if (IsMouseCaptured) ReleaseMouseCapture();
+            if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
             peakValleyCard?.Dismiss();
             ToggleDialogueWindow();
             e.Handled = true;
@@ -179,7 +179,7 @@ public partial class MainWindow : Window
         pointerGesture.Begin(
             e.GetPosition(this),
             combinedDrag: (Keyboard.Modifiers & ModifierKeys.Control) != 0);
-        CaptureMouse();
+        PetLayout.CaptureMouse();
         e.Handled = true;
     }
 
@@ -195,7 +195,7 @@ public partial class MainWindow : Window
         }
 
         var useCombinedDrag = pointerGesture.CombinedDrag;
-        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
         StartPetDrag(useCombinedDrag);
     }
 
@@ -203,7 +203,7 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left) return;
         var action = pointerGesture.Release();
-        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
         if (action == PetPointerAction.ShowPeakValleyCard)
         {
             ShowPeakValleyCard();

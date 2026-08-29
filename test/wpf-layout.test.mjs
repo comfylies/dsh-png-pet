@@ -148,6 +148,9 @@ test('shows a five-second peak valley card from a short left click', () => {
   assert.match(petCode, /SystemParameters\.MinimumHorizontalDragDistance/)
   assert.match(petCode, /ShowPeakValleyCard\(\)/)
   assert.match(petCode, /PeakValleySchedule\.Current\(\)/)
+  assert.match(petCode, /PetLayout\.CaptureMouse\(\)/)
+  assert.match(petCode, /PetLayout\.ReleaseMouseCapture\(\)/)
+  assert.doesNotMatch(petCode, /(?<!PetLayout\.)CaptureMouse\(\)/)
 })
 
 test('lets the dialogue window drag, resize, and remember its position', () => {
