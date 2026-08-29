@@ -172,9 +172,16 @@ test('lets the dialogue window drag, resize, and remember its position', () => {
   assert.match(code, /ShowDialogue\(/)
   assert.doesNotMatch(code, /CaptureMouse\(\)/)
   assert.doesNotMatch(code, /WindowMover\.MoveAndResize/)
-  assert.doesNotMatch(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)
+  // A fixed small max size fights Aero Snap: the OS snaps to a half-screen width the
+  // window cannot take, leaving it immovable and unresizable; the max is derived from
+  // the current work area instead and refreshed on move/resize.
+  assert.match(xaml, /SizeChanged="DialogueWindow_SizeChanged"/)
+  assert.match(xaml, /LocationChanged="DialogueWindow_LocationChanged"/)
+  assert.doesNotMatch(xaml, /MaxWidth="800"/)
+  assert.doesNotMatch(xaml, /MaxHeight="900"/)
+  assert.match(code, /UpdateMaxSize\(\)/)
+  assert.match(code, /DialogueWindowState\.MaxSizeFor/)
   assert.match(xaml, /MinWidth="220"/)
-  assert.match(xaml, /MaxHeight="900"/)
 })
 
 test('uses the dialogue visual language for the pet menu and collapsed target tree', () => {

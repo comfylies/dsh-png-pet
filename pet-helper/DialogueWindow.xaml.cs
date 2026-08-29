@@ -13,7 +13,6 @@ namespace PetHelper;
 public partial class DialogueWindow : Window
 {
     private static readonly Size MinSize = new(DialogueWindowState.MinWidth, DialogueWindowState.MinHeight);
-    private static readonly Size MaxSize = new(DialogueWindowState.MaxWidth, DialogueWindowState.MaxHeight);
 
     private const int MaxPendingAttachments = 4;
     private const int MaxImageBytes = 2 * 1024 * 1024;
@@ -44,11 +43,36 @@ public partial class DialogueWindow : Window
         this.screenLayout = screenLayout;
         RestoreState();
         restoringState = false;
+        UpdateMaxSize();
         MessageList.ItemsSource = messages;
         PendingAttachmentsList.ItemsSource = pendingAttachments;
         streamFlushTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
         streamFlushTimer.Tick += StreamFlushTick;
         streamFlushTimer.Start();
+    }
+
+    private void DialogueWindow_LocationChanged(object? sender, EventArgs e) => UpdateMaxSize();
+
+    private void DialogueWindow_SizeChanged(object? sender, SizeChangedEventArgs e) => UpdateMaxSize();
+
+    /// <summary>
+    /// Drives the runtime maximum size from the work area the window currently sits in. A
+    /// fixed small MaxWidth/MaxHeight fights Windows Aero Snap: snapping to a half screen
+    /// asks for a width the window cannot take, so the OS believes the window is snapped
+    /// while its size never matched — afterwards the window cannot be dragged or resized.
+    /// Capping at (almost) the work area lets every snap complete; the window still cannot
+    /// exceed the screen. Re-evaluated on every move/resize so snapping to another monitor
+    /// or dragging across displays keeps a usable cap.
+    /// </summary>
+    private void UpdateMaxSize()
+    {
+        var max = DialogueWindowState.MaxSizeFor(screenLayout.WorkAreaFor(CurrentRect()));
+        if (Math.Abs(MaxWidth - max.Width) < 0.5 && Math.Abs(MaxHeight - max.Height) < 0.5)
+        {
+            return;
+        }
+        MaxWidth = max.Width;
+        MaxHeight = max.Height;
     }
 
     /// <summary>
