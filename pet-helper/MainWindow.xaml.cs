@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace PetHelper;
 
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     private DialogueWindow? dialogueWindow;
     private PeakValleyCardWindow? peakValleyCard;
     private readonly PetPointerGesture pointerGesture = new();
+    private readonly DispatcherTimer singleClickTimer = new();
 
     private bool dragging;
     private bool combinedDrag;
@@ -47,12 +49,18 @@ public partial class MainWindow : Window
         this.screenLayout = screenLayout;
         animationPlayer = new PetAnimationPlayer(PetImage);
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion: false);
+        singleClickTimer.Tick += (_, _) =>
+        {
+            singleClickTimer.Stop();
+            ShowPeakValleyCard();
+        };
         RestoreState();
         restoringState = false;
         Loaded += (_, _) => UpdateStateBubblePosition();
         Closed += (_, _) =>
         {
             animationPlayer.Stop();
+            singleClickTimer.Stop();
             peakValleyCard?.CloseCard();
         };
     }
@@ -100,6 +108,7 @@ public partial class MainWindow : Window
         reducedMotion = config.ReducedMotion;
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
+        CancelPendingPeakValleyCard();
         peakValleyCard?.Dismiss();
         UpdateStateBubblePosition();
         SaveState();
@@ -170,6 +179,7 @@ public partial class MainWindow : Window
         {
             pointerGesture.Cancel();
             if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
+            CancelPendingPeakValleyCard();
             peakValleyCard?.Dismiss();
             ToggleDialogueWindow();
             e.Handled = true;
@@ -206,7 +216,7 @@ public partial class MainWindow : Window
         if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
         if (action == PetPointerAction.ShowPeakValleyCard)
         {
-            ShowPeakValleyCard();
+            SchedulePeakValleyCard();
         }
         e.Handled = true;
     }
@@ -220,8 +230,18 @@ public partial class MainWindow : Window
         peakValleyCard.ShowPeriod(PeakValleySchedule.Current(), head, screenLayout, head.Height);
     }
 
+    private void SchedulePeakValleyCard()
+    {
+        singleClickTimer.Stop();
+        singleClickTimer.Interval = TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime);
+        singleClickTimer.Start();
+    }
+
+    private void CancelPendingPeakValleyCard() => singleClickTimer.Stop();
+
     private void StartPetDrag(bool useCombinedDrag)
     {
+        CancelPendingPeakValleyCard();
         peakValleyCard?.Dismiss();
         combinedDrag = useCombinedDrag;
         dragStartPetRect = CurrentRect();
@@ -352,6 +372,7 @@ public partial class MainWindow : Window
 
     private void HideMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        CancelPendingPeakValleyCard();
         peakValleyCard?.Dismiss();
         SaveState();
         Hide();
