@@ -86,6 +86,12 @@ test('defers the helper until settings injection registers the dialogue scope an
     defaultWorkspaceId: null,
     previewEnabled: false,
     previewMaxChars: 480,
+    scale: 1,
+    reducedMotion: false,
+    petPlacement: 'center',
+    dialoguePlacement: 'near-pet',
+    dialogueWidth: 320,
+    dialogueHeight: 420,
   })
   assert.deepEqual(calls.slice(4), ['watch'])
   assert.equal(calls.includes('start'), true)

@@ -16,7 +16,7 @@ public sealed class PetTrayIcon : IDisposable
 
         notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = LoadApplicationIcon(),
             Text = "DSH PNG 桌宠",
             ContextMenuStrip = menu,
             Visible = false,
@@ -30,5 +30,13 @@ public sealed class PetTrayIcon : IDisposable
     {
         notifyIcon.Dispose();
         menu.Dispose();
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        var executablePath = Environment.ProcessPath;
+        return executablePath is null
+            ? SystemIcons.Application
+            : Icon.ExtractAssociatedIcon(executablePath) ?? SystemIcons.Application;
     }
 }

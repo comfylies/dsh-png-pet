@@ -1,4 +1,6 @@
-export const PROTOCOL_VERSION = 6 as const
+import type { DialoguePlacement, PetPlacement } from './dialogue-settings.js'
+
+export const PROTOCOL_VERSION = 7 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -112,7 +114,7 @@ export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | Helper
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
-  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
+  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
@@ -124,7 +126,7 @@ export type HostMessage =
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
-  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean }
+  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { kind: 'input-status', requestId: number, status: InputStatus }
@@ -140,6 +142,8 @@ const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
 const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'target-request'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
+const petPlacements = new Set<PetPlacement>(['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
+const dialoguePlacements = new Set<DialoguePlacement>(['near-pet', 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
 const compositeActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected', 'stopped', 'interrupted', 'failed'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
@@ -226,11 +230,22 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       assertExactKeys(value, ['version', 'kind'], 'host message', ['kind'])
       return { kind: value.kind }
     case 'config':
-      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion'], 'host message', ['kind', 'scale', 'reducedMotion'])
-      if (typeof value.scale !== 'number' || !scales.has(value.scale) || typeof value.reducedMotion !== 'boolean') {
+      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight'], 'host message', ['kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight'])
+      if (typeof value.scale !== 'number' || !scales.has(value.scale) || typeof value.reducedMotion !== 'boolean'
+        || typeof value.petPlacement !== 'string' || !petPlacements.has(value.petPlacement as PetPlacement)
+        || typeof value.dialoguePlacement !== 'string' || !dialoguePlacements.has(value.dialoguePlacement as DialoguePlacement)
+        || !isDialogueWidth(value.dialogueWidth) || !isDialogueHeight(value.dialogueHeight)) {
         throw new Error('host message has an invalid config')
       }
-      return { kind: 'config', scale: value.scale as 0.75 | 1 | 1.25 | 1.5, reducedMotion: value.reducedMotion }
+      return {
+        kind: 'config',
+        scale: value.scale as 0.75 | 1 | 1.25 | 1.5,
+        reducedMotion: value.reducedMotion,
+        petPlacement: value.petPlacement as PetPlacement,
+        dialoguePlacement: value.dialoguePlacement as DialoguePlacement,
+        dialogueWidth: value.dialogueWidth,
+        dialogueHeight: value.dialogueHeight,
+      }
     case 'state':
       assertExactKeys(value, ['version', 'kind', 'state', 'activities', 'label', 'sequence'], 'host message', ['kind', 'state', 'activities', 'label', 'sequence'])
       if (typeof value.state !== 'string' || (value.state !== 'active' && !Object.hasOwn(displayLabels, value.state))) {
@@ -443,6 +458,14 @@ function isPreviewMaxChars(value: unknown): value is number {
     && Number.isSafeInteger(value)
     && value >= minPreviewMaxChars
     && value <= REPLY_MAX_CHARS
+}
+
+function isDialogueWidth(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 220 && value <= 4000
+}
+
+function isDialogueHeight(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 240 && value <= 3000
 }
 
 function isCanonicalActivities(state: State, value: unknown): value is readonly Activity[] {

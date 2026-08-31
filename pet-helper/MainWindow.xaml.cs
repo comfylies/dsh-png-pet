@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private PetDisplayState lastDisplayState = new("idle", string.Empty, 0);
     private bool reducedMotion;
     private bool restoringState = true;
+    private bool hasSavedPlacement;
+    private double defaultScale = 1d;
+    private string defaultPetPlacement = DefaultLayout.Center;
     private DialogueWindow? dialogueWindow;
     private PeakValleyCardWindow? peakValleyCard;
     private readonly PetPointerGesture pointerGesture = new();
@@ -105,9 +108,16 @@ public partial class MainWindow : Window
 
     public void ApplyConfig(ConfigMessage config)
     {
+        defaultScale = config.Scale;
+        defaultPetPlacement = config.PetPlacement;
         reducedMotion = config.ReducedMotion;
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
+        if (!hasSavedPlacement)
+        {
+            ApplyDefaultPlacement(config.PetPlacement);
+            hasSavedPlacement = true;
+        }
         CancelPendingPeakValleyCard();
         peakValleyCard?.Dismiss();
         UpdateStateBubblePosition();
@@ -122,7 +132,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RestoreState() => ApplyState(stateStore.Load());
+    private void RestoreState()
+    {
+        var state = stateStore.Load();
+        hasSavedPlacement = state.Left is not null && state.Top is not null;
+        ApplyState(state);
+    }
+
+    private void ApplyDefaultPlacement(string placement)
+    {
+        var target = DefaultLayout.Place(placement, screenLayout.PrimaryWorkArea, new Size(Width, Height));
+        Left = target.X;
+        Top = target.Y;
+    }
 
     private void ApplyState(PetWindowState state)
     {
@@ -366,7 +388,9 @@ public partial class MainWindow : Window
 
     private void ResetMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        ApplyState(CurrentState().Reset());
+        ApplyState(PetWindowState.Normalize(null, null, defaultScale));
+        ApplyDefaultPlacement(defaultPetPlacement);
+        hasSavedPlacement = true;
         SaveState();
     }
 

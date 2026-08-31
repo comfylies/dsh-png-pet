@@ -38,6 +38,8 @@ export class DialogueController {
   private lastSettings: DialogueSettings
   private currentInputRequestId?: number
   private currentInputSessionId?: string
+  /** A right-click target only lives until the host exits and never changes settings. */
+  private temporaryTarget?: { sessionId: string, workspaceId: string | null }
 
   public constructor(
     private readonly ctx: DshDialogueContext,
@@ -49,32 +51,35 @@ export class DialogueController {
   public publishConversationConfig(): void {
     const settings = this.ctx.settings.get()
     this.lastSettings = settings
+    const target = this.effectiveTarget(settings)
     this.send({
       kind: 'conversation-config',
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
-      defaultSessionId: settings.defaultSessionId,
-      defaultWorkspaceId: settings.defaultWorkspaceId,
+      defaultSessionId: target.sessionId,
+      defaultWorkspaceId: target.workspaceId,
     })
     if (!settings.previewEnabled) this.clearAll('disabled')
   }
 
   public settingsChanged(settings = this.ctx.settings.get(), previous = this.lastSettings): void {
+    const previousTarget = this.effectiveTarget(previous)
     this.lastSettings = settings
+    const target = this.effectiveTarget(settings)
     this.send({
       kind: 'conversation-config',
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
-      defaultSessionId: settings.defaultSessionId,
-      defaultWorkspaceId: settings.defaultWorkspaceId,
+      defaultSessionId: target.sessionId,
+      defaultWorkspaceId: target.workspaceId,
     })
 
     if (previous.previewEnabled && !settings.previewEnabled) {
       this.clearAll('disabled')
       return
     }
-    if (previous.defaultSessionId !== settings.defaultSessionId) {
-      if (this.currentInputSessionId === previous.defaultSessionId) {
+    if (previousTarget.sessionId !== target.sessionId) {
+      if (this.currentInputSessionId === previousTarget.sessionId) {
         this.currentInputRequestId = undefined
         this.currentInputSessionId = undefined
       }
@@ -90,6 +95,21 @@ export class DialogueController {
       if (request.previewEnabled && request.preview.length > 0) {
         this.send({ kind: 'reply-preview', requestId: request.requestId, text: request.preview, completed: false })
       }
+    }
+  }
+
+  /** Right-click selection is deliberately transient; a saved default always wins. */
+  public setTemporaryTarget(sessionId: string, workspaceId: string | null): void {
+    const previous = this.effectiveTarget(this.ctx.settings.get())
+    this.temporaryTarget = { sessionId, workspaceId }
+    const next = this.effectiveTarget(this.ctx.settings.get())
+    this.publishConversationConfig()
+    if (previous.sessionId !== next.sessionId) {
+      if (this.currentInputSessionId === previous.sessionId) {
+        this.currentInputRequestId = undefined
+        this.currentInputSessionId = undefined
+      }
+      this.clearAll('cancelled')
     }
   }
 
@@ -109,7 +129,7 @@ export class DialogueController {
     this.currentInputSessionId = undefined
     this.clearAll('next-input')
     const settings = this.ctx.settings.get()
-    const sessionId = settings.defaultSessionId
+    const sessionId = this.effectiveTarget(settings).sessionId
     if (sessionId === null) {
       this.send({ kind: 'input-status', requestId: input.requestId, status: 'no-default-session' })
       return
@@ -201,7 +221,7 @@ export class DialogueController {
   /** Aborts the live turn. The terminal reply-preview/status are driven by the resulting aborted turn/end. */
   public stop(requestId: number): void {
     const settings = this.ctx.settings.get()
-    const sessionId = this.currentInputSessionId ?? settings.defaultSessionId
+    const sessionId = this.currentInputSessionId ?? this.effectiveTarget(settings).sessionId
     if (sessionId === null || sessionId === undefined) return
     const agent = this.ctx.agents.get(sessionId)
     if (agent === undefined) return
@@ -303,7 +323,7 @@ export class DialogueController {
 
   public async requestHistory(requestId: number): Promise<void> {
     const settings = this.ctx.settings.get()
-    const sessionId = this.currentInputSessionId ?? settings.defaultSessionId
+    const sessionId = this.currentInputSessionId ?? this.effectiveTarget(settings).sessionId
     if (sessionId === null || sessionId === undefined) {
       this.send({ kind: 'conversation-history', requestId, available: false, messages: [] })
       return
@@ -338,6 +358,7 @@ export class DialogueController {
     }
     this.clearForSession(sessionId, 'session-unavailable')
     const settings = this.ctx.settings.get()
+    if (this.temporaryTarget?.sessionId === sessionId) this.temporaryTarget = undefined
     this.clearConfiguredSession(sessionId, settings)
   }
 
@@ -360,6 +381,13 @@ export class DialogueController {
     } catch {
       // Settings cleanup is best effort; it must never affect the DSH event pipeline.
     }
+  }
+
+  private effectiveTarget(settings: DialogueSettings): { sessionId: string | null, workspaceId: string | null } {
+    if (settings.defaultSessionId !== null) {
+      return { sessionId: settings.defaultSessionId, workspaceId: settings.defaultWorkspaceId }
+    }
+    return this.temporaryTarget ?? { sessionId: null, workspaceId: null }
   }
 
   private clearForSession(sessionId: string, reason: 'session-unavailable'): void {

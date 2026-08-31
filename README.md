@@ -41,6 +41,26 @@ Copy-Item .\dsh-png-pet-<version>.tgz C:\dsh-packages\
 
 确认列表显示目标版本后，重启 DSH Harness；已运行的 Harness 不会自动加载更新。`.tgz` 是本地安装产物，已由 `.gitignore` 排除，不应提交到仓库。如果不知道怎么安装，可以让 AI 帮忙。
 
+## 双击启动桌宠
+
+安装并启用插件后，可以直接双击项目根目录的 `启动 DSH 桌宠.vbs`。它会隐藏控制台并启动 `dsh web --no-open`，因此不会自动打开浏览器；桌宠会在 DSH 完成插件加载后出现。
+
+启动器优先使用全局安装的 DSH：
+
+```powershell
+npm install -g @deepseek-ai/dsh
+```
+
+未检测到全局安装时，它会回退使用 `npx -y @deepseek-ai/dsh`。首次运行需要网络下载，日常使用仍建议全局安装以固定并加快启动。
+
+如需在桌面创建一个真正的 Windows 快捷方式（`.lnk`），在项目根目录执行一次：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\new-dsh-pet-shortcut.ps1
+```
+
+脚本默认创建 `桌面\启动 DSH 桌宠.lnk`，如果同名快捷方式已存在会停止而不会覆盖。该快捷方式只负责启动 DSH；请从 DSH 的退出操作退出 Host，桌宠会随之有序关闭。
+
 ## 动画资源
 
 - 动作清单位于 `pet-helper/Assets/pet-animations.json`。

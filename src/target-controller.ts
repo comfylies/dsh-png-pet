@@ -11,9 +11,9 @@ type TargetSnapshot = {
 
 /**
  * Drives the target-selection card: loads workspace/session data on `target-open`,
- * answers picks by persisting `defaultSessionId` (+ the derived owning
- * `defaultWorkspaceId` hint), creates workspaces/sessions on demand, and mirrors
- * failures back to the card as a retryable error state.
+ * answers picks as a temporary in-memory target, creates workspaces/sessions on
+ * demand, and mirrors failures back to the card as a retryable error state. The
+ * persisted settings default remains authoritative whenever it exists.
  */
 export class TargetController {
   private lastRequestId?: number
@@ -23,6 +23,7 @@ export class TargetController {
     private readonly api: TargetApi,
     private readonly settings: DshDialogueSettingsScope,
     private readonly send: (message: HostOutboundMessage) => void,
+    private readonly selectTemporaryTarget: (sessionId: string, workspaceId: string | null) => void = () => {},
   ) {}
 
   public async open(message: HelperTargetOpenMessage): Promise<void> {
@@ -66,17 +67,13 @@ export class TargetController {
     const created = await createSession(this.api, workspaceId ?? undefined)
     this.lastSnapshot = await this.loadSnapshot()
     const derived = workspaceOfSession(created.sessionId, this.lastSnapshot.workspaces)
-    await this.persistSelection(created.sessionId, derived)
+    this.selectTemporaryTarget(created.sessionId, derived)
   }
 
   /** Selecting an existing session: the owning workspace is derived fresh, never trusted from the UI. */
   private async answerSessionPick(sessionId: string, workspaceId: string | null): Promise<void> {
     const derived = workspaceId ?? await this.deriveOwnership(sessionId)
-    await this.persistSelection(sessionId, derived)
-  }
-
-  private async persistSelection(sessionId: string, workspaceId: string | null): Promise<void> {
-    await this.settings.update({ defaultSessionId: sessionId, defaultWorkspaceId: workspaceId })
+    this.selectTemporaryTarget(sessionId, derived)
   }
 
   private async deriveOwnership(sessionId: string): Promise<string | null> {

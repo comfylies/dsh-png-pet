@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import test from 'node:test'
 import vm from 'node:vm'
-import { projectSessionOptions } from '../lib/client-settings-model.js'
+import { projectSessionOptions, projectWorkspaceSessionTree } from '../lib/client-settings-model.js'
 
 const nodeRequire = createRequire(import.meta.url)
 
@@ -43,7 +43,7 @@ test('uses the DSH session display title and never reads cwd', () => {
 test('declares the built-in DSH settings transport injections', async () => {
   const client = await loadClientBundle()
 
-  assert.deepEqual([...client.inject], ['sessions', 'settingsScope', 'connection', 'remote', 'slots'])
+  assert.deepEqual([...client.inject], ['sessions', 'workspaces', 'settingsScope', 'connection', 'remote', 'slots'])
   assert.equal(typeof client.apply, 'function')
 })
 
@@ -69,6 +69,20 @@ test('binds the standard DSH settings scope through ctx.get', async () => {
   assert.deepEqual(requested, ['settingsScope'])
 })
 
+test('decodes the Host-resolved settings view after a transformed schema write', async () => {
+  const client = await loadClientBundle()
+  const value = client.decodeDialogueSettings({
+    defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
+    scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+  })
+
+  assert.equal(JSON.stringify(value), JSON.stringify({
+    defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
+    scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+  }))
+  assert.equal(client.decodeDialogueSettings({ defaultSessionId: 's-1' }), undefined)
+})
+
 test('writes preview settings through the standard scope setter', async () => {
   const client = await loadClientBundle()
   const writes = []
@@ -80,10 +94,21 @@ test('writes preview settings through the standard scope setter', async () => {
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 80), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8000), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8001), false)
+  assert.equal(await client.writeDialogueSetting(scope, 'scale', 1.25), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'petPlacement', 'bottom-right'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'dialoguePlacement', 'near-pet'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'dialogueWidth', 220), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'dialogueHeight', 240), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'dialogueWidth', 219), false)
   assert.deepEqual(writes, [
     ['previewEnabled', true],
     ['previewMaxChars', 80],
     ['previewMaxChars', 8000],
+    ['scale', 1.25],
+    ['petPlacement', 'bottom-right'],
+    ['dialoguePlacement', 'near-pet'],
+    ['dialogueWidth', 220],
+    ['dialogueHeight', 240],
   ])
 })
 
@@ -97,6 +122,7 @@ test('shows the fixed unavailable-session error when the configured default disa
   const client = await loadClientBundle()
   const state = client.projectDialogueSettingsView(
     { ids: ['s-1'], byId: { 's-1': { id: 's-1', displayTitle: '现有会话' } } },
+    { items: [], archivedSessionIds: [], baselinesReady: true },
     { status: 'ready', value: { defaultSessionId: 'removed', previewEnabled: false, previewMaxChars: 480 } },
     false,
   )
@@ -111,6 +137,7 @@ test('keeps fixed list and write errors distinct', async () => {
   assert.equal(
     client.projectDialogueSettingsView(
       { ids: undefined, byId: undefined },
+      { items: undefined, archivedSessionIds: undefined, baselinesReady: undefined },
       { status: 'loading', value: undefined },
       false,
     ).error,
@@ -119,11 +146,26 @@ test('keeps fixed list and write errors distinct', async () => {
   assert.equal(
     client.projectDialogueSettingsView(
       { ids: [], byId: {} },
+      { items: [], archivedSessionIds: [], baselinesReady: true },
       { status: 'ready', value: undefined },
       true,
     ).error,
     '无法保存桌宠设置。',
   )
+})
+
+test('does not disable session selection while the workspace baseline is still loading', async () => {
+  const client = await loadClientBundle()
+  const state = client.projectDialogueSettingsView(
+    { ids: ['s-1'], byId: { 's-1': { id: 's-1', displayTitle: '现有会话' } } },
+    { items: undefined, archivedSessionIds: undefined, baselinesReady: false },
+    { status: 'ready', value: undefined },
+    false,
+  )
+
+  assert.equal(state.listUnavailable, false)
+  assert.equal(state.error, undefined)
+  assert.equal(JSON.stringify(state.tree.ungrouped), JSON.stringify([{ id: 's-1', title: '现有会话' }]))
 })
 
 test('registers the desktop-pet settings section', async () => {
@@ -136,6 +178,7 @@ test('registers the desktop-pet settings section', async () => {
         subscribe: () => () => {},
       },
     },
+    workspaces: { list: { getSnapshot: () => ({ items: [], archivedSessionIds: [], baselinesReady: true }), subscribe: () => () => {} } },
     get: (service) => {
       assert.equal(service, 'settingsScope')
       return { bind: () => ({
@@ -184,6 +227,7 @@ test('keeps SettingsScope snapshot methods bound to the scope', async () => {
   }
   const ctx = {
     sessions: { list: { getSnapshot: () => ({ ids: [], byId: {} }), subscribe: () => () => {} } },
+    workspaces: { list: { getSnapshot: () => ({ items: [], archivedSessionIds: [], baselinesReady: true }), subscribe: () => () => {} } },
     get: () => ({ bind: () => scope }),
     slots: {
       inject: (_name, factory) => factory(),
@@ -195,4 +239,27 @@ test('keeps SettingsScope snapshot methods bound to the scope', async () => {
   const element = registrations[0]()
 
   assert.doesNotThrow(() => element.type(element.props))
+})
+
+test('projects a two-level workspace tree without reading paths, cwd, or archived sessions', () => {
+  const workspaceAccess = []
+  const workspace = new Proxy(
+    { workspaceId: 'w-1', title: '桌宠项目', sessionIds: ['s-1'], path: 'C:\\private' },
+    { get(target, key) { workspaceAccess.push(key); return target[key] } },
+  )
+  const tree = projectWorkspaceSessionTree(
+    [
+      { id: 's-1', displayTitle: '工作区会话' },
+      { id: 's-2', displayTitle: '未分组会话' },
+      { id: 's-3', displayTitle: '已归档会话' },
+    ],
+    [workspace],
+    ['s-3'],
+  )
+
+  assert.deepEqual(tree, {
+    workspaces: [{ id: 'w-1', title: '桌宠项目', sessions: [{ id: 's-1', title: '工作区会话' }] }],
+    ungrouped: [{ id: 's-2', title: '未分组会话' }],
+  })
+  assert.equal(workspaceAccess.includes('path'), false)
 })

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 test('names the pet image for runtime animation without a fixed source', () => {
@@ -7,6 +7,17 @@ test('names the pet image for runtime animation without a fixed source', () => {
 
   assert.match(xaml, /<Image\s+x:Name="PetImage"\s+Stretch="Uniform"\s+VerticalAlignment="Bottom"/)
   assert.doesNotMatch(xaml, /<Image[^>]*Source="Assets\/placeholder-a\.png"/)
+})
+
+test('uses the character portrait as the executable and tray icon', () => {
+  const project = readFileSync(new URL('../pet-helper/PetHelper.csproj', import.meta.url), 'utf8')
+  const tray = readFileSync(new URL('../pet-helper/PetTrayIcon.cs', import.meta.url), 'utf8')
+
+  assert.equal(existsSync('pet-helper/Assets/app-icon.ico'), true)
+  assert.match(project, /<ApplicationIcon>Assets\\app-icon\.ico<\/ApplicationIcon>/)
+  assert.match(project, /<Resource Include="Assets\\app-icon\.ico"\s*\/>/)
+  assert.match(tray, /Environment\.ProcessPath/)
+  assert.match(tray, /Icon\.ExtractAssociatedIcon\(executablePath\)/)
 })
 
 test('anchors the state bubble above the pet image instead of using a fixed margin', () => {

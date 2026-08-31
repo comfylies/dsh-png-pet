@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
@@ -35,7 +35,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v6 config and state messages', async () => {
+test('sends only typed v7 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -46,13 +46,13 @@ test('sends only typed v6 config and state messages', async () => {
   })
 
   await helper.start()
-  helper.send({ kind: 'config', scale: 1, reducedMotion: false })
+  helper.send({ kind: 'config', scale: 1, reducedMotion: false, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420 })
   helper.send({ kind: 'state', state: 'idle', activities: [], label: '', sequence: 0 })
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":6,"kind":"config","scale":1,"reducedMotion":false}\n',
-    '{"version":6,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
+    '{"version":7,"kind":"config","scale":1,"reducedMotion":false,"petPlacement":"center","dialoguePlacement":"near-pet","dialogueWidth":320,"dialogueHeight":420}\n',
+    '{"version":7,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
 })
 
@@ -76,7 +76,7 @@ test('forwards only validated helper input messages to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 6, kind: 'input', requestId: 9, text: 'hello' }])
+    assert.deepEqual(received, [{ version: 7, kind: 'input', requestId: 9, text: 'hello' }])
   } finally {
     await helper.stop()
   }
@@ -124,7 +124,7 @@ test('forwards a validated closed lifecycle message without an input body', asyn
   await helper.start()
   await helper.stop()
 
-  assert.deepEqual(received, [{ version: 6, kind: 'closed' }])
+  assert.deepEqual(received, [{ version: 7, kind: 'closed' }])
 })
 
 test('retries an input callback that throws before advancing its request id', async () => {
@@ -198,7 +198,7 @@ test('forwards a validated stop message to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 6, kind: 'stop', requestId: 9 }])
+    assert.deepEqual(received, [{ version: 7, kind: 'stop', requestId: 9 }])
   } finally {
     await helper.stop()
   }
@@ -225,12 +225,11 @@ test('forwards target-open and target-answer helper messages to onMessage', asyn
     await helper.start()
     await secondReceived
     assert.deepEqual(received, [
-      { version: 6, kind: 'target-open', requestId: 21 },
-      { version: 6, kind: 'target-answer', requestId: 22, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
+      { version: 7, kind: 'target-open', requestId: 21 },
+      { version: 7, kind: 'target-answer', requestId: 22, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
     ])
   } finally {
     await helper.stop()
   }
 })
-
 

@@ -30,7 +30,7 @@ public static class ProtocolReader
         {
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !HasVersionSix(root)) return null;
+            if (root.ValueKind != JsonValueKind.Object || !HasVersionSeven(root)) return null;
 
             return root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
                 ? kind.GetString() switch
@@ -330,18 +330,34 @@ public static class ProtocolReader
 
     private static ConfigMessage? ParseConfig(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion")
+        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight")
             || !root.TryGetProperty("scale", out var scale)
             || !root.TryGetProperty("reducedMotion", out var reducedMotion)
+            || !root.TryGetProperty("petPlacement", out var petPlacement)
+            || !root.TryGetProperty("dialoguePlacement", out var dialoguePlacement)
+            || !root.TryGetProperty("dialogueWidth", out var dialogueWidth)
+            || !root.TryGetProperty("dialogueHeight", out var dialogueHeight)
             || scale.ValueKind != JsonValueKind.Number
             || !scale.TryGetDouble(out var value)
             || reducedMotion.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || petPlacement.ValueKind != JsonValueKind.String
+            || petPlacement.GetString() is not { } petPlacementValue
+            || !DefaultLayout.IsPetPlacement(petPlacementValue)
+            || dialoguePlacement.ValueKind != JsonValueKind.String
+            || dialoguePlacement.GetString() is not { } dialoguePlacementValue
+            || !DefaultLayout.IsDialoguePlacement(dialoguePlacementValue)
+            || dialogueWidth.ValueKind != JsonValueKind.Number
+            || !dialogueWidth.TryGetInt32(out var dialogueWidthValue)
+            || dialogueWidthValue is < 220 or > 4000
+            || dialogueHeight.ValueKind != JsonValueKind.Number
+            || !dialogueHeight.TryGetInt32(out var dialogueHeightValue)
+            || dialogueHeightValue is < 240 or > 3000
             || value is not (0.75d or 1d or 1.25d or 1.5d))
         {
             return null;
         }
 
-        return new ConfigMessage(value, reducedMotion.GetBoolean());
+        return new ConfigMessage(value, reducedMotion.GetBoolean(), petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue);
     }
 
     private static StateMessage? ParseState(JsonElement root)
@@ -393,11 +409,11 @@ public static class ProtocolReader
             && requestId is > 0 and <= MaxSafeSequence;
     }
 
-    private static bool HasVersionSix(JsonElement root) =>
+    private static bool HasVersionSeven(JsonElement root) =>
         root.TryGetProperty("version", out var version)
         && version.ValueKind == JsonValueKind.Number
         && version.TryGetInt32(out var value)
-        && value == 6;
+        && value == ProtocolMessage.ProtocolVersion;
 
     private static bool HasExactlyProperties(JsonElement root, params string[] expected)
     {

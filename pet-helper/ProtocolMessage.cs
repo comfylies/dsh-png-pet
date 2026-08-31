@@ -4,14 +4,20 @@ namespace PetHelper;
 
 public abstract record ProtocolMessage(int Version, string Kind)
 {
-    public const int ProtocolVersion = 6;
+    public const int ProtocolVersion = 7;
 }
 
 public sealed record HelloMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "hello");
 
 public sealed record ShutdownMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "shutdown");
 
-public sealed record ConfigMessage(double Scale, bool ReducedMotion) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "config");
+public sealed record ConfigMessage(
+    double Scale,
+    bool ReducedMotion,
+    string PetPlacement,
+    string DialoguePlacement,
+    int DialogueWidth,
+    int DialogueHeight) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "config");
 
 public sealed record StateMessage(string State, ImmutableArray<string> Activities, string Label, long Sequence) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "state");
 

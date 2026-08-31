@@ -26,7 +26,10 @@ public partial class DialogueWindow : Window
     private long nextRequestId;
     private long historyRequestId;
     private bool restoringState = true;
+    private bool hasSavedLayout;
     private string? lastDefaultSessionId;
+    private string defaultDialoguePlacement = DefaultLayout.NearPet;
+    private Size defaultDialogueSize = new(320d, 420d);
     private string petStatusText = string.Empty;
     private bool atBottom = true;
 
@@ -83,22 +86,26 @@ public partial class DialogueWindow : Window
     public void ShowDialogue(Rect petRect)
     {
         var saved = stateStore.Load();
-        var size = new Size(saved.Width, saved.Height);
+        var size = hasSavedLayout ? new Size(saved.Width, saved.Height) : defaultDialogueSize;
         Rect target;
-        if (saved.Left is { } left && saved.Top is { } top)
+        if (hasSavedLayout && saved.Left is { } left && saved.Top is { } top)
         {
             target = PlacementPlanner.CorrectRestoredPosition(
                 new Rect(left, top, size.Width, size.Height),
                 screenLayout.WorkAreas,
                 MinSize);
         }
-        else
+        else if (defaultDialoguePlacement == DefaultLayout.NearPet)
         {
             target = PlacementPlanner.PlaceBeside(
                 petRect,
                 screenLayout.WorkAreaFor(petRect),
                 size,
                 PlacementPlanner.PetGap);
+        }
+        else
+        {
+            target = DefaultLayout.Place(defaultDialoguePlacement, screenLayout.WorkAreaFor(petRect), size);
         }
 
         Left = target.X;
@@ -122,6 +129,16 @@ public partial class DialogueWindow : Window
         var clamped = PlacementPlanner.ClampIntoWorkArea(target, screenLayout.WorkAreaFor(target));
         Left = clamped.X;
         Top = clamped.Y;
+    }
+
+    /// <summary>
+    /// Stores Harness defaults for the first show or a future reset. Existing local layout is
+    /// deliberately preserved, so editing defaults never moves a conversation the user placed.
+    /// </summary>
+    public void ApplyConfig(ConfigMessage config)
+    {
+        defaultDialoguePlacement = config.DialoguePlacement;
+        defaultDialogueSize = new Size(config.DialogueWidth, config.DialogueHeight);
     }
 
     public void ApplyConversationMessage(ProtocolMessage message)
@@ -175,11 +192,13 @@ public partial class DialogueWindow : Window
     {
         if (restoringState) return;
         stateStore.Save(new DialogueWindowState(Left, Top, ActualWidth, ActualHeight));
+        hasSavedLayout = true;
     }
 
     private void RestoreState()
     {
         var state = stateStore.Load();
+        hasSavedLayout = state.Left is not null && state.Top is not null;
         Width = state.Width;
         Height = state.Height;
         if (state.Left is { } left && state.Top is { } top)

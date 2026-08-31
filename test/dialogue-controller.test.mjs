@@ -6,6 +6,7 @@ import { DialogueController } from '../lib/dialogue-controller.js'
 function createDsh({
   settings = { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 80 },
   agent,
+  agents,
   resumedAgent,
   resumeFails = false,
   resume,
@@ -32,9 +33,9 @@ function createDsh({
       },
     },
     agents: {
-      get: (id) => id === 's-1' ? agent : undefined,
+      get: (id) => agents?.[id] ?? (id === 's-1' ? agent : undefined),
       resume: async (options) => {
-        assert.equal(options.resumeSessionId, 's-1')
+        if (agents === undefined) assert.equal(options.resumeSessionId, 's-1')
         resumeCalls.push(options)
         if (resume !== undefined) return resume(options)
         if (resumeFails) throw new Error('unavailable')
@@ -214,6 +215,49 @@ test('rejects input without a configured session and reports an unavailable sess
 
   assert.deepEqual(noDefaultSent, [{ kind: 'input-status', requestId: 7, status: 'no-default-session' }])
   assert.deepEqual(unavailableSent, [{ kind: 'input-status', requestId: 8, status: 'session-unavailable' }])
+})
+
+test('keeps a persisted default session ahead of a right-click temporary target', async () => {
+  const sent = []
+  const defaultFollowups = []
+  const temporaryFollowups = []
+  const dsh = createDsh({
+    settings: { defaultSessionId: 's-default', defaultWorkspaceId: 'w-default', previewEnabled: true, previewMaxChars: 80 },
+    agents: {
+      's-default': { status: 'idle', followup: (message) => defaultFollowups.push(message) },
+      's-temporary': { status: 'idle', followup: (message) => temporaryFollowups.push(message) },
+    },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  controller.setTemporaryTarget('s-temporary', 'w-temporary')
+  await controller.acceptInput({ requestId: 70, text: 'input omitted' })
+
+  assert.equal(defaultFollowups.length, 1)
+  assert.equal(temporaryFollowups.length, 0)
+  assert.deepEqual(dsh.writes, [])
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-config').at(-1), {
+    kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: 's-default', defaultWorkspaceId: 'w-default',
+  })
+})
+
+test('uses a right-click temporary target only when no persisted default exists', async () => {
+  const sent = []
+  const temporaryFollowups = []
+  const dsh = createDsh({
+    settings: { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: true, previewMaxChars: 80 },
+    agents: { 's-temporary': { status: 'idle', followup: (message) => temporaryFollowups.push(message) } },
+  })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  controller.setTemporaryTarget('s-temporary', 'w-temporary')
+  await controller.acceptInput({ requestId: 71, text: 'input omitted' })
+
+  assert.equal(temporaryFollowups.length, 1)
+  assert.deepEqual(dsh.writes, [])
+  assert.deepEqual(sent.filter((message) => message.kind === 'conversation-config').at(-1), {
+    kind: 'conversation-config', previewEnabled: true, previewMaxChars: 80, defaultSessionId: 's-temporary', defaultWorkspaceId: 'w-temporary',
+  })
 })
 
 test('keeps the selected session after a resume failure so the user can choose another one', async () => {

@@ -98,46 +98,52 @@ test('open publishes a retryable error state when a host call fails', async () =
   }])
 })
 
-test('picking a session persists it and derives the owning workspace', async () => {
+test('picking a session keeps settings unchanged and reports a derived temporary target', async () => {
   const sent = []
   const harness = createApi({
     workspaces: [{ workspaceId: 'w-1', path: 'C:\\a', title: 'Alpha', sessionIds: ['s-1'] }],
     sessions: [{ sessionId: 's-1', updatedAt: 5, blank: false, cwd: 'C:\\a' }],
   })
   const settings = createScope()
-  const controller = new TargetController(harness.api, settings.scope, (message) => sent.push(message))
+  const temporaryTargets = []
+  const controller = new TargetController(harness.api, settings.scope, (message) => sent.push(message), (sessionId, workspaceId) => temporaryTargets.push({ sessionId, workspaceId }))
   await controller.open({ version: 5, kind: 'target-open', requestId: 7 })
 
   await controller.answer({ version: 5, kind: 'target-answer', requestId: 7, sessionId: 's-1', workspaceId: null, newBlank: false })
 
-  assert.deepEqual(settings.current(), { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1' })
+  assert.deepEqual(settings.current(), { defaultSessionId: null, defaultWorkspaceId: null })
+  assert.deepEqual(temporaryTargets, [{ sessionId: 's-1', workspaceId: 'w-1' }])
 })
 
-test('new blank session inside a workspace is created and persisted with that workspace', async () => {
+test('new blank session inside a workspace is created as a temporary target', async () => {
   const harness = createApi({
     workspaces: [{ workspaceId: 'w-1', path: 'C:\\a', title: 'Alpha', sessionIds: [] }],
     sessions: [],
   })
   const settings = createScope()
-  const controller = new TargetController(harness.api, settings.scope, () => {})
+  const temporaryTargets = []
+  const controller = new TargetController(harness.api, settings.scope, () => {}, (sessionId, workspaceId) => temporaryTargets.push({ sessionId, workspaceId }))
   await controller.open({ version: 5, kind: 'target-open', requestId: 7 })
 
   await controller.answer({ version: 5, kind: 'target-answer', requestId: 7, sessionId: null, workspaceId: 'w-1', newBlank: true })
 
   assert.deepEqual(harness.calls.sessionCreate, [{ workspaceId: 'w-1' }])
-  assert.deepEqual(settings.current(), { defaultSessionId: 's-created', defaultWorkspaceId: 'w-1' })
+  assert.deepEqual(settings.current(), { defaultSessionId: null, defaultWorkspaceId: null })
+  assert.deepEqual(temporaryTargets, [{ sessionId: 's-created', workspaceId: 'w-1' }])
 })
 
-test('new blank session without a workspace falls back to the host cwd', async () => {
+test('new blank session without a workspace is an ungrouped temporary target', async () => {
   const harness = createApi({ workspaces: [], sessions: [] })
   const settings = createScope()
-  const controller = new TargetController(harness.api, settings.scope, () => {})
+  const temporaryTargets = []
+  const controller = new TargetController(harness.api, settings.scope, () => {}, (sessionId, workspaceId) => temporaryTargets.push({ sessionId, workspaceId }))
   await controller.open({ version: 5, kind: 'target-open', requestId: 7 })
 
   await controller.answer({ version: 5, kind: 'target-answer', requestId: 7, sessionId: null, workspaceId: null, newBlank: true })
 
   assert.deepEqual(harness.calls.sessionCreate, [{}])
-  assert.deepEqual(settings.current(), { defaultSessionId: 's-created', defaultWorkspaceId: null })
+  assert.deepEqual(settings.current(), { defaultSessionId: null, defaultWorkspaceId: null })
+  assert.deepEqual(temporaryTargets, [{ sessionId: 's-created', workspaceId: null }])
 })
 
 test('workspace create registers the directory and re-publishes so the card can enter its second level', async () => {

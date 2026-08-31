@@ -99,7 +99,11 @@ public partial class App : System.Windows.Application
                     case HelloMessage:
                         continue;
                     case ConfigMessage config:
-                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ApplyConfig(config));
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            ((MainWindow)MainWindow!).ApplyConfig(config);
+                            dialogue?.ApplyConfig(config);
+                        });
                         continue;
                     case StateMessage state:
                         await Dispatcher.InvokeAsync(() =>

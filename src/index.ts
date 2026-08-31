@@ -1,6 +1,6 @@
 import { CompanionBridge, createSessionObservers } from './companion-bridge.js'
 import { DialogueController } from './dialogue-controller.js'
-import { dialogueSettingsSchema } from './dialogue-settings.js'
+import { dialogueSettingsSchema, type DialogueSettings } from './dialogue-settings.js'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { type DshDialogueContext, type DshDialogueSettingsScope, type DshSettingsProvider } from './dsh-dialogue-types.js'
 import { HelperProcess, type HelperProcessMessage, type HelperProcessOptions } from './helper-process.js'
@@ -41,6 +41,7 @@ export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory)
 function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): void {
   let controller: DialogueController | undefined
   let targetController: TargetController | undefined
+  let settingsScope: DshDialogueSettingsScope | undefined
   let unwatchSettings = () => {}
   let helperReady = false
   const helper = createHelper({
@@ -49,9 +50,9 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
   const bridge = new CompanionBridge((message) => helper.send(message))
 
   const publishWhenReady = () => {
-    if (!helperReady || !controller) return
+    if (!helperReady || !controller || !settingsScope) return
     helper.send({ kind: 'hello' })
-    helper.send({ kind: 'config', scale: 1, reducedMotion: false })
+    helper.send(helperConfig(settingsScope.get()))
     controller.publishConversationConfig()
     bridge.publishCurrent()
   }
@@ -71,10 +72,18 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
 
   ctx.inject(['settings'], (settingsCtx) => {
     const scope = settingsCtx.settings.register(settingsNamespace('dsh-png-pet'), dialogueSettingsSchema)
+    settingsScope = scope
     const dialogueCtx = createDialogueContext(ctx, scope)
     controller = new DialogueController(dialogueCtx, (message) => helper.send(message))
-    targetController = new TargetController(ctx.apiProxy, scope, (message) => helper.send(message))
-    unwatchSettings = watchDialogueSettings(scope, controller)
+    targetController = new TargetController(
+      ctx.apiProxy,
+      scope,
+      (message) => helper.send(message),
+      (sessionId, workspaceId) => controller?.setTemporaryTarget(sessionId, workspaceId),
+    )
+    unwatchSettings = watchDialogueSettings(scope, controller, (settings) => {
+      if (helperReady) helper.send(helperConfig(settings))
+    })
     registerSessionObservers(ctx, bridge, controller)
     publishWhenReady()
   })
@@ -137,8 +146,24 @@ export function routeHelperMessage(
 export function watchDialogueSettings(
   settings: Pick<DshDialogueContext['settings'], 'watch'>,
   controller: Pick<DialogueController, 'settingsChanged'>,
+  publishConfig?: (settings: DialogueSettings) => void,
 ): () => void {
-  return settings.watch((next, previous) => controller.settingsChanged(next, previous))
+  return settings.watch((next, previous) => {
+    controller.settingsChanged(next, previous)
+    publishConfig?.(next)
+  })
+}
+
+function helperConfig(settings: DialogueSettings) {
+  return {
+    kind: 'config' as const,
+    scale: settings.scale,
+    reducedMotion: settings.reducedMotion,
+    petPlacement: settings.petPlacement,
+    dialoguePlacement: settings.dialoguePlacement,
+    dialogueWidth: settings.dialogueWidth,
+    dialogueHeight: settings.dialogueHeight,
+  }
 }
 
 export function registerSessionObservers(

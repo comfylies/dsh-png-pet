@@ -5,12 +5,32 @@ import { dialogueSettingsDefaults, dialogueSettingsSchema } from '../lib/dialogu
 import { projectSessionOptions } from '../lib/client-settings-model.js'
 import { validateDialogueSettings } from '../lib/dialogue-settings.js'
 
+const layoutDefaults = {
+  scale: 1,
+  reducedMotion: false,
+  petPlacement: 'center',
+  dialoguePlacement: 'near-pet',
+  dialogueWidth: 320,
+  dialogueHeight: 420,
+}
+
 test('uses the safe dialogue setting defaults', () => {
   assert.deepEqual(dialogueSettingsDefaults, {
     defaultSessionId: null,
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...layoutDefaults,
+  })
+})
+
+test('includes safe defaults for the pet and dialogue layout', () => {
+  assert.deepEqual(dialogueSettingsSchema({}), {
+    defaultSessionId: null,
+    defaultWorkspaceId: null,
+    previewEnabled: true,
+    previewMaxChars: 2000,
+    ...layoutDefaults,
   })
 })
 
@@ -22,16 +42,18 @@ test('exposes the dialogue settings as a serializable schemastery schema', () =>
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...layoutDefaults,
   })
   assert.deepEqual(dialogueSettingsSchema({}), {
     defaultSessionId: null,
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...layoutDefaults,
   })
   assert.deepEqual(
     dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80 },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...layoutDefaults },
   )
   assert.throws(
     () => dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: true, previewMaxChars: 80.5 }),
@@ -58,15 +80,15 @@ test('projects only a session id and its DSH display title', () => {
 test('accepts preview bounds and rejects values outside 80 through 8000', () => {
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480 }),
-    { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480 },
+    { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480, ...layoutDefaults },
   )
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80 },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...layoutDefaults },
   )
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 8000 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 8000 },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 8000, ...layoutDefaults },
   )
   assert.throws(
     () => validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 79 }),
