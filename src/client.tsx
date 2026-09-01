@@ -12,6 +12,7 @@ import { projectSessionOptions, projectWorkspaceSessionTree, type DialogueSettin
 const SETTINGS_NAMESPACE = 'dsh-png-pet'
 const DEFAULT_SETTINGS: DialogueSettings = {
   defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: true, previewMaxChars: 2000,
+  randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatWorkspaceIds: [], randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [], randomChatTestNonce: 0,
   scale: 1, reducedMotion: false, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
 }
 const SESSION_LIST_UNAVAILABLE = '会话列表尚未就绪。'
@@ -67,6 +68,13 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const defaultWorkspaceId = nullableId(value.defaultWorkspaceId)
   const previewEnabled = value.previewEnabled
   const previewMaxChars = value.previewMaxChars
+  const randomChatEnabled = value.randomChatEnabled
+  const randomChatBrowseOnOpen = value.randomChatBrowseOnOpen
+  const randomChatWorkspaceIds = value.randomChatWorkspaceIds
+  const randomChatMinIntervalMinutes = value.randomChatMinIntervalMinutes
+  const randomChatMaxIntervalMinutes = value.randomChatMaxIntervalMinutes
+  const randomChatCustomPrompts = value.randomChatCustomPrompts
+  const randomChatTestNonce = value.randomChatTestNonce
   const scale = value.scale
   const reducedMotion = value.reducedMotion
   const petPlacement = value.petPlacement
@@ -75,19 +83,27 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const dialogueHeight = value.dialogueHeight
   if (defaultSessionId === undefined || defaultWorkspaceId === undefined
     || typeof previewEnabled !== 'boolean' || !isIntegerIn(previewMaxChars, 80, 8000)
+    || typeof randomChatEnabled !== 'boolean' || typeof randomChatBrowseOnOpen !== 'boolean'
+    || !isWorkspaceIds(randomChatWorkspaceIds) || !isRandomChatIntervalMinutes(randomChatMinIntervalMinutes)
+    || !isRandomChatIntervalMinutes(randomChatMaxIntervalMinutes) || randomChatMinIntervalMinutes > randomChatMaxIntervalMinutes
+    || !isRandomChatCustomPrompts(randomChatCustomPrompts) || !isRandomChatTestNonce(randomChatTestNonce)
     || (scale !== 0.75 && scale !== 1 && scale !== 1.25 && scale !== 1.5)
     || typeof reducedMotion !== 'boolean' || !isPetPlacement(petPlacement) || !isDialoguePlacement(dialoguePlacement)
     || !isIntegerIn(dialogueWidth, 220, 4000) || !isIntegerIn(dialogueHeight, 240, 3000)) return undefined
-  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, scale, reducedMotion, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
+  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
 }
 
 export async function writeDialogueSetting(settings: Pick<SettingsScope<DialogueSettings>, 'set'>, field: keyof DialogueSettings, value: DialogueSettings[keyof DialogueSettings]): Promise<boolean> {
   if (field === 'previewMaxChars' && (typeof value !== 'number' || !Number.isInteger(value) || value < 80 || value > 8000)) return false
   if (field === 'dialogueWidth' && (typeof value !== 'number' || !Number.isInteger(value) || value < 220 || value > 4000)) return false
   if (field === 'dialogueHeight' && (typeof value !== 'number' || !Number.isInteger(value) || value < 240 || value > 3000)) return false
+  if ((field === 'randomChatMinIntervalMinutes' || field === 'randomChatMaxIntervalMinutes') && !isRandomChatIntervalMinutes(value)) return false
+  if (field === 'randomChatCustomPrompts' && !isRandomChatCustomPrompts(value)) return false
+  if (field === 'randomChatTestNonce' && !isRandomChatTestNonce(value)) return false
   if (field === 'scale' && value !== 0.75 && value !== 1 && value !== 1.25 && value !== 1.5) return false
   if (field === 'petPlacement' && !isPetPlacement(value)) return false
   if (field === 'dialoguePlacement' && !isDialoguePlacement(value)) return false
+  if (field === 'randomChatWorkspaceIds' && !isWorkspaceIds(value)) return false
   try { await settings.set(field, value); return true } catch { return false }
 }
 
@@ -119,7 +135,7 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
   const { tree, value, listUnavailable, selectedSessionUnavailable, error } = projectDialogueSettingsView(sessionSnapshot, workspaceSnapshot, settingsSnapshot, writeFailed)
   const settingsUnavailable = settingsSnapshot.status === 'unavailable'
   async function update(field: keyof DialogueSettings, nextValue: DialogueSettings[keyof DialogueSettings]): Promise<void> { setWriteFailed(!await writeDialogueSetting(settings, field, nextValue)) }
-  function onIntegerChange(field: 'previewMaxChars' | 'dialogueWidth' | 'dialogueHeight', min: number, max: number, event: ChangeEvent<HTMLInputElement>): void {
+  function onIntegerChange(field: 'previewMaxChars' | 'dialogueWidth' | 'dialogueHeight' | 'randomChatMinIntervalMinutes' | 'randomChatMaxIntervalMinutes', min: number, max: number, event: ChangeEvent<HTMLInputElement>): void {
     const nextValue = Number(event.currentTarget.value)
     if (!Number.isInteger(nextValue) || nextValue < min || nextValue > max) return setWriteFailed(true)
     void update(field, nextValue)
@@ -156,10 +172,20 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
         createElement('label', { style: { display: 'block' } }, '宽度 ', createElement('input', { type: 'number', min: 220, max: 4000, step: 1, value: value.dialogueWidth, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueWidth', 220, 4000, event) }), ' px'),
         createElement('label', { style: { display: 'block', marginTop: 12 } }, '高度 ', createElement('input', { type: 'number', min: 240, max: 3000, step: 1, value: value.dialogueHeight, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueHeight', 240, 3000, event) }), ' px'))),
     createElement('h2', { style: sectionHeadingStyle }, '待机互动'),
-    createElement('p', null, '以下功能正在设计中，暂不会影响桌宠行为。'),
+    createElement('p', null, '随机聊聊默认关闭。桌宠只会在你启用功能、同意点击后联网并选择目标工作区后显示本地邀约气泡。'),
     createElement('div', { style: gridStyle },
       createElement(SettingCard, { title: '随机待机动画', description: '即将推出。' }, createElement('input', { type: 'checkbox', disabled: true })),
-      createElement(SettingCard, { title: '随机文本', description: '即将推出。' }, createElement('input', { type: 'checkbox', disabled: true }))),
+      createElement(SettingCard, { title: '随机聊聊', description: '桌宠会在随机时间用本地短句邀你继续聊；点击后才打开会话栏。' },
+        createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.randomChatEnabled, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('randomChatEnabled', event.currentTarget.checked) } }), '启用随机聊聊'),
+        createElement('label', { style: { display: 'block', marginTop: 12 } }, '随机间隔 ', createElement('input', { type: 'number', min: 5, max: value.randomChatMaxIntervalMinutes, step: 1, value: value.randomChatMinIntervalMinutes, disabled: !value.randomChatEnabled || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('randomChatMinIntervalMinutes', 5, value.randomChatMaxIntervalMinutes, event) }), ' 至 ', createElement('input', { type: 'number', min: value.randomChatMinIntervalMinutes, max: 1440, step: 1, value: value.randomChatMaxIntervalMinutes, disabled: !value.randomChatEnabled || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('randomChatMaxIntervalMinutes', value.randomChatMinIntervalMinutes, 1440, event) }), ' 分钟'),
+        createElement('p', { style: { margin: '8px 0 0', opacity: 0.72, lineHeight: 1.5 } }, '最短触发时间为 5 分钟；桌宠会从该范围内随机选择下一次邀约时间。'),
+        createElement('label', { style: { display: 'block', marginTop: 12 } }, '自定义气泡文案（每行一条）', createElement('textarea', { rows: 4, defaultValue: value.randomChatCustomPrompts.join('\n'), placeholder: '例如：要不要休息一分钟，和我聊聊？', disabled: !value.randomChatEnabled || settingsUnavailable, onBlur: (event: ChangeEvent<HTMLTextAreaElement>) => { void update('randomChatCustomPrompts', parseRandomChatCustomPrompts(event.currentTarget.value)) } })),
+        createElement('p', { style: { margin: '8px 0 0', opacity: 0.72, lineHeight: 1.5 } }, '自定义文案只在本地气泡中显示，不会发送给模型或联网服务。'),
+        createElement('button', { type: 'button', style: { marginTop: 12 }, disabled: settingsUnavailable, onClick: () => { void update('randomChatTestNonce', value.randomChatTestNonce === 2_147_483_647 ? 1 : value.randomChatTestNonce + 1) } }, '立即显示测试气泡'),
+        createElement('p', { style: { margin: '8px 0 0', opacity: 0.72, lineHeight: 1.5 } }, '仅显示当前随机气泡，不联网、不创建会话，也不会重置正常的随机计时。'),
+        createElement('label', { style: { ...inlineLabelStyle, marginTop: 12 } }, createElement('input', { type: 'checkbox', checked: value.randomChatBrowseOnOpen, disabled: !value.randomChatEnabled || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('randomChatBrowseOnOpen', event.currentTarget.checked) } }), '点击话题后允许联网检索'),
+        createElement('p', { style: { margin: '10px 0 0', opacity: 0.72, lineHeight: 1.5 } }, '联网只在你点击带有“查阅”的气泡后发生；气泡本身不会在后台检索或显示未经验证的事实。'),
+        createElement(RandomWorkspacePicker, { tree, selectedWorkspaceIds: value.randomChatWorkspaceIds, disabled: !value.randomChatEnabled || settingsUnavailable, onChange: (workspaceIds) => { void update('randomChatWorkspaceIds', workspaceIds) } }))),
     error === undefined ? null : createElement('p', { role: 'alert' }, error))
 }
 
@@ -193,6 +219,27 @@ function DefaultSessionPicker({ tree, selectedSessionId, disabled, onSelect }: {
   )
 }
 
+function RandomWorkspacePicker({ tree, selectedWorkspaceIds, disabled, onChange }: { tree: WorkspaceSessionTree, selectedWorkspaceIds: readonly string[], disabled: boolean, onChange(workspaceIds: string[]): void }): ReactElement {
+  const [isOpen, setIsOpen] = useState(false)
+  const selected = new Set(selectedWorkspaceIds)
+  function toggle(workspaceId: string): void {
+    const next = new Set(selected)
+    next.has(workspaceId) ? next.delete(workspaceId) : next.add(workspaceId)
+    onChange([...next])
+  }
+  return createElement('section', { style: { ...cardStyle, marginTop: 12 } },
+    createElement('button', { type: 'button', disabled, style: cardHeaderStyle, 'aria-expanded': isOpen, onClick: () => setIsOpen((open) => !open) },
+      createElement('span', null, `${isOpen ? '⌄' : '›'}  随机聊聊工作区`),
+      createElement('span', { style: { opacity: 0.68, fontWeight: 400 } }, selected.size === 0 ? '未添加' : `已添加 ${selected.size} 个`)),
+    !isOpen ? null : createElement('div', { role: 'group', 'aria-label': '随机聊聊工作区', style: { ...cardBodyStyle, display: 'grid', gap: 8 } },
+      tree.workspaces.length === 0
+        ? createElement('p', { style: { margin: 0, opacity: 0.7 } }, '暂无可添加的工作区')
+        : tree.workspaces.map((workspace) => createElement('label', { key: workspace.id, style: selected.has(workspace.id) ? activeOptionStyle : optionButtonStyle },
+          createElement('span', null, createElement('input', { type: 'checkbox', checked: selected.has(workspace.id), disabled, onChange: () => toggle(workspace.id) }), ' ', workspace.title),
+          createElement('span', { style: { opacity: 0.62, fontWeight: 400 } }, `${workspace.sessions.length} 个会话`)))),
+  )
+}
+
 function ChoiceCards<T extends string | number>({ value, disabled, name, options, onChange }: { value: T, disabled: boolean, name: string, options: readonly { value: T, label: string }[], onChange(value: T): void }): ReactElement {
   return createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 } }, ...options.map((option) => createElement('label', { key: String(option.value), style: option.value === value ? selectedCardStyle : cardStyle }, createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' } }, createElement('input', { type: 'radio', name, checked: option.value === value, disabled, onChange: () => onChange(option.value) }), option.label))))
 }
@@ -207,4 +254,17 @@ const dialoguePlacementOptions: ReadonlyArray<{ value: DialogueSettings['dialogu
 function isPetPlacement(value: unknown): value is DialogueSettings['petPlacement'] { return placementOptions.some((option) => option.value === value) }
 function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return dialoguePlacementOptions.some((option) => option.value === value) }
 function isIntegerIn(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max }
+
+function isRandomChatIntervalMinutes(value: unknown): value is number { return isIntegerIn(value, 5, 1440) }
+
+function isRandomChatCustomPrompts(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length <= 12 && value.every((prompt) => typeof prompt === 'string' && prompt.length > 0 && prompt.length <= 120 && !prompt.includes('\n') && !prompt.includes('\r')) && new Set(value).size === value.length
+}
+
+function parseRandomChatCustomPrompts(value: string): string[] {
+  return value.split(/\r?\n/).map((prompt) => prompt.trim()).filter((prompt) => prompt.length > 0)
+}
+
+function isRandomChatTestNonce(value: unknown): value is number { return isIntegerIn(value, 0, 2_147_483_647) }
 function nullableId(value: unknown): string | null | undefined { return value === null || (typeof value === 'string' && value.length > 0) ? value : undefined }
+function isWorkspaceIds(value: unknown): value is string[] { return Array.isArray(value) && value.length <= 8 && value.every((id) => typeof id === 'string' && id.length > 0 && id.length <= 200) && new Set(value).size === value.length }

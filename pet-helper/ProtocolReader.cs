@@ -21,6 +21,10 @@ public static class ProtocolReader
     private const int MaxTargetIdLength = 200;
     private const int MaxTargetTitleLength = 200;
     private const int MaxTargetPathLength = 2048;
+    private const int MinRandomChatIntervalMinutes = 5;
+    private const int MaxRandomChatIntervalMinutes = 1440;
+    private const int MaxRandomChatCustomPrompts = 12;
+    private const int MaxRandomChatCustomPromptLength = 120;
 
     public static ProtocolMessage? Parse(string line)
     {
@@ -30,7 +34,7 @@ public static class ProtocolReader
         {
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !HasVersionSeven(root)) return null;
+            if (root.ValueKind != JsonValueKind.Object || !HasVersionEight(root)) return null;
 
             return root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String
                 ? kind.GetString() switch
@@ -46,6 +50,9 @@ public static class ProtocolReader
                     "reply" => ParseReply(root),
                     "conversation-history" => ParseHistory(root),
                     "target-request" => ParseTargetRequest(root),
+                    "random-chat-ready" => ParseRandomChatReady(root),
+                    "random-chat-error" => ParseRandomChatError(root),
+                    "random-chat-test" when HasExactlyProperties(root, "version", "kind") => new RandomChatTestMessage(),
                     _ => null,
                 }
                 : null;
@@ -330,13 +337,19 @@ public static class ProtocolReader
 
     private static ConfigMessage? ParseConfig(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight")
+        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight", "randomChatEnabled", "randomChatBrowseOnOpen", "randomChatConfigured", "randomChatMinIntervalMinutes", "randomChatMaxIntervalMinutes", "randomChatCustomPrompts")
             || !root.TryGetProperty("scale", out var scale)
             || !root.TryGetProperty("reducedMotion", out var reducedMotion)
             || !root.TryGetProperty("petPlacement", out var petPlacement)
             || !root.TryGetProperty("dialoguePlacement", out var dialoguePlacement)
             || !root.TryGetProperty("dialogueWidth", out var dialogueWidth)
             || !root.TryGetProperty("dialogueHeight", out var dialogueHeight)
+            || !root.TryGetProperty("randomChatEnabled", out var randomChatEnabled)
+            || !root.TryGetProperty("randomChatBrowseOnOpen", out var randomChatBrowseOnOpen)
+            || !root.TryGetProperty("randomChatConfigured", out var randomChatConfigured)
+            || !root.TryGetProperty("randomChatMinIntervalMinutes", out var randomChatMinIntervalMinutes)
+            || !root.TryGetProperty("randomChatMaxIntervalMinutes", out var randomChatMaxIntervalMinutes)
+            || !root.TryGetProperty("randomChatCustomPrompts", out var randomChatCustomPrompts)
             || scale.ValueKind != JsonValueKind.Number
             || !scale.TryGetDouble(out var value)
             || reducedMotion.ValueKind is not JsonValueKind.True and not JsonValueKind.False
@@ -352,12 +365,42 @@ public static class ProtocolReader
             || dialogueHeight.ValueKind != JsonValueKind.Number
             || !dialogueHeight.TryGetInt32(out var dialogueHeightValue)
             || dialogueHeightValue is < 240 or > 3000
+            || randomChatEnabled.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || randomChatBrowseOnOpen.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || randomChatConfigured.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || randomChatMinIntervalMinutes.ValueKind != JsonValueKind.Number
+            || !randomChatMinIntervalMinutes.TryGetInt32(out var randomChatMinIntervalMinutesValue)
+            || randomChatMinIntervalMinutesValue is < MinRandomChatIntervalMinutes or > MaxRandomChatIntervalMinutes
+            || randomChatMaxIntervalMinutes.ValueKind != JsonValueKind.Number
+            || !randomChatMaxIntervalMinutes.TryGetInt32(out var randomChatMaxIntervalMinutesValue)
+            || randomChatMaxIntervalMinutesValue is < MinRandomChatIntervalMinutes or > MaxRandomChatIntervalMinutes
+            || randomChatMinIntervalMinutesValue > randomChatMaxIntervalMinutesValue
+            || !TryParseRandomChatCustomPrompts(randomChatCustomPrompts, out var randomChatCustomPromptsValue)
             || value is not (0.75d or 1d or 1.25d or 1.5d))
         {
             return null;
         }
 
-        return new ConfigMessage(value, reducedMotion.GetBoolean(), petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue);
+        return new ConfigMessage(value, reducedMotion.GetBoolean(), petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
+    }
+
+    private static bool TryParseRandomChatCustomPrompts(JsonElement value, out ImmutableArray<string> prompts)
+    {
+        prompts = ImmutableArray<string>.Empty;
+        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > MaxRandomChatCustomPrompts) return false;
+        var builder = ImmutableArray.CreateBuilder<string>();
+        foreach (var prompt in value.EnumerateArray())
+        {
+            if (prompt.ValueKind != JsonValueKind.String
+                || prompt.GetString() is not { Length: > 0 and <= MaxRandomChatCustomPromptLength } text
+                || text.Contains('\n') || text.Contains('\r') || builder.Contains(text))
+            {
+                return false;
+            }
+            builder.Add(text);
+        }
+        prompts = builder.ToImmutable();
+        return true;
     }
 
     private static StateMessage? ParseState(JsonElement root)
@@ -409,11 +452,42 @@ public static class ProtocolReader
             && requestId is > 0 and <= MaxSafeSequence;
     }
 
-    private static bool HasVersionSeven(JsonElement root) =>
+    private static RandomChatReadyMessage? ParseRandomChatReady(JsonElement root)
+    {
+        return HasExactlyProperties(root, "version", "kind", "invitationId")
+            && TryGetInvitationId(root, out var invitationId)
+            ? new RandomChatReadyMessage(invitationId)
+            : null;
+    }
+
+    private static RandomChatErrorMessage? ParseRandomChatError(JsonElement root)
+    {
+        if (!HasExactlyProperties(root, "version", "kind", "invitationId", "reason")
+            || !TryGetInvitationId(root, out var invitationId)
+            || !root.TryGetProperty("reason", out var reason)
+            || reason.ValueKind != JsonValueKind.String
+            || reason.GetString() is not string reasonText
+            || reasonText is not ("not-configured" or "unavailable"))
+        {
+            return null;
+        }
+        return new RandomChatErrorMessage(invitationId, reasonText);
+    }
+
+    private static bool HasVersionEight(JsonElement root) =>
         root.TryGetProperty("version", out var version)
         && version.ValueKind == JsonValueKind.Number
         && version.TryGetInt32(out var value)
         && value == ProtocolMessage.ProtocolVersion;
+
+    private static bool TryGetInvitationId(JsonElement root, out long invitationId)
+    {
+        invitationId = 0;
+        return root.TryGetProperty("invitationId", out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt64(out invitationId)
+            && invitationId is > 0 and <= MaxSafeSequence;
+    }
 
     private static bool HasExactlyProperties(JsonElement root, params string[] expected)
     {

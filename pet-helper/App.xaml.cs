@@ -29,7 +29,9 @@ public partial class App : System.Windows.Application
         dialogueWindow.InputSubmitted += (_, input) => WriteInput(input);
         dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
         dialogueWindow.StopRequested += (_, stop) => WriteStop(stop);
+        dialogueWindow.DialogueClosed += (_, _) => WriteDialogueClosed();
         window.AttachDialogueWindow(dialogueWindow);
+        window.RandomChatRequested += (_, request) => WriteRandomChatOpen(request);
 
         var priceCard = new PeakValleyCardWindow();
         peakValleyCard = priceCard;
@@ -117,6 +119,15 @@ public partial class App : System.Windows.Application
                         continue;
                     case TargetRequestMessage target:
                         await Dispatcher.InvokeAsync(() => targetWindow?.ApplyTargetRequest(target));
+                        continue;
+                    case RandomChatTestMessage:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ShowRandomChatInvitationForTest());
+                        continue;
+                    case RandomChatReadyMessage ready:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ShowRandomChatDialogue(ready.InvitationId));
+                        continue;
+                    case RandomChatErrorMessage error:
+                        await Dispatcher.InvokeAsync(() => ((MainWindow)MainWindow!).ShowRandomChatError(error.InvitationId));
                         continue;
                     case ShutdownMessage:
                         shutdownRequested = true;
@@ -223,6 +234,18 @@ public partial class App : System.Windows.Application
     private static void WriteStop(StopRequestedEventArgs stop)
     {
         Console.Out.WriteLine(JsonSerializer.Serialize(new { version = ProtocolMessage.ProtocolVersion, kind = "stop", requestId = stop.RequestId }));
+        Console.Out.Flush();
+    }
+
+    private static void WriteRandomChatOpen(RandomChatRequestedEventArgs request)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(new { version = ProtocolMessage.ProtocolVersion, kind = "random-chat-open", invitationId = request.InvitationId, topic = request.Topic }));
+        Console.Out.Flush();
+    }
+
+    private static void WriteDialogueClosed()
+    {
+        Console.Out.WriteLine(SerializeHelperMessage("dialogue-closed"));
         Console.Out.Flush();
     }
 

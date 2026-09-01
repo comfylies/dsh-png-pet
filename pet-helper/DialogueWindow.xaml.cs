@@ -46,6 +46,7 @@ public partial class DialogueWindow : Window
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
     public event EventHandler<StopRequestedEventArgs>? StopRequested;
     public event EventHandler? HiddenToTray;
+    public event EventHandler? DialogueClosed;
 
     public DialogueWindow(IScreenLayout screenLayout)
     {
@@ -192,6 +193,7 @@ public partial class DialogueWindow : Window
     {
         SaveState();
         Hide();
+        DialogueClosed?.Invoke(this, EventArgs.Empty);
         HiddenToTray?.Invoke(this, EventArgs.Empty);
     }
 

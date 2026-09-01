@@ -3,6 +3,13 @@ export type DialogueSettings = {
   defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
+  randomChatEnabled: boolean
+  randomChatBrowseOnOpen: boolean
+  randomChatWorkspaceIds: string[]
+  randomChatMinIntervalMinutes: number
+  randomChatMaxIntervalMinutes: number
+  randomChatCustomPrompts: string[]
+  randomChatTestNonce: number
   scale: 0.75 | 1 | 1.25 | 1.5
   reducedMotion: boolean
   petPlacement: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'

@@ -29,8 +29,8 @@
       </Setter>
     </Style>
   </Window.Resources>
-  <Border Background="#F0FFFFFF" BorderBrush="#140F172A" BorderThickness="1"
-          CornerRadius="20" Margin="1" Padding="14,8">
+  <Border x:Name="CardSurface" Background="#F0FFFFFF" BorderBrush="#140F172A" BorderThickness="1"
+          CornerRadius="20" Margin="1" Padding="14,8" MouseLeftButtonUp="CardSurface_MouseLeftButtonUp">
     <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
@@ -42,6 +42,9 @@
                StretchDirection="DownOnly" Margin="20,0,0,2">
         <TextBlock x:Name="PeriodLabel" FontSize="30" FontWeight="SemiBold" />
       </Viewbox>
+      <TextBlock x:Name="RandomChatLabel" Grid.Row="1" Visibility="Collapsed" Margin="0,4,0,2"
+                 Foreground="#1D2939" FontFamily="Microsoft YaHei UI" FontSize="14"
+                 FontWeight="SemiBold" TextWrapping="Wrap" />
       <Button x:Name="CloseButton" HorizontalAlignment="Right" VerticalAlignment="Top"
               Width="26" Height="26" Content="×" FontSize="18" FontWeight="Normal"
               Style="{StaticResource PeakValleyCloseButton}"

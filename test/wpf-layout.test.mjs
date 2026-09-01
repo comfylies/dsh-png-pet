@@ -125,6 +125,24 @@ test('removes dialogue bubbles from the pet window and keeps the state bubble in
   assert.match(xaml, /x:Name="StateBubble"/)
 })
 
+test('reuses the left-click card for an opt-in clickable random-chat invitation', () => {
+  const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+  const card = readFileSync(new URL('../pet-helper/PeakValleyCardWindow.xaml', import.meta.url), 'utf8')
+  const cardCode = readFileSync(new URL('../pet-helper/PeakValleyCardWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.doesNotMatch(xaml, /RandomChatBubble/)
+  assert.match(card, /x:Name="CardSurface"[\s\S]*MouseLeftButtonUp="CardSurface_MouseLeftButtonUp"/)
+  assert.match(card, /x:Name="RandomChatLabel"/)
+  assert.match(cardCode, /ShowRandomChatInvitation\(/)
+  assert.match(cardCode, /RandomChatClicked\?\.Invoke/)
+  assert.match(code, /randomChatEnabled = config\.RandomChatEnabled && config\.RandomChatBrowseOnOpen && config\.RandomChatConfigured/)
+  assert.match(code, /RandomChatDelayFor\(/)
+  assert.match(code, /ShowRandomChatDialogue\(/)
+  assert.match(code, /ShowRandomChatInvitationForTest\(/)
+  assert.match(code, /RandomChatRequested\?\.Invoke/)
+})
+
 test('keeps the state bubble visible regardless of other windows', () => {
   const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 

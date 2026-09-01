@@ -86,6 +86,13 @@ test('defers the helper until settings injection registers the dialogue scope an
     defaultWorkspaceId: null,
     previewEnabled: false,
     previewMaxChars: 480,
+    randomChatEnabled: false,
+    randomChatBrowseOnOpen: false,
+    randomChatWorkspaceIds: [],
+    randomChatMinIntervalMinutes: 8,
+    randomChatMaxIntervalMinutes: 24,
+    randomChatCustomPrompts: [],
+    randomChatTestNonce: 0,
     scale: 1,
     reducedMotion: false,
     petPlacement: 'center',
@@ -162,6 +169,24 @@ test('routes target-open and target-answer helper messages to the target control
   )
 
   assert.deepEqual(calls, [['open', 9], ['answer', 'target-answer', 's-1']])
+})
+
+test('routes a random-chat click and dialogue close to the random-chat controller', async () => {
+  const calls = []
+  const randomChatController = {
+    open: async (message) => calls.push(['open', message.invitationId, message.topic]),
+    dialogueClosed: () => calls.push(['dialogue-closed']),
+  }
+
+  await routeHelperMessage(
+    { version: 11, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
+    undefined,
+    undefined,
+    randomChatController,
+  )
+  await routeHelperMessage({ version: 11, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
+
+  assert.deepEqual(calls, [['open', 9, 'news'], ['dialogue-closed']])
 })
 
 test('does not leave a rejected helper input promise unhandled', async () => {

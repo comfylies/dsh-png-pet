@@ -8,7 +8,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { extractDialogueHistory, turnAssistantText } from './dialogue-history.js'
 import type { DialogueSettings } from './dialogue-settings.js'
 import type { DshDialogueContext, DshSessionEvent } from './dsh-dialogue-types.js'
-import { REPLY_MAX_CHARS, type HelperInputMessage, type HostOutboundMessage } from './protocol.js'
+import { REPLY_MAX_CHARS, type HelperInputMessage, type HostOutboundMessage, type RandomChatTopic } from './protocol.js'
 
 // TEMP-DIAG: reply delivery diagnostics for the "stuck on generating" investigation.
 // Records only error categories and step outcomes — never input text. Remove after verification.
@@ -43,6 +43,8 @@ export class DialogueController {
   private currentInputSessionId?: string
   /** A right-click target only lives until the host exits and never changes settings. */
   private temporaryTarget?: { sessionId: string, workspaceId: string | null }
+  /** An explicit random-chat click temporarily overrides the saved default until the dialogue closes. */
+  private randomChatTarget?: { sessionId: string, workspaceId: string }
 
   public constructor(
     private readonly ctx: DshDialogueContext,
@@ -81,6 +83,11 @@ export class DialogueController {
       this.clearAll('disabled')
       return
     }
+    if (this.randomChatTarget !== undefined
+      && (!settings.randomChatEnabled || !settings.randomChatBrowseOnOpen || settings.randomChatWorkspaceIds.length === 0)) {
+      this.clearRandomChatTarget()
+      return
+    }
     if (previousTarget.sessionId !== target.sessionId) {
       if (this.currentInputSessionId === previousTarget.sessionId) {
         this.currentInputRequestId = undefined
@@ -116,6 +123,61 @@ export class DialogueController {
     }
   }
 
+  public setRandomChatTarget(sessionId: string, workspaceId: string): void {
+    const previous = this.effectiveTarget(this.ctx.settings.get())
+    this.randomChatTarget = { sessionId, workspaceId }
+    const next = this.effectiveTarget(this.ctx.settings.get())
+    this.publishConversationConfig()
+    if (previous.sessionId !== next.sessionId) this.clearAll('cancelled')
+  }
+
+  public clearRandomChatTarget(): void {
+    if (this.randomChatTarget === undefined) return
+    const previous = this.effectiveTarget(this.ctx.settings.get())
+    this.randomChatTarget = undefined
+    const next = this.effectiveTarget(this.ctx.settings.get())
+    this.publishConversationConfig()
+    if (previous.sessionId !== next.sessionId) this.clearAll('cancelled')
+  }
+
+  /** Starts the web-backed first turn only after the user clicked a clearly labelled local invitation. */
+  public async startRandomChatTopic(requestId: number, topic: RandomChatTopic): Promise<void> {
+    try {
+      const target = this.randomChatTarget
+      const settings = this.ctx.settings.get()
+      if (target === undefined || !settings.randomChatEnabled || !settings.randomChatBrowseOnOpen) {
+        this.send({ kind: 'input-status', requestId, status: 'rejected' })
+        return
+      }
+      this.currentInputRequestId = requestId
+      this.currentInputSessionId = target.sessionId
+      this.clearAll('next-input')
+      const agent = await this.findAgent(target.sessionId)
+      if (agent === undefined) {
+        this.send({ kind: 'input-status', requestId, status: 'session-unavailable' })
+        return
+      }
+      const message = createUserMessage({
+        content: [{ type: 'text', text: randomChatPrompt(topic) }],
+        source: { kind: 'user' },
+      })
+      const request: Request = {
+        requestId,
+        sessionId: target.sessionId,
+        origin: 'pet',
+        previewEnabled: settings.previewEnabled,
+        previewMaxChars: settings.previewMaxChars,
+        preview: '',
+      }
+      this.requestsByMessageId.set(message.id, request)
+      this.activeRequests.set(request.requestId, request)
+      this.send({ kind: 'input-status', requestId, status: agent.status === 'running' ? 'queued' : 'sent' })
+      await agent.followup(message)
+    } catch {
+      this.send({ kind: 'input-status', requestId, status: 'rejected' })
+    }
+  }
+
   public async acceptInput(input: HelperInputMessage): Promise<void> {
     try {
       await this.acceptInputUnsafe(input)
@@ -139,19 +201,7 @@ export class DialogueController {
     }
     this.currentInputSessionId = sessionId
 
-    let agent = this.ctx.agents.get(sessionId)
-    if (agent === undefined) {
-      try {
-        const resumeOptions: { resumeSessionId: string, agentOptions?: { provider: string, model: string } } = {
-          resumeSessionId: sessionId,
-        }
-        const defaultModel = this.readDefaultModel()
-        if (defaultModel !== undefined) resumeOptions.agentOptions = defaultModel
-        agent = (await this.ctx.agents.resume(resumeOptions))?.agent
-      } catch {
-        agent = undefined
-      }
-    }
+    const agent = await this.findAgent(sessionId)
     if (!this.isCurrentInput(input.requestId)) return
     if (agent === undefined) {
       this.send({ kind: 'input-status', requestId: input.requestId, status: 'session-unavailable' })
@@ -220,6 +270,20 @@ export class DialogueController {
       // A missing default model must never break the input pipeline.
     }
     return undefined
+  }
+
+  private async findAgent(sessionId: string): Promise<import('./dsh-dialogue-types.js').DshAgent | undefined> {
+    let agent = this.ctx.agents.get(sessionId)
+    if (agent !== undefined) return agent
+    try {
+      const resumeOptions: { resumeSessionId: string, agentOptions?: { provider: string, model: string } } = { resumeSessionId: sessionId }
+      const defaultModel = this.readDefaultModel()
+      if (defaultModel !== undefined) resumeOptions.agentOptions = defaultModel
+      agent = (await this.ctx.agents.resume(resumeOptions))?.agent
+    } catch {
+      agent = undefined
+    }
+    return agent
   }
 
   /** Aborts the live turn. The terminal reply-preview/status are driven by the resulting aborted turn/end. */
@@ -391,10 +455,12 @@ export class DialogueController {
     this.clearForSession(sessionId, 'session-unavailable')
     const settings = this.ctx.settings.get()
     if (this.temporaryTarget?.sessionId === sessionId) this.temporaryTarget = undefined
+    if (this.randomChatTarget?.sessionId === sessionId) this.randomChatTarget = undefined
     this.clearConfiguredSession(sessionId, settings)
   }
 
   public helperClosed(): void {
+    this.randomChatTarget = undefined
     this.currentInputRequestId = undefined
     this.currentInputSessionId = undefined
     this.clearAll('closed')
@@ -416,6 +482,7 @@ export class DialogueController {
   }
 
   private effectiveTarget(settings: DialogueSettings): { sessionId: string | null, workspaceId: string | null } {
+    if (this.randomChatTarget !== undefined) return this.randomChatTarget
     if (settings.defaultSessionId !== null) {
       return { sessionId: settings.defaultSessionId, workspaceId: settings.defaultWorkspaceId }
     }
@@ -514,6 +581,12 @@ export class DialogueController {
   private isCurrentInput(requestId: number): boolean {
     return this.currentInputRequestId === requestId
   }
+}
+
+function randomChatPrompt(topic: RandomChatTopic): string {
+  return topic === 'news'
+    ? '请使用可用的网页检索工具查阅今天的热点新闻，选择不超过三项，标注来源名称和链接；若无法联网请明确说明，不要编造。'
+    : '请使用可用的网页检索工具找一件近期值得分享的科技或见闻，标注来源名称和链接；若无法联网请明确说明，不要编造。'
 }
 
 function baseName(path: string): string {

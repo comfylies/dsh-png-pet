@@ -1,6 +1,6 @@
 import type { DialoguePlacement, PetPlacement } from './dialogue-settings.js'
 
-export const PROTOCOL_VERSION = 7 as const
+export const PROTOCOL_VERSION = 11 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -49,10 +49,12 @@ export type Activity = keyof typeof activityLabels
 export type State = 'active' | keyof typeof displayLabels
 export type CompanionState = State
 export type HelperLifecycleMessageKind = 'ready' | 'closed'
-export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer'
+export type RandomChatTopic = 'news' | 'discovery'
+export type RandomChatError = 'not-configured' | 'unavailable'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer' | 'random-chat-open' | 'dialogue-closed'
 export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected' | 'stopped' | 'interrupted' | 'failed'
 export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
-export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'target-request'
+export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'target-request' | 'random-chat-ready' | 'random-chat-error' | 'random-chat-test'
 
 export type TargetWorkspace = {
   id: string
@@ -110,11 +112,23 @@ export type HelperTargetAnswerMessage = {
   newWorkspace?: boolean
 }
 
-export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage
+export type HelperRandomChatOpenMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'random-chat-open'
+  invitationId: number
+  topic: RandomChatTopic
+}
+
+export type HelperDialogueClosedMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'dialogue-closed'
+}
+
+export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
-  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
@@ -123,10 +137,13 @@ export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'reply', requestId: number, text: string, completed: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
   | { version: typeof PROTOCOL_VERSION, kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
+  | { version: typeof PROTOCOL_VERSION, kind: 'random-chat-ready', invitationId: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'random-chat-error', invitationId: number, reason: RandomChatError }
+  | { version: typeof PROTOCOL_VERSION, kind: 'random-chat-test' }
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
-  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number }
+  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { kind: 'input-status', requestId: number, status: InputStatus }
@@ -135,12 +152,15 @@ export type HostOutboundMessage =
   | { kind: 'reply', requestId: number, text: string, completed: boolean }
   | { kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
   | { kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
+  | { kind: 'random-chat-ready', invitationId: number }
+  | { kind: 'random-chat-error', invitationId: number, reason: RandomChatError }
+  | { kind: 'random-chat-test' }
 
 const maxLineLength = 16_000_000
 const maxTextLength = 2_000
 const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
-const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'target-request'])
+const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'target-request', 'random-chat-ready', 'random-chat-error', 'random-chat-test'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
 const petPlacements = new Set<PetPlacement>(['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
 const dialoguePlacements = new Set<DialoguePlacement>(['near-pet', 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
@@ -148,6 +168,8 @@ const compositeActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected', 'stopped', 'interrupted', 'failed'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
 const imageMediaTypes = new Set<ImageMediaType>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const randomChatTopics = new Set<RandomChatTopic>(['news', 'discovery'])
+const randomChatErrors = new Set<RandomChatError>(['not-configured', 'unavailable'])
 
 export function labelForPresentation(state: State, activities: readonly Activity[]): string {
   if (state === 'active') {
@@ -175,6 +197,18 @@ export function parseHelperMessage(line: string): HelperMessage {
     assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
     assertPositiveSafeInteger(message.requestId, 'helper message requestId')
     return { version: PROTOCOL_VERSION, kind: 'request-history', requestId: message.requestId }
+  }
+  if (message.kind === 'dialogue-closed') {
+    assertExactKeys(message, ['version', 'kind'], 'helper message')
+    return { version: PROTOCOL_VERSION, kind: 'dialogue-closed' }
+  }
+  if (message.kind === 'random-chat-open') {
+    assertExactKeys(message, ['version', 'kind', 'invitationId', 'topic'], 'helper message')
+    assertPositiveSafeInteger(message.invitationId, 'helper message invitationId')
+    if (typeof message.topic !== 'string' || !randomChatTopics.has(message.topic as RandomChatTopic)) {
+      throw new Error('helper message has an invalid random chat topic')
+    }
+    return { version: PROTOCOL_VERSION, kind: 'random-chat-open', invitationId: message.invitationId, topic: message.topic as RandomChatTopic }
   }
   if (message.kind === 'stop') {
     assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
@@ -227,14 +261,18 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
   switch (value.kind) {
     case 'hello':
     case 'shutdown':
+    case 'random-chat-test':
       assertExactKeys(value, ['version', 'kind'], 'host message', ['kind'])
       return { kind: value.kind }
     case 'config':
-      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight'], 'host message', ['kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight'])
+      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'], 'host message', ['kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'])
       if (typeof value.scale !== 'number' || !scales.has(value.scale) || typeof value.reducedMotion !== 'boolean'
         || typeof value.petPlacement !== 'string' || !petPlacements.has(value.petPlacement as PetPlacement)
         || typeof value.dialoguePlacement !== 'string' || !dialoguePlacements.has(value.dialoguePlacement as DialoguePlacement)
-        || !isDialogueWidth(value.dialogueWidth) || !isDialogueHeight(value.dialogueHeight)) {
+        || !isDialogueWidth(value.dialogueWidth) || !isDialogueHeight(value.dialogueHeight)
+        || typeof value.randomChatEnabled !== 'boolean' || typeof value.randomChatBrowseOnOpen !== 'boolean' || typeof value.randomChatConfigured !== 'boolean'
+        || !isRandomChatIntervalMinutes(value.randomChatMinIntervalMinutes) || !isRandomChatIntervalMinutes(value.randomChatMaxIntervalMinutes)
+        || value.randomChatMinIntervalMinutes > value.randomChatMaxIntervalMinutes || !isRandomChatCustomPrompts(value.randomChatCustomPrompts)) {
         throw new Error('host message has an invalid config')
       }
       return {
@@ -245,6 +283,12 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         dialoguePlacement: value.dialoguePlacement as DialoguePlacement,
         dialogueWidth: value.dialogueWidth,
         dialogueHeight: value.dialogueHeight,
+        randomChatEnabled: value.randomChatEnabled,
+        randomChatBrowseOnOpen: value.randomChatBrowseOnOpen,
+        randomChatConfigured: value.randomChatConfigured,
+        randomChatMinIntervalMinutes: value.randomChatMinIntervalMinutes,
+        randomChatMaxIntervalMinutes: value.randomChatMaxIntervalMinutes,
+        randomChatCustomPrompts: [...value.randomChatCustomPrompts],
       }
     case 'state':
       assertExactKeys(value, ['version', 'kind', 'state', 'activities', 'label', 'sequence'], 'host message', ['kind', 'state', 'activities', 'label', 'sequence'])
@@ -329,13 +373,24 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         defaultSessionId: assertNullableId(value.defaultSessionId, 'host message defaultSessionId'),
         ...(value.error === undefined ? {} : { error: value.error }),
       }
+    case 'random-chat-ready':
+      assertExactKeys(value, ['version', 'kind', 'invitationId'], 'host message', ['kind', 'invitationId'])
+      assertPositiveSafeInteger(value.invitationId, 'host message invitationId')
+      return { kind: 'random-chat-ready', invitationId: value.invitationId }
+    case 'random-chat-error':
+      assertExactKeys(value, ['version', 'kind', 'invitationId', 'reason'], 'host message', ['kind', 'invitationId', 'reason'])
+      assertPositiveSafeInteger(value.invitationId, 'host message invitationId')
+      if (typeof value.reason !== 'string' || !randomChatErrors.has(value.reason as RandomChatError)) {
+        throw new Error('host message has an invalid random chat error')
+      }
+      return { kind: 'random-chat-error', invitationId: value.invitationId, reason: value.reason as RandomChatError }
     default:
       throw new Error('host message has an unknown kind')
   }
 }
 
 function isHelperMessageKind(value: string): value is HelperMessageKind {
-  return value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+  return value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || value === 'random-chat-open' || value === 'dialogue-closed' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
 }
 
 function parseInput(message: Record<string, unknown>): HelperInputMessage {
@@ -466,6 +521,17 @@ function isDialogueWidth(value: unknown): value is number {
 
 function isDialogueHeight(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 240 && value <= 3000
+}
+
+function isRandomChatIntervalMinutes(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 5 && value <= 1440
+}
+
+function isRandomChatCustomPrompts(value: unknown): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length <= 12
+    && value.every((prompt) => typeof prompt === 'string' && prompt.length > 0 && prompt.length <= 120 && !prompt.includes('\n') && !prompt.includes('\r'))
+    && new Set(value).size === value.length
 }
 
 function isCanonicalActivities(state: State, value: unknown): value is readonly Activity[] {

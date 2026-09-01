@@ -14,10 +14,10 @@ public static class PeakValleyCardPlacement
     /// </summary>
     public const double MinCardHeight = 84d;
 
-    public static Rect Place(Rect headAnchor, Rect workArea, double headHeight)
+    public static Rect Place(Rect headAnchor, Rect workArea, double headHeight, Size? cardSize = null)
     {
         var height = Math.Max(MinCardHeight, headHeight);
-        var size = new Size(height * WidthPerHeight, height);
+        var size = cardSize ?? new Size(height * WidthPerHeight, height);
         return PlacementPlanner.PlaceBeside(
             headAnchor,
             workArea,

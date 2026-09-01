@@ -5,6 +5,7 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { type DshDialogueContext, type DshDialogueSettingsScope, type DshSettingsProvider } from './dsh-dialogue-types.js'
 import { HelperProcess, type HelperProcessMessage, type HelperProcessOptions } from './helper-process.js'
 import { TargetController } from './target-controller.js'
+import { RandomChatController } from './random-chat-controller.js'
 import type { TargetApi } from './target-service.js'
 
 export const name = 'dsh-png-pet'
@@ -41,11 +42,13 @@ export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory)
 function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): void {
   let controller: DialogueController | undefined
   let targetController: TargetController | undefined
+  let randomChatController: RandomChatController | undefined
   let settingsScope: DshDialogueSettingsScope | undefined
   let unwatchSettings = () => {}
+  let pendingRandomChatTest = false
   let helperReady = false
   const helper = createHelper({
-    onMessage: (message) => routeHelperMessage(message, controller, targetController),
+    onMessage: (message) => routeHelperMessage(message, controller, targetController, randomChatController),
   })
   const bridge = new CompanionBridge((message) => helper.send(message))
 
@@ -53,6 +56,10 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
     if (!helperReady || !controller || !settingsScope) return
     helper.send({ kind: 'hello' })
     helper.send(helperConfig(settingsScope.get()))
+    if (pendingRandomChatTest) {
+      helper.send({ kind: 'random-chat-test' })
+      pendingRandomChatTest = false
+    }
     controller.publishConversationConfig()
     bridge.publishCurrent()
   }
@@ -81,8 +88,20 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
       (message) => helper.send(message),
       (sessionId, workspaceId) => controller?.setTemporaryTarget(sessionId, workspaceId),
     )
-    unwatchSettings = watchDialogueSettings(scope, controller, (settings) => {
-      if (helperReady) helper.send(helperConfig(settings))
+    randomChatController = new RandomChatController(
+      ctx.apiProxy,
+      scope,
+      controller,
+      (message) => helper.send(message),
+    )
+    unwatchSettings = watchDialogueSettings(scope, controller, (settings, previous) => {
+      const shouldTestRandomChat = settings.randomChatTestNonce !== previous.randomChatTestNonce
+      if (!helperReady) {
+        pendingRandomChatTest ||= shouldTestRandomChat
+        return
+      }
+      if (helperConfigChanged(settings, previous)) helper.send(helperConfig(settings))
+      if (shouldTestRandomChat) helper.send({ kind: 'random-chat-test' })
     })
     registerSessionObservers(ctx, bridge, controller)
     publishWhenReady()
@@ -114,6 +133,7 @@ export function routeHelperMessage(
   message: HelperProcessMessage,
   controller: Pick<DialogueController, 'acceptInput' | 'requestHistory' | 'stop' | 'helperClosed'> | undefined,
   targetController?: Pick<TargetController, 'open' | 'answer'>,
+  randomChatController?: Pick<RandomChatController, 'open' | 'dialogueClosed'>,
 ): Promise<void> {
   if (message.kind === 'input' || message.kind === 'request-history' || message.kind === 'stop') {
     try {
@@ -139,6 +159,23 @@ export function routeHelperMessage(
     }
   }
 
+  if (message.kind === 'random-chat-open') {
+    try {
+      return Promise.resolve(randomChatController?.open(message)).then(() => {})
+    } catch {
+      return Promise.resolve()
+    }
+  }
+
+  if (message.kind === 'dialogue-closed') {
+    try {
+      randomChatController?.dialogueClosed()
+    } catch {
+      // A local window close must never destabilize the helper host.
+    }
+    return Promise.resolve()
+  }
+
   controller?.helperClosed()
   return Promise.resolve()
 }
@@ -146,11 +183,11 @@ export function routeHelperMessage(
 export function watchDialogueSettings(
   settings: Pick<DshDialogueContext['settings'], 'watch'>,
   controller: Pick<DialogueController, 'settingsChanged'>,
-  publishConfig?: (settings: DialogueSettings) => void,
+  publishConfig?: (settings: DialogueSettings, previous: DialogueSettings) => void,
 ): () => void {
   return settings.watch((next, previous) => {
     controller.settingsChanged(next, previous)
-    publishConfig?.(next)
+    publishConfig?.(next, previous)
   })
 }
 
@@ -163,7 +200,17 @@ function helperConfig(settings: DialogueSettings) {
     dialoguePlacement: settings.dialoguePlacement,
     dialogueWidth: settings.dialogueWidth,
     dialogueHeight: settings.dialogueHeight,
+    randomChatEnabled: settings.randomChatEnabled,
+    randomChatBrowseOnOpen: settings.randomChatBrowseOnOpen,
+    randomChatConfigured: settings.randomChatWorkspaceIds.length > 0,
+    randomChatMinIntervalMinutes: settings.randomChatMinIntervalMinutes,
+    randomChatMaxIntervalMinutes: settings.randomChatMaxIntervalMinutes,
+    randomChatCustomPrompts: settings.randomChatCustomPrompts,
   }
+}
+
+function helperConfigChanged(next: DialogueSettings, previous: DialogueSettings): boolean {
+  return JSON.stringify(helperConfig(next)) !== JSON.stringify(helperConfig(previous))
 }
 
 export function registerSessionObservers(

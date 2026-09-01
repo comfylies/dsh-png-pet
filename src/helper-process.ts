@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
 
 export type HelperProcessOptions = {
   command?: string
@@ -138,6 +138,13 @@ export class HelperProcess {
             this.options.onMessage(message)
           } catch {
             // Ignore consumer failures so a validated target message can be retried.
+          }
+        }
+        if (message.kind === 'random-chat-open' || message.kind === 'dialogue-closed') {
+          try {
+            this.options.onMessage(message)
+          } catch {
+            // A local random-chat action must not destabilize the Helper process.
           }
         }
       })

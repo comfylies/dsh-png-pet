@@ -18,6 +18,7 @@
     <Resource Include="Assets\Animations\**\*.png" />
     <Resource Include="Assets\Fonts\*.ttf" />
     <EmbeddedResource Include="Assets\pet-animations.json" />
+    <EmbeddedResource Include="Assets\random-chat-prompts.json" />
     <EmbeddedResource Include="Assets\Animations\**\animation.json" />
   </ItemGroup>
   <ItemGroup>

@@ -4,7 +4,7 @@ namespace PetHelper;
 
 public abstract record ProtocolMessage(int Version, string Kind)
 {
-    public const int ProtocolVersion = 7;
+    public const int ProtocolVersion = 11;
 }
 
 public sealed record HelloMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "hello");
@@ -17,7 +17,13 @@ public sealed record ConfigMessage(
     string PetPlacement,
     string DialoguePlacement,
     int DialogueWidth,
-    int DialogueHeight) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "config");
+    int DialogueHeight,
+    bool RandomChatEnabled = false,
+    bool RandomChatBrowseOnOpen = false,
+    bool RandomChatConfigured = false,
+    int RandomChatMinIntervalMinutes = 8,
+    int RandomChatMaxIntervalMinutes = 24,
+    ImmutableArray<string> RandomChatCustomPrompts = default) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "config");
 
 public sealed record StateMessage(string State, ImmutableArray<string> Activities, string Label, long Sequence) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "state");
 
@@ -53,3 +59,9 @@ public sealed record TargetRequestMessage(
     string? DefaultWorkspaceId,
     string? DefaultSessionId,
     string? Error) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "target-request");
+
+public sealed record RandomChatReadyMessage(long InvitationId) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "random-chat-ready");
+
+public sealed record RandomChatErrorMessage(long InvitationId, string Reason) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "random-chat-error");
+
+public sealed record RandomChatTestMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "random-chat-test");

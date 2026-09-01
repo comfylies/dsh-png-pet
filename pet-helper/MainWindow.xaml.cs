@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -34,6 +35,15 @@ public partial class MainWindow : Window
     private PeakValleyCardWindow? peakValleyCard;
     private readonly PetPointerGesture pointerGesture = new();
     private readonly DispatcherTimer singleClickTimer = new();
+    private readonly DispatcherTimer randomChatTimer = new();
+    private readonly DispatcherTimer randomChatExpiryTimer = new();
+    private bool randomChatEnabled;
+    private int randomChatMinIntervalMinutes = 8;
+    private int randomChatMaxIntervalMinutes = 24;
+    private IReadOnlyList<RandomChatPrompt> randomChatPrompts = RandomChatPromptCatalog.Load();
+    private long nextRandomChatInvitationId;
+    private long? displayedRandomChatInvitationId;
+    private string? displayedRandomChatTopic;
 
     private bool dragging;
     private bool combinedDrag;
@@ -46,6 +56,8 @@ public partial class MainWindow : Window
     /// <summary>Raised when the user opens the target-selection card (menu or dropped folder).</summary>
     public event EventHandler<string?>? TargetSelectionRequested;
 
+    public event EventHandler<RandomChatRequestedEventArgs>? RandomChatRequested;
+
     public MainWindow(IScreenLayout screenLayout)
     {
         InitializeComponent();
@@ -57,6 +69,17 @@ public partial class MainWindow : Window
             singleClickTimer.Stop();
             ShowPeakValleyCard();
         };
+        randomChatTimer.Tick += (_, _) =>
+        {
+            randomChatTimer.Stop();
+            ShowRandomChatInvitation();
+        };
+        randomChatExpiryTimer.Tick += (_, _) =>
+        {
+            randomChatExpiryTimer.Stop();
+            DismissRandomChatInvitation();
+            ScheduleRandomChatInvitation();
+        };
         RestoreState();
         restoringState = false;
         Loaded += (_, _) => UpdateStateBubblePosition();
@@ -64,6 +87,8 @@ public partial class MainWindow : Window
         {
             animationPlayer.Stop();
             singleClickTimer.Stop();
+            randomChatTimer.Stop();
+            randomChatExpiryTimer.Stop();
             peakValleyCard?.CloseCard();
         };
     }
@@ -71,11 +96,13 @@ public partial class MainWindow : Window
     public void AttachDialogueWindow(DialogueWindow window)
     {
         dialogueWindow = window;
+        window.DialogueClosed += (_, _) => ScheduleRandomChatInvitation();
     }
 
     public void AttachPeakValleyCard(PeakValleyCardWindow window)
     {
         peakValleyCard = window;
+        window.RandomChatClicked += (_, _) => OpenDisplayedRandomChat();
     }
 
     public void ToggleDialogueWindow()
@@ -87,6 +114,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            DismissRandomChatInvitation();
             dialogueWindow.ShowDialogue(CurrentRect());
         }
     }
@@ -104,6 +132,7 @@ public partial class MainWindow : Window
         };
         animationPlayer.Apply(state.AnimationKey, reducedMotion);
         UpdateStateBubblePosition();
+        ScheduleRandomChatInvitation();
     }
 
     public void ApplyConfig(ConfigMessage config)
@@ -111,6 +140,10 @@ public partial class MainWindow : Window
         defaultScale = config.Scale;
         defaultPetPlacement = config.PetPlacement;
         reducedMotion = config.ReducedMotion;
+        randomChatEnabled = config.RandomChatEnabled && config.RandomChatBrowseOnOpen && config.RandomChatConfigured;
+        randomChatMinIntervalMinutes = config.RandomChatMinIntervalMinutes;
+        randomChatMaxIntervalMinutes = config.RandomChatMaxIntervalMinutes;
+        randomChatPrompts = BuildRandomChatPrompts(config.RandomChatCustomPrompts);
         animationPlayer.Apply(lastDisplayState.AnimationKey, reducedMotion);
         ApplyState(PetWindowState.Normalize(Left, Top, config.Scale));
         if (!hasSavedPlacement)
@@ -119,9 +152,38 @@ public partial class MainWindow : Window
             hasSavedPlacement = true;
         }
         CancelPendingPeakValleyCard();
-        peakValleyCard?.Dismiss();
         UpdateStateBubblePosition();
+        if (!randomChatEnabled)
+        {
+            DismissRandomChatInvitation();
+        }
+        else if (displayedRandomChatInvitationId is null)
+        {
+            peakValleyCard?.Dismiss();
+        }
+        ScheduleRandomChatInvitation();
         SaveState();
+    }
+
+    public void ShowRandomChatDialogue(long invitationId)
+    {
+        if (displayedRandomChatInvitationId != invitationId) return;
+        DismissRandomChatInvitation();
+        dialogueWindow?.ShowDialogue(CurrentRect());
+    }
+
+    public void ShowRandomChatError(long invitationId)
+    {
+        if (displayedRandomChatInvitationId != invitationId) return;
+        peakValleyCard?.ShowRandomChatError(CurrentHeadRect(), screenLayout, CurrentHeadRect().Height);
+        randomChatExpiryTimer.Stop();
+        randomChatExpiryTimer.Interval = TimeSpan.FromSeconds(4);
+        randomChatExpiryTimer.Start();
+    }
+
+    public void ShowRandomChatInvitationForTest()
+    {
+        ShowRandomChatInvitation(force: true);
     }
 
     public void SaveState()
@@ -202,7 +264,7 @@ public partial class MainWindow : Window
             pointerGesture.Cancel();
             if (PetLayout.IsMouseCaptured) PetLayout.ReleaseMouseCapture();
             CancelPendingPeakValleyCard();
-            peakValleyCard?.Dismiss();
+            DismissRandomChatInvitation();
             ToggleDialogueWindow();
             e.Handled = true;
             return;
@@ -247,13 +309,14 @@ public partial class MainWindow : Window
 
     private void ShowPeakValleyCard()
     {
-        if (peakValleyCard is null) return;
+        if (peakValleyCard is null || displayedRandomChatInvitationId is not null) return;
         var head = CurrentHeadRect();
         peakValleyCard.ShowPeriod(PeakValleySchedule.Current(), head, screenLayout, head.Height);
     }
 
     private void SchedulePeakValleyCard()
     {
+        if (displayedRandomChatInvitationId is not null) return;
         singleClickTimer.Stop();
         singleClickTimer.Interval = TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime);
         singleClickTimer.Start();
@@ -264,7 +327,7 @@ public partial class MainWindow : Window
     private void StartPetDrag(bool useCombinedDrag)
     {
         CancelPendingPeakValleyCard();
-        peakValleyCard?.Dismiss();
+        DismissRandomChatInvitation();
         combinedDrag = useCombinedDrag;
         dragStartPetRect = CurrentRect();
         lastMovedDialogueRect = null;
@@ -374,6 +437,71 @@ public partial class MainWindow : Window
         Canvas.SetTop(StateBubble, Math.Clamp(top, 0d, Math.Max(0d, StateBubbleCanvas.ActualHeight - StateBubble.ActualHeight)));
     }
 
+    private void ScheduleRandomChatInvitation()
+    {
+        randomChatTimer.Stop();
+        if (!randomChatEnabled || displayedRandomChatInvitationId is not null || dragging
+            || lastDisplayState.State != "idle" || dialogueWindow is { IsVisible: true })
+        {
+            return;
+        }
+        randomChatTimer.Interval = RandomChatDelayFor(randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, Random.Shared.Next());
+        randomChatTimer.Start();
+    }
+
+    internal static TimeSpan RandomChatDelayFor(int minimumMinutes, int maximumMinutes, int randomValue)
+    {
+        var minimum = Math.Clamp(minimumMinutes, 5, 1440);
+        var maximum = Math.Clamp(maximumMinutes, minimum, 1440);
+        var offset = Math.Abs((long)randomValue) % (maximum - minimum + 1L);
+        return TimeSpan.FromMinutes(minimum + offset);
+    }
+
+    internal static IReadOnlyList<RandomChatPrompt> BuildRandomChatPrompts(ImmutableArray<string> customPrompts)
+    {
+        var prompts = RandomChatPromptCatalog.Load().ToList();
+        prompts.AddRange(customPrompts.Select((text) => new RandomChatPrompt("discovery", text, "点击展开聊聊")));
+        return prompts;
+    }
+
+    private void ShowRandomChatInvitation(bool force = false)
+    {
+        if ((!randomChatEnabled && !force) || lastDisplayState.State != "idle" || dialogueWindow is { IsVisible: true })
+        {
+            if (!force) ScheduleRandomChatInvitation();
+            return;
+        }
+        nextRandomChatInvitationId++;
+        displayedRandomChatInvitationId = nextRandomChatInvitationId;
+        var prompt = randomChatPrompts[Random.Shared.Next(randomChatPrompts.Count)];
+        displayedRandomChatTopic = prompt.Topic;
+        var head = CurrentHeadRect();
+        peakValleyCard?.ShowRandomChatInvitation(prompt.Text, prompt.Cta, head, screenLayout, head.Height);
+        randomChatExpiryTimer.Stop();
+        randomChatExpiryTimer.Interval = TimeSpan.FromSeconds(30);
+        randomChatExpiryTimer.Start();
+    }
+
+    private void DismissRandomChatInvitation()
+    {
+        randomChatTimer.Stop();
+        randomChatExpiryTimer.Stop();
+        displayedRandomChatInvitationId = null;
+        displayedRandomChatTopic = null;
+        peakValleyCard?.Dismiss();
+    }
+
+    private void OpenDisplayedRandomChat()
+    {
+        if (displayedRandomChatInvitationId is not { } invitationId || displayedRandomChatTopic is not { } topic)
+        {
+            return;
+        }
+        randomChatTimer.Stop();
+        randomChatExpiryTimer.Stop();
+        RandomChatRequested?.Invoke(this, new RandomChatRequestedEventArgs(invitationId, topic));
+    }
+
     private void ScaleMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { Tag: string scaleText }
@@ -397,7 +525,7 @@ public partial class MainWindow : Window
     private void HideMenuItem_Click(object sender, RoutedEventArgs e)
     {
         CancelPendingPeakValleyCard();
-        peakValleyCard?.Dismiss();
+        DismissRandomChatInvitation();
         SaveState();
         Hide();
         HiddenToTray?.Invoke(this, EventArgs.Empty);
@@ -436,4 +564,10 @@ public partial class MainWindow : Window
     }
 
     private void CloseMenuItem_Click(object sender, RoutedEventArgs e) => Close();
+}
+
+public sealed class RandomChatRequestedEventArgs(long invitationId, string topic) : EventArgs
+{
+    public long InvitationId { get; } = invitationId;
+    public string Topic { get; } = topic;
 }
