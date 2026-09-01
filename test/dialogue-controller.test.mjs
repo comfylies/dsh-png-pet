@@ -122,6 +122,36 @@ test('maps its generated user message id to the next turn and forwards only text
   )
 })
 
+test('falls back to the next user turn when DSH does not echo the generated message id', async () => {
+  const sent = []
+  const dsh = createDsh({ agent: { status: 'idle', followup: () => {} } })
+  const controller = new DialogueController(dsh.context, (message) => sent.push(message))
+
+  await controller.acceptInput({ requestId: 3, text: 'input omitted' })
+  controller.observeEvent('s-1', { type: 'user/message', data: { source: { kind: 'user' } } })
+  controller.observeEvent('s-1', { type: 'turn/start', data: { turn: 12 } })
+  controller.observeEvent('s-1', { type: 'assistant/chunk', data: { turn: 12, chunk: { type: 'text-delta', text: 'answer' } } })
+
+  assert.deepEqual(sent.filter((message) => message.kind === 'reply-preview'), [
+    { kind: 'reply-preview', requestId: 3, text: 'answer', completed: false },
+  ])
+})
+
+test('streams a user turn from the selected session that was started outside the pet', () => {
+  const sent = []
+  const controller = new DialogueController(createDsh().context, (message) => sent.push(message))
+
+  controller.observeEvent('s-1', { type: 'user/message', data: { source: { kind: 'user' } } })
+  controller.observeEvent('s-1', { type: 'turn/start', data: { turn: 18 } })
+  controller.observeEvent('s-1', { type: 'assistant/chunk', data: { turn: 18, chunk: { type: 'text-delta', text: 'external answer' } } })
+
+  const preview = sent.find((message) => message.kind === 'reply-preview')
+  assert.equal(preview?.kind, 'reply-preview')
+  assert.equal(preview?.text, 'external answer')
+  assert.equal(preview?.completed, false)
+  assert.equal(Number.isSafeInteger(preview?.requestId), true)
+})
+
 test('drops reasoning, tool deltas and unmatched turns', () => {
   const sent = []
   const controller = new DialogueController(createDsh().context, (message) => sent.push(message))

@@ -2,9 +2,13 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { HelperProcess, withRequiredWindowsEnvironment } from '../lib/helper-process.js'
+import { defaultHelperReadyTimeoutMs, HelperProcess, withRequiredWindowsEnvironment } from '../lib/helper-process.js'
 
 const fixture = fileURLToPath(new URL('./fixtures/fake-helper.mjs', import.meta.url))
+
+test('allows 15 seconds for the Helper ready handshake by default', () => {
+  assert.equal(defaultHelperReadyTimeoutMs, 15_000)
+})
 
 test('adds WINDIR from SystemRoot only when the helper environment lacks it', () => {
   const environment = withRequiredWindowsEnvironment({ SystemRoot: 'C:\\Windows', KEEP: 'value' })
@@ -81,6 +85,7 @@ test('forwards only validated helper input messages to onMessage', async () => {
     await helper.stop()
   }
 })
+
 
 test('forwards helper input request ids only once and in ascending order', async () => {
   const received = []
@@ -232,4 +237,3 @@ test('forwards target-open and target-answer helper messages to onMessage', asyn
     await helper.stop()
   }
 })
-

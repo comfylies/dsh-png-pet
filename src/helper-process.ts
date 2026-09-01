@@ -19,6 +19,10 @@ const defaultCommand = fileURLToPath(
   new URL('../runtime/bin/win32-x64/pet-helper.exe', import.meta.url),
 )
 
+// A cold .NET single-file WPF launch can include native extraction and security
+// scanning before it can write the ready handshake.
+export const defaultHelperReadyTimeoutMs = 15_000
+
 export function withRequiredWindowsEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (environment.WINDIR !== undefined || !environment.SystemRoot) return { ...environment }
 
@@ -42,7 +46,7 @@ export class HelperProcess {
     this.options = {
       command: options.command ?? defaultCommand,
       args: options.args ?? [],
-      readyTimeoutMs: options.readyTimeoutMs ?? 5_000,
+      readyTimeoutMs: options.readyTimeoutMs ?? defaultHelperReadyTimeoutMs,
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
       onSend: options.onSend ?? (() => {}),
       onMessage: options.onMessage ?? (() => {}),

@@ -25,6 +25,7 @@ function diag(entry: string): void {
 type Request = {
   requestId: number
   sessionId: string
+  origin: 'pet' | 'external'
   previewEnabled: boolean
   previewMaxChars: number
   preview: string
@@ -35,6 +36,8 @@ export class DialogueController {
   private readonly pendingTurnRequests = new Map<string, Request[]>()
   private readonly requestsByTurn = new Map<string, Request>()
   private readonly activeRequests = new Map<number, Request>()
+  private readonly externalUserMessages = new Map<string, number>()
+  private nextExternalRequestId = Number.MAX_SAFE_INTEGER
   private lastSettings: DialogueSettings
   private currentInputRequestId?: number
   private currentInputSessionId?: string
@@ -163,6 +166,7 @@ export class DialogueController {
     const request: Request = {
       requestId: input.requestId,
       sessionId,
+      origin: 'pet',
       previewEnabled: settings.previewEnabled,
       previewMaxChars: settings.previewMaxChars,
       preview: '',
@@ -241,13 +245,22 @@ export class DialogueController {
     if (!isSessionEvent(event)) return
     if (event.type === 'user/message') {
       const messageId = readMessageId(event.data)
-      if (messageId === undefined) return
-      const request = this.requestsByMessageId.get(messageId)
-      if (request === undefined || request.sessionId !== sessionId) return
-      this.requestsByMessageId.delete(messageId)
-      const pending = this.pendingTurnRequests.get(sessionId) ?? []
-      pending.push(request)
-      this.pendingTurnRequests.set(sessionId, pending)
+      const request = messageId === undefined ? undefined : this.requestsByMessageId.get(messageId)
+      if (request !== undefined && request.sessionId === sessionId) {
+        this.queueTurnRequest(sessionId, request)
+        return
+      }
+      if (!isUserMessage(event.data) || !this.isSelectedSession(sessionId)) return
+
+      // DSH versions differ on whether the echoed session event carries the user-message
+      // ID.  A pet input is the only unbound request in its session, so bind the next real
+      // user turn even when that ID is absent or nested in an unsupported envelope.
+      const fallback = this.unboundPetRequest(sessionId)
+      if (fallback !== undefined) {
+        this.queueTurnRequest(sessionId, fallback)
+      } else {
+        this.externalUserMessages.set(sessionId, (this.externalUserMessages.get(sessionId) ?? 0) + 1)
+      }
       return
     }
 
@@ -255,7 +268,9 @@ export class DialogueController {
     if (turn === undefined) return
     const key = turnKey(sessionId, turn)
     if (event.type === 'turn/start') {
-      const request = this.pendingTurnRequests.get(sessionId)?.shift()
+      const request = this.takePendingTurnRequest(sessionId)
+        ?? this.unboundPetRequest(sessionId)
+        ?? this.takeExternalTurnRequest(sessionId)
       if (request !== undefined) this.requestsByTurn.set(key, request)
       return
     }
@@ -280,17 +295,34 @@ export class DialogueController {
         }
         this.requestsByTurn.delete(key)
         this.removeRequest(request)
-      }
-      if (this.currentInputRequestId !== undefined) {
         if (reason === 'aborted') {
-          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'stopped' })
+          this.send({ kind: 'input-status', requestId: request.requestId, status: 'stopped' })
         } else if (reason === 'interrupted') {
-          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'interrupted' })
+          this.send({ kind: 'input-status', requestId: request.requestId, status: 'interrupted' })
         } else if (reason === 'error' || reason === 'max-tokens' || reason === 'blocked') {
-          this.send({ kind: 'input-status', requestId: this.currentInputRequestId, status: 'failed' })
+          this.send({ kind: 'input-status', requestId: request.requestId, status: 'failed' })
         } else {
-          this.publishReply(sessionId, this.currentInputRequestId, turn)
+          this.publishReply(sessionId, request.requestId, turn)
         }
+        this.clearCurrentPetInput(request)
+        return
+      }
+      // Preserve a final reply when an old DSH runtime omits both the echoed message ID and
+      // a usable turn/start event. It cannot be streamed, but it must not leave the UI blank.
+      if (this.currentInputRequestId !== undefined) {
+        const currentRequest = this.activeRequests.get(this.currentInputRequestId)
+        if (currentRequest === undefined || currentRequest.sessionId !== sessionId) return
+        if (reason === 'aborted') {
+          this.send({ kind: 'input-status', requestId: currentRequest.requestId, status: 'stopped' })
+        } else if (reason === 'interrupted') {
+          this.send({ kind: 'input-status', requestId: currentRequest.requestId, status: 'interrupted' })
+        } else if (reason === 'error' || reason === 'max-tokens' || reason === 'blocked') {
+          this.send({ kind: 'input-status', requestId: currentRequest.requestId, status: 'failed' })
+        } else {
+          this.publishReply(sessionId, currentRequest.requestId, turn)
+        }
+        this.removeRequest(currentRequest)
+        this.clearCurrentPetInput(currentRequest)
       }
     }
   }
@@ -391,6 +423,7 @@ export class DialogueController {
   }
 
   private clearForSession(sessionId: string, reason: 'session-unavailable'): void {
+    this.externalUserMessages.delete(sessionId)
     const requests = [...this.activeRequests.values()].filter((request) => request.sessionId === sessionId)
     for (const request of requests) {
       this.send({ kind: 'clear-preview', requestId: request.requestId, reason })
@@ -406,6 +439,61 @@ export class DialogueController {
     this.pendingTurnRequests.clear()
     this.requestsByTurn.clear()
     this.activeRequests.clear()
+    this.externalUserMessages.clear()
+  }
+
+  private queueTurnRequest(sessionId: string, request: Request): void {
+    for (const [messageId, mappedRequest] of this.requestsByMessageId) {
+      if (mappedRequest === request) this.requestsByMessageId.delete(messageId)
+    }
+    const pending = this.pendingTurnRequests.get(sessionId) ?? []
+    if (!pending.includes(request)) pending.push(request)
+    this.pendingTurnRequests.set(sessionId, pending)
+  }
+
+  private takePendingTurnRequest(sessionId: string): Request | undefined {
+    const pending = this.pendingTurnRequests.get(sessionId)
+    const request = pending?.shift()
+    if (pending !== undefined && pending.length === 0) this.pendingTurnRequests.delete(sessionId)
+    return request
+  }
+
+  private unboundPetRequest(sessionId: string): Request | undefined {
+    for (const request of this.requestsByMessageId.values()) {
+      if (request.sessionId === sessionId && request.origin === 'pet') return request
+    }
+    return undefined
+  }
+
+  private takeExternalTurnRequest(sessionId: string): Request | undefined {
+    const pending = this.externalUserMessages.get(sessionId) ?? 0
+    if (pending > 0) {
+      if (pending === 1) this.externalUserMessages.delete(sessionId)
+      else this.externalUserMessages.set(sessionId, pending - 1)
+    } else if (!this.isSelectedSession(sessionId)) {
+      return undefined
+    }
+
+    const request: Request = {
+      requestId: this.nextExternalRequestId--,
+      sessionId,
+      origin: 'external',
+      previewEnabled: this.ctx.settings.get().previewEnabled,
+      previewMaxChars: this.ctx.settings.get().previewMaxChars,
+      preview: '',
+    }
+    this.activeRequests.set(request.requestId, request)
+    return request
+  }
+
+  private isSelectedSession(sessionId: string): boolean {
+    return this.effectiveTarget(this.ctx.settings.get()).sessionId === sessionId
+  }
+
+  private clearCurrentPetInput(request: Request): void {
+    if (request.origin !== 'pet' || this.currentInputRequestId !== request.requestId) return
+    this.currentInputRequestId = undefined
+    this.currentInputSessionId = undefined
   }
 
   private removeRequest(request: Request): void {
@@ -440,8 +528,12 @@ function isSessionEvent(value: unknown): value is DshSessionEvent {
 
 function readMessageId(data: unknown): string | undefined {
   const value = readRecord(data)
-  const id = value?.id
+  const id = value?.id ?? readRecord(value?.message)?.id
   return typeof id === 'string' && id.length > 0 ? id : undefined
+}
+
+function isUserMessage(data: unknown): boolean {
+  return readRecord(readRecord(data)?.source)?.kind === 'user'
 }
 
 function readTurn(data: unknown): number | undefined {

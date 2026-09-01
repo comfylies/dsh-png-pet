@@ -89,7 +89,7 @@ public sealed class ConversationState
                 break;
             case ReplyPreviewMessage preview when PreviewEnabled && IsCurrentOrFirst(preview.RequestId):
                 SetFirstRequestId(preview.RequestId);
-                HasActiveTurn = true;
+                HasActiveTurn = !preview.Completed;
                 var previewMessage = FindOrAddAssistant(preview.RequestId);
                 previewMessage.Streaming = !preview.Completed;
                 HasStreamingMessage = !preview.Completed;
@@ -111,6 +111,13 @@ public sealed class ConversationState
                 break;
             case HistoryMessage history:
                 HistoryAvailable = history.Available;
+                // Showing the window asks for persisted history. That asynchronous response
+                // must not replace a live assistant message that arrived while the window was
+                // hidden or while the request was in flight.
+                if (HasActiveTurn || HasStreamingMessage)
+                {
+                    break;
+                }
                 HasActiveTurn = false;
                 HasStreamingMessage = false;
                 PendingStreamText = null;

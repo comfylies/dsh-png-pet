@@ -41,6 +41,7 @@ test('scales the pet window and its state bubble', () => {
 
 test('renders an opaque dialogue surface with a message list and composer', () => {
   const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
 
   assert.match(xaml, /Background="#FFF8F9FC"/)
   assert.match(xaml, /ResizeMode="CanResize"/)
@@ -49,6 +50,10 @@ test('renders an opaque dialogue surface with a message list and composer', () =
   assert.match(xaml, /x:Name="MessageScroll"/)
   assert.match(xaml, /x:Name="SendButton"/)
   assert.match(xaml, /x:Name="PendingAttachmentsList"/)
+  assert.match(xaml, /Enter 发送，Shift\+Enter 换行/)
+  assert.match(xaml, /AcceptsReturn="True"/)
+  assert.match(code, /ComposerInputActionFor\(e\.Key, Keyboard\.Modifiers\)/)
+  assert.match(code, /ComposerInputAction\.InsertLineBreak/)
   assert.doesNotMatch(xaml, /HistoryButton/)
   assert.doesNotMatch(xaml, /x:Name="HistoryPanel"/)
   assert.doesNotMatch(xaml, /x:Name="ReplyTextBlock"/)
@@ -80,7 +85,7 @@ test('uses a single translucent frosted composer rather than separate input cont
   assert.match(xaml, /x:Name="InputComposer"/)
   assert.match(xaml, /Background="#D9FFFFFF"/)
   assert.match(xaml, /CornerRadius="18"/)
-  assert.match(xaml, /Text="给智能体发消息"/)
+  assert.match(xaml, /Text="给智能体发消息（Enter 发送，Shift\+Enter 换行）"/)
   assert.match(xaml, /x:Name="SendButton"[\s\S]*Width="26"[\s\S]*Height="26"/)
   assert.match(xaml, /x:Name="SendGlyph"/)
   assert.match(xaml, /<Thumb Background="Transparent" \/>/)

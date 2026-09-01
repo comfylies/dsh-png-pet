@@ -10,6 +10,13 @@ using System.Windows.Threading;
 
 namespace PetHelper;
 
+internal enum ComposerInputAction
+{
+    None,
+    Send,
+    InsertLineBreak,
+}
+
 public partial class DialogueWindow : Window
 {
     private static readonly Size MinSize = new(DialogueWindowState.MinWidth, DialogueWindowState.MinHeight);
@@ -217,6 +224,7 @@ public partial class DialogueWindow : Window
 
     private void SubmitInput()
     {
+        if (conversationState.HasActiveTurn) return;
         var text = InputTextBox.Text.Trim();
         if (text.Length > 2000) return;
         if (text.Length == 0 && pendingAttachments.Count == 0) return;
@@ -261,12 +269,27 @@ public partial class DialogueWindow : Window
 
     private void InputTextBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && Keyboard.Modifiers != ModifierKeys.Shift)
+        switch (ComposerInputActionFor(e.Key, Keyboard.Modifiers))
         {
-            SubmitInput();
-            e.Handled = true;
+            case ComposerInputAction.Send:
+                SubmitInput();
+                e.Handled = true;
+                break;
+            case ComposerInputAction.InsertLineBreak:
+                InputTextBox.SelectedText = Environment.NewLine;
+                e.Handled = true;
+                break;
         }
     }
+
+    internal static ComposerInputAction ComposerInputActionFor(Key key, ModifierKeys modifiers) =>
+        key != Key.Enter
+            ? ComposerInputAction.None
+            : modifiers == ModifierKeys.None
+                ? ComposerInputAction.Send
+                : modifiers == ModifierKeys.Shift
+                    ? ComposerInputAction.InsertLineBreak
+                    : ComposerInputAction.None;
 
     private void InputTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -542,7 +565,7 @@ public partial class DialogueWindow : Window
         else
         {
             SendGlyph.Data = Geometry.Parse("M 8,1 L 1,9 L 5.5,9 L 5.5,15 L 10.5,15 L 10.5,9 L 15,9 Z");
-            SendButton.ToolTip = "发送（Enter）";
+            SendButton.ToolTip = "发送（Enter；Shift+Enter 换行）";
         }
     }
 

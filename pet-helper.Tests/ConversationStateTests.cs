@@ -35,6 +35,7 @@ public sealed class ConversationStateTests
         Assert.False(assistant.Streaming);
         Assert.Equal("最终文本", assistant.Text);
         Assert.Equal(MessageEndState.None, assistant.End);
+        Assert.False(state.HasActiveTurn);
     }
 
     [Fact]
@@ -183,6 +184,23 @@ public sealed class ConversationStateTests
         Assert.Equal("chart.png", image.Name);
         Assert.Equal(640, image.Width);
         Assert.Null(image.DataBase64);
+    }
+
+    [Fact]
+    public void Does_not_replace_an_active_stream_with_a_late_history_response()
+    {
+        var state = new ConversationState(previewEnabled: true, previewMaxChars: 80);
+        state.Apply(new ReplyPreviewMessage(7, "streaming", false));
+        var history = ImmutableArray.Create(
+            new HistoryItem("user", ImmutableArray.Create<HistoryBlock>(new HistoryTextBlock("older input"))),
+            new HistoryItem("assistant", ImmutableArray.Create<HistoryBlock>(new HistoryTextBlock("older output"))));
+
+        state.Apply(new HistoryMessage(1, true, history));
+
+        var assistant = Assert.Single(state.Messages.Where(message => message.Role == "assistant"));
+        Assert.True(assistant.Streaming);
+        Assert.True(state.HasActiveTurn);
+        Assert.Equal("streaming", state.PendingStreamText);
     }
 
     [Fact]

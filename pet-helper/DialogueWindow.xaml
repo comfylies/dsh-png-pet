@@ -226,7 +226,7 @@
               </ItemsControl.ItemsPanel>
             </ItemsControl>
             <Grid MinHeight="30">
-              <TextBlock x:Name="InputHint" Text="给智能体发消息" Foreground="#98A2B3"
+              <TextBlock x:Name="InputHint" Text="给智能体发消息（Enter 发送，Shift+Enter 换行）" Foreground="#98A2B3"
                          FontSize="13" Margin="1,3,34,3" IsHitTestVisible="False" />
               <TextBox x:Name="InputTextBox" MinHeight="30" MaxHeight="72" AcceptsReturn="True"
                        TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
