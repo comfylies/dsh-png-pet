@@ -87,7 +87,7 @@
       </MenuItem>
       <Separator />
       <MenuItem Header="重置大小与位置" Click="ResetMenuItem_Click" />
-      <MenuItem Header="关闭桌宠" Click="CloseMenuItem_Click" />
+      <MenuItem Header="本次关闭桌宠" Click="CloseMenuItem_Click" />
     </ContextMenu>
   </Window.ContextMenu>
   <Grid x:Name="PetLayout" MouseLeftButtonDown="Pet_MouseLeftButtonDown"

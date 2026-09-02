@@ -238,3 +238,14 @@ test('uses the dialogue visual language for the pet menu and collapsed target tr
   assert.match(code, /ShowTargetTree\(\)/)
   assert.doesNotMatch(code, /ShowLevelTwo\(/)
 })
+
+test('marks a deliberate pet close before shutting down so the Host can suppress restart', () => {
+  const app = readFileSync(new URL('../pet-helper/App.xaml.cs', import.meta.url), 'utf8')
+  const pet = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const tray = readFileSync(new URL('../pet-helper/PetTrayIcon.cs', import.meta.url), 'utf8')
+
+  assert.match(app, /window\.Closing[\s\S]*WriteCloseRequested\(\)/)
+  assert.match(app, /SerializeHelperMessage\("close-requested"\)/)
+  assert.match(pet, /Header="本次关闭桌宠"/)
+  assert.match(tray, /"本次关闭桌宠"/)
+})

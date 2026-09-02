@@ -37,6 +37,7 @@ public sealed class PetStateAnimationCoordinator
     public string Frame => clipPlayback.Frame;
     public int IntervalMs => clipPlayback.FrameDurationMs;
     public PetStatusAnchor StatusAnchor => currentClip?.StatusAnchor ?? PetStatusAnchor.Default;
+    public PetRenderTransform RenderTransform => currentClip?.RenderTransform ?? PetRenderTransform.Identity;
     public bool IsAnimating => !reducedMotion && !finished && (clipCompleted || clipPlayback.IsAnimating);
 
     public void Apply(PetAnimationKey nextRequested, bool reducedMotion)

@@ -12,7 +12,7 @@ public sealed class PetTrayIcon : IDisposable
     {
         menu = new ContextMenuStrip();
         menu.Items.Add("显示桌宠", null, (_, _) => showPet());
-        menu.Items.Add("退出桌宠", null, (_, _) => exitPet());
+        menu.Items.Add("本次关闭桌宠", null, (_, _) => exitPet());
 
         notifyIcon = new NotifyIcon
         {

@@ -22,7 +22,7 @@ internal static class RandomChatPromptCatalog
     }
 
     private static bool IsValid(RandomChatPrompt prompt) =>
-        prompt.Topic is "news" or "discovery"
+        prompt.Topic is "news" or "weather" or "discovery"
         && prompt.Text is { Length: > 0 and <= 120 }
         && prompt.Cta is { Length: > 0 and <= 80 };
 

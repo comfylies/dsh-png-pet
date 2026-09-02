@@ -1,6 +1,6 @@
 {
   "name": "dsh-png-pet",
-  "version": "0.1.55",
+  "version": "0.2.0",
   "private": true,
   "description": "A Windows desktop pet companion for DeepSeek Harness.",
   "type": "module",

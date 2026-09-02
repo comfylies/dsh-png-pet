@@ -1,0 +1,25 @@
+// Reference-only template for Assets/Animations/<action>/animation.json.
+// This .jsonc file is intentionally not embedded or executed. Copy the shape below into a
+// real animation.json, then remove all comments because runtime manifests must be strict JSON.
+{
+  "clips": {
+    "example-loop": {
+      // Frames are local to this action directory. Keep the same canvas and foot baseline.
+      "frames": ["example/001.png", "example/002.png"],
+      // Integer milliseconds. 83 ms is the closest supported duration to 12 fps.
+      "frameDurationMs": 83,
+      "playback": "loop",
+      // Raw, pre-transform normalized point for the state bubble (0..1 on both axes).
+      "statusAnchor": { "x": 0.5, "y": 0.11 },
+      // Optional: one transform applies identically to every frame in this clip.
+      "renderTransform": {
+        // 0.5..1.5. Use 1.2 to enlarge an action without changing the global pet scale.
+        "scale": 1.2,
+        // Normalized pivot, usually the source foot baseline for a grounded character.
+        "origin": { "x": 0.5, "y": 0.921 },
+        // Normalized post-scale shift. Keep values between -0.25 and 0.25.
+        "offset": { "x": 0, "y": 0.025 }
+      }
+    }
+  }
+}

@@ -126,6 +126,11 @@ public sealed class PetAnimationPlayer
 
     public PetStatusAnchor StatusAnchor => playback?.StatusAnchor ?? PetStatusAnchor.Default;
 
+    public PetRenderTransform RenderTransform => playback?.RenderTransform ?? PetRenderTransform.Identity;
+
+    /// <summary>Reapplies normalized translation after the WPF image receives a new layout size.</summary>
+    public void RefreshPresentation() => ApplyRenderTransform();
+
     private void Timer_Tick(object? sender, EventArgs e)
     {
         if (playback is null)
@@ -154,6 +159,18 @@ public sealed class PetAnimationPlayer
         }
 
         image.Source = TryLoadFrame(playback.Frame);
+        ApplyRenderTransform();
+    }
+
+    private void ApplyRenderTransform()
+    {
+        var transform = playback?.RenderTransform ?? PetRenderTransform.Identity;
+        var width = image.ActualWidth;
+        var height = image.ActualHeight;
+        var offsetX = width * (transform.Origin.X * (1d - transform.Scale) + transform.Offset.X);
+        var offsetY = height * (transform.Origin.Y * (1d - transform.Scale) + transform.Offset.Y);
+        image.RenderTransform = new MatrixTransform(new Matrix(
+            transform.Scale, 0d, 0d, transform.Scale, offsetX, offsetY));
     }
 
     private bool IsFrameAvailable(string frame)
@@ -211,6 +228,7 @@ public sealed class PetAnimationPlayer
     {
         timer.Stop();
         playback = null;
+        ApplyRenderTransform();
         image.Source = TryLoadStaticPlaceholder(staticPlaceholderLoader);
     }
 

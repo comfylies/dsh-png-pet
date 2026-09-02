@@ -1,6 +1,6 @@
 import type { DialoguePlacement, PetPlacement } from './dialogue-settings.js'
 
-export const PROTOCOL_VERSION = 11 as const
+export const PROTOCOL_VERSION = 12 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -49,9 +49,9 @@ export type Activity = keyof typeof activityLabels
 export type State = 'active' | keyof typeof displayLabels
 export type CompanionState = State
 export type HelperLifecycleMessageKind = 'ready' | 'closed'
-export type RandomChatTopic = 'news' | 'discovery'
+export type RandomChatTopic = 'news' | 'weather' | 'discovery'
 export type RandomChatError = 'not-configured' | 'unavailable'
-export type HelperMessageKind = HelperLifecycleMessageKind | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer' | 'random-chat-open' | 'dialogue-closed'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'close-requested' | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer' | 'random-chat-open' | 'dialogue-closed'
 export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected' | 'stopped' | 'interrupted' | 'failed'
 export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
 export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'target-request' | 'random-chat-ready' | 'random-chat-error' | 'random-chat-test'
@@ -71,6 +71,12 @@ export type TargetSession = {
 export type HelperLifecycleMessage = {
   version: typeof PROTOCOL_VERSION
   kind: HelperLifecycleMessageKind
+}
+
+/** A deliberate local exit. The Host keeps the pet closed for this DSH lifetime. */
+export type HelperCloseRequestedMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'close-requested'
 }
 
 export type HelperInputMessage = {
@@ -124,7 +130,7 @@ export type HelperDialogueClosedMessage = {
   kind: 'dialogue-closed'
 }
 
-export type HelperMessage = HelperLifecycleMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage
+export type HelperMessage = HelperLifecycleMessage | HelperCloseRequestedMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
@@ -168,7 +174,7 @@ const compositeActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected', 'stopped', 'interrupted', 'failed'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
 const imageMediaTypes = new Set<ImageMediaType>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
-const randomChatTopics = new Set<RandomChatTopic>(['news', 'discovery'])
+const randomChatTopics = new Set<RandomChatTopic>(['news', 'weather', 'discovery'])
 const randomChatErrors = new Set<RandomChatError>(['not-configured', 'unavailable'])
 
 export function labelForPresentation(state: State, activities: readonly Activity[]): string {
@@ -189,7 +195,7 @@ export function parseHelperMessage(line: string): HelperMessage {
   if (typeof message.kind !== 'string' || !isHelperMessageKind(message.kind)) {
     throw new Error('helper message has an unknown kind')
   }
-  if (message.kind === 'ready' || message.kind === 'closed') {
+  if (message.kind === 'ready' || message.kind === 'closed' || message.kind === 'close-requested') {
     assertExactKeys(message, ['version', 'kind'], 'helper message')
     return { version: PROTOCOL_VERSION, kind: message.kind }
   }
@@ -390,7 +396,7 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
 }
 
 function isHelperMessageKind(value: string): value is HelperMessageKind {
-  return value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || value === 'random-chat-open' || value === 'dialogue-closed' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+  return value === 'close-requested' || value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || value === 'random-chat-open' || value === 'dialogue-closed' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
 }
 
 function parseInput(message: Record<string, unknown>): HelperInputMessage {

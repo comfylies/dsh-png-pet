@@ -29,17 +29,27 @@ type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings
 }
 
 type Helper = Pick<HelperProcess, 'start' | 'send' | 'stop'>
-type HelperFactory = (options: Pick<HelperProcessOptions, 'onMessage'>) => Helper
+type HelperFactory = (options: Pick<HelperProcessOptions, 'onMessage' | 'onExit'>) => Helper
+
+export const helperRestartDelaysMs = Object.freeze([1_000, 5_000, 15_000])
+export const helperStableRunMs = 60_000
+
+export type HelperLifecycleOptions = {
+  /** Test seam only; production uses a short, bounded exponential-like backoff. */
+  restartDelaysMs?: readonly number[]
+  /** A Helper that remains healthy for this period receives a fresh retry budget. */
+  stableRunMs?: number
+}
 
 export function apply(ctx: PluginContext): void {
   applyWithHelper(ctx, (options) => new HelperProcess(options))
 }
 
-export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory): void {
-  startDialogueHost(ctx, createHelper)
+export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory, lifecycleOptions: HelperLifecycleOptions = {}): void {
+  startDialogueHost(ctx, createHelper, lifecycleOptions)
 }
 
-function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): void {
+function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, lifecycleOptions: HelperLifecycleOptions): void {
   let controller: DialogueController | undefined
   let targetController: TargetController | undefined
   let randomChatController: RandomChatController | undefined
@@ -47,13 +57,28 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
   let unwatchSettings = () => {}
   let pendingRandomChatTest = false
   let helperReady = false
-  const helper = createHelper({
-    onMessage: (message) => routeHelperMessage(message, controller, targetController, randomChatController),
-  })
-  const bridge = new CompanionBridge((message) => helper.send(message))
+  let disposed = false
+  let restartSuppressed = false
+  let restartAttempts = 0
+  let restartTimer: NodeJS.Timeout | undefined
+  let stableRunTimer: NodeJS.Timeout | undefined
+  let helper: Helper | undefined
+  const restartDelays = lifecycleOptions.restartDelaysMs ?? helperRestartDelaysMs
+  const stableRunMs = lifecycleOptions.stableRunMs ?? helperStableRunMs
+  const bridge = new CompanionBridge((message) => helper?.send(message))
+
+  const clearRestartTimer = () => {
+    if (restartTimer) clearTimeout(restartTimer)
+    restartTimer = undefined
+  }
+
+  const clearStableRunTimer = () => {
+    if (stableRunTimer) clearTimeout(stableRunTimer)
+    stableRunTimer = undefined
+  }
 
   const publishWhenReady = () => {
-    if (!helperReady || !controller || !settingsScope) return
+    if (!helperReady || !helper || !controller || !settingsScope) return
     helper.send({ kind: 'hello' })
     helper.send(helperConfig(settingsScope.get()))
     if (pendingRandomChatTest) {
@@ -64,35 +89,88 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
     bridge.publishCurrent()
   }
 
-  void helper.start().then(() => {
-    helperReady = true
-    publishWhenReady()
-  }).catch(() => {
-    console.error('dsh-png-pet helper startup failed')
-  })
+  const startHelper = () => {
+    if (disposed || restartSuppressed || helper) return
+
+    let terminationHandled = false
+    const instance = createHelper({
+      onMessage: (message) => {
+        if (message.kind === 'close-requested') {
+          restartSuppressed = true
+          clearRestartTimer()
+          clearStableRunTimer()
+        }
+        void routeHelperMessage(message, controller, targetController, randomChatController)
+      },
+      onExit: () => handleTermination(),
+    })
+    helper = instance
+
+    const handleTermination = () => {
+      if (terminationHandled) return
+      terminationHandled = true
+      if (helper !== instance) return
+      helper = undefined
+      helperReady = false
+      clearStableRunTimer()
+
+      if (disposed || restartSuppressed) return
+      const delay = restartDelays[restartAttempts]
+      if (delay === undefined) {
+        // Fixed diagnostic only: never include child output, paths, or session data.
+        console.error('dsh-png-pet helper restart budget exhausted')
+        return
+      }
+      restartAttempts++
+      restartTimer = setTimeout(() => {
+        restartTimer = undefined
+        startHelper()
+      }, delay)
+    }
+
+    void instance.start().then(() => {
+      if (disposed || restartSuppressed || helper !== instance) {
+        void instance.stop()
+        return
+      }
+      helperReady = true
+      publishWhenReady()
+      stableRunTimer = setTimeout(() => {
+        if (helper === instance && helperReady) restartAttempts = 0
+      }, stableRunMs)
+      stableRunTimer.unref?.()
+    }).catch(() => {
+      handleTermination()
+    })
+  }
+
+  startHelper()
 
   ctx.effect(() => () => {
+    disposed = true
+    clearRestartTimer()
+    clearStableRunTimer()
     controller?.dispose()
     unwatchSettings()
-    void helper.stop()
+    void helper?.stop()
   })
 
   ctx.inject(['settings'], (settingsCtx) => {
     const scope = settingsCtx.settings.register(settingsNamespace('dsh-png-pet'), dialogueSettingsSchema)
     settingsScope = scope
     const dialogueCtx = createDialogueContext(ctx, scope)
-    controller = new DialogueController(dialogueCtx, (message) => helper.send(message))
+    controller = new DialogueController(dialogueCtx, (message) => helper?.send(message))
     targetController = new TargetController(
       ctx.apiProxy,
       scope,
-      (message) => helper.send(message),
+      (message) => helper?.send(message),
       (sessionId, workspaceId) => controller?.setTemporaryTarget(sessionId, workspaceId),
     )
     randomChatController = new RandomChatController(
       ctx.apiProxy,
       scope,
       controller,
-      (message) => helper.send(message),
+      (message) => helper?.send(message),
     )
     unwatchSettings = watchDialogueSettings(scope, controller, (settings, previous) => {
       const shouldTestRandomChat = settings.randomChatTestNonce !== previous.randomChatTestNonce
@@ -100,8 +178,8 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory): voi
         pendingRandomChatTest ||= shouldTestRandomChat
         return
       }
-      if (helperConfigChanged(settings, previous)) helper.send(helperConfig(settings))
-      if (shouldTestRandomChat) helper.send({ kind: 'random-chat-test' })
+      if (helperConfigChanged(settings, previous)) helper?.send(helperConfig(settings))
+      if (shouldTestRandomChat) helper?.send({ kind: 'random-chat-test' })
     })
     registerSessionObservers(ctx, bridge, controller)
     publishWhenReady()

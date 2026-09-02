@@ -1,1 +1,24 @@
-{ "clips": {} }
+{
+  "clips": {
+    "haul": {
+      "frames": [
+        "haul/001.png", "haul/002.png", "haul/003.png", "haul/004.png", "haul/005.png", "haul/006.png",
+        "haul/007.png", "haul/008.png", "haul/009.png", "haul/010.png", "haul/011.png", "haul/012.png",
+        "haul/013.png", "haul/014.png", "haul/015.png", "haul/016.png", "haul/017.png", "haul/018.png",
+        "haul/019.png", "haul/020.png", "haul/021.png", "haul/022.png", "haul/023.png", "haul/024.png",
+        "haul/025.png", "haul/026.png", "haul/027.png", "haul/028.png", "haul/029.png", "haul/030.png",
+        "haul/031.png", "haul/032.png", "haul/033.png", "haul/034.png", "haul/035.png", "haul/036.png",
+        "haul/037.png", "haul/038.png", "haul/039.png", "haul/040.png", "haul/041.png", "haul/042.png",
+        "haul/043.png", "haul/044.png", "haul/045.png", "haul/046.png", "haul/047.png", "haul/048.png"
+      ],
+      "frameDurationMs": 83,
+      "playback": "loop",
+      "statusAnchor": { "x": 0.5, "y": 0.224 },
+      "renderTransform": {
+        "scale": 1.2,
+        "origin": { "x": 0.5, "y": 0.921 },
+        "offset": { "x": 0, "y": 0.025 }
+      }
+    }
+  }
+}

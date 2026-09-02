@@ -63,6 +63,14 @@ public static class MarkdownRenderer
         return flow;
     }
 
+    /// <summary>
+    /// The dialogue first renders a bounded stream preview, then replaces it with the full
+    /// final reply.  Cache the rendered source, not the mutable message instance, so that
+    /// replacement is never mistaken for an already-rendered document.
+    /// </summary>
+    public static bool NeedsRender(string? renderedSource, string markdown) =>
+        !string.Equals(renderedSource, markdown, StringComparison.Ordinal);
+
     private static void AppendBlock(FlowDocument flow, MdBlock block, Action<string>? copyCode)
     {
         switch (block)
@@ -97,7 +105,14 @@ public static class MarkdownRenderer
                     BorderBrush = QuoteBrush,
                     BorderThickness = new Thickness(3, 0, 0, 0),
                 };
-                quoteParagraph.Inlines.AddRange(CollectQuoteInlines(quote).Select(RenderInline));
+                var hasQuoteParagraph = false;
+                foreach (var child in quote)
+                {
+                    if (child is not ParagraphBlock quotedParagraph) continue;
+                    if (hasQuoteParagraph) quoteParagraph.Inlines.Add(new LineBreak());
+                    quoteParagraph.Inlines.AddRange(RenderInlines(quotedParagraph.Inline));
+                    hasQuoteParagraph = true;
+                }
                 flow.Blocks.Add(quoteParagraph);
                 break;
             case ListBlock list:
@@ -257,7 +272,7 @@ public static class MarkdownRenderer
         {
             if (child is ParagraphBlock paragraph && paragraph.Inline is not null)
             {
-                text += string.Concat(CollectInlines(paragraph.Inline).Select(PlainText));
+                text += PlainText(paragraph.Inline);
             }
         }
         return text;
@@ -266,26 +281,9 @@ public static class MarkdownRenderer
     private static IEnumerable<WpfInline> RenderInlines(ContainerInline? inline)
     {
         if (inline is null) yield break;
-        foreach (var child in CollectInlines(inline))
+        foreach (var child in inline)
         {
             yield return RenderInline(child);
-        }
-    }
-
-    private static IEnumerable<MdInline> CollectInlines(ContainerInline? root)
-    {
-        if (root is null) yield break;
-        foreach (var child in root)
-        {
-            switch (child)
-            {
-                case ContainerInline container:
-                    foreach (var nested in CollectInlines(container)) yield return nested;
-                    break;
-                default:
-                    yield return child;
-                    break;
-            }
         }
     }
 
@@ -307,10 +305,11 @@ public static class MarkdownRenderer
             case LinkInline link:
                 return RenderLink(link);
             case EmphasisInline emphasis:
-                var emphasisRun = new Run(PlainText(emphasis));
+                var emphasisRun = new Span();
+                emphasisRun.Inlines.AddRange(RenderInlines(emphasis));
                 if (emphasis.DelimiterChar is '*' or '_')
                 {
-                    if (CountEmphasis(emphasis) >= 2)
+                    if (emphasis.DelimiterCount >= 2)
                     {
                         emphasisRun.FontWeight = FontWeights.Bold;
                     }
@@ -320,6 +319,10 @@ public static class MarkdownRenderer
                     }
                 }
                 return emphasisRun;
+            case ContainerInline container:
+                var containerSpan = new Span();
+                containerSpan.Inlines.AddRange(RenderInlines(container));
+                return containerSpan;
             case HtmlInline:
                 return new Run(string.Empty);
             default:
@@ -329,13 +332,16 @@ public static class MarkdownRenderer
 
     private static WpfInline RenderLink(LinkInline link)
     {
-        var text = PlainText(link);
-        if (string.IsNullOrWhiteSpace(text)) text = link.Url ?? string.Empty;
-        var hyperlink = new Hyperlink(new Run(text))
+        var hyperlink = new Hyperlink
         {
             Foreground = LinkBrush,
             NavigateUri = Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) ? uri : null,
         };
+        hyperlink.Inlines.AddRange(RenderInlines(link));
+        if (hyperlink.Inlines.Count == 0)
+        {
+            hyperlink.Inlines.Add(new Run(link.Url ?? string.Empty));
+        }
         if (hyperlink.NavigateUri is not null)
         {
             hyperlink.RequestNavigate += OpenExternalLink;
@@ -360,31 +366,11 @@ public static class MarkdownRenderer
         inline switch
         {
             LiteralInline literal => literal.Content.ToString(),
-            EmphasisInline emphasis => string.Concat(CollectInlines(emphasis).Select(PlainText)),
-            LinkInline link => string.Concat(CollectInlines(link).Select(PlainText)),
+            LineBreakInline => Environment.NewLine,
+            CodeInline code => code.Content,
+            ContainerInline container => string.Concat(container.Select(PlainText)),
             _ => inline.ToString() ?? string.Empty,
         };
-
-    private static int CountEmphasis(EmphasisInline emphasis)
-    {
-        var count = emphasis.DelimiterCount;
-        foreach (var child in emphasis)
-        {
-            if (child is EmphasisInline nested) count += CountEmphasis(nested);
-        }
-        return count;
-    }
-
-    private static IEnumerable<MdInline> CollectQuoteInlines(QuoteBlock quote)
-    {
-        foreach (var child in quote)
-        {
-            if (child is ParagraphBlock paragraph && paragraph.Inline is not null)
-            {
-                foreach (var nested in CollectInlines(paragraph.Inline)) yield return nested;
-            }
-        }
-    }
 
     private static double FontSizeForHeading(int level) => level switch
     {

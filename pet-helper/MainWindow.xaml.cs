@@ -412,8 +412,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PetLayout_SizeChanged(object sender, SizeChangedEventArgs e) =>
+    private void PetLayout_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        animationPlayer.RefreshPresentation();
         UpdateStateBubblePosition();
+    }
 
     private void StateBubble_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateStateBubblePosition();

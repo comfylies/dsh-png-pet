@@ -21,6 +21,8 @@ public sealed class PetAnimationPlayback
 
     public PetStatusAnchor StatusAnchor => CurrentClip.StatusAnchor;
 
+    public PetRenderTransform RenderTransform => CurrentClip.RenderTransform;
+
     public bool IsAnimating => clipPlayback.IsAnimating;
 
     public event EventHandler? Completed

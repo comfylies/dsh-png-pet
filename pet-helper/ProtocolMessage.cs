@@ -4,7 +4,7 @@ namespace PetHelper;
 
 public abstract record ProtocolMessage(int Version, string Kind)
 {
-    public const int ProtocolVersion = 11;
+    public const int ProtocolVersion = 12;
 }
 
 public sealed record HelloMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "hello");

@@ -175,6 +175,30 @@ test('uses a live agent first and marks running work as queued', async () => {
   assert.deepEqual(sent, [{ kind: 'input-status', requestId: 5, status: 'queued' }])
 })
 
+test('weather chat asks for a user-provided city before any weather lookup', async () => {
+  const followups = []
+  const dsh = createDsh({
+    settings: {
+      defaultSessionId: null,
+      defaultWorkspaceId: null,
+      previewEnabled: true,
+      previewMaxChars: 80,
+      randomChatEnabled: true,
+      randomChatBrowseOnOpen: true,
+      randomChatWorkspaceIds: ['w-1'],
+    },
+    agents: { 's-weather': { status: 'idle', followup: (message) => followups.push(message) } },
+  })
+  const controller = new DialogueController(dsh.context, () => {})
+  controller.setRandomChatTarget('s-weather', 'w-1')
+
+  await controller.startRandomChatTopic(501, 'weather')
+
+  assert.equal(followups.length, 1)
+  assert.match(followups[0].content[0].text, /提供.*城市/)
+  assert.match(followups[0].content[0].text, /不得猜测位置/)
+})
+
 test('resumes an unavailable live session before following up', async () => {
   const sent = []
   const followups = []

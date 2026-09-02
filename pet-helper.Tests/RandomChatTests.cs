@@ -22,14 +22,14 @@ public sealed class RandomChatTests
     {
         Assert.Equal(
             new RandomChatReadyMessage(9),
-            ProtocolReader.Parse("{\"version\":11,\"kind\":\"random-chat-ready\",\"invitationId\":9}"));
+            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-ready\",\"invitationId\":9}"));
         Assert.Equal(
             new RandomChatErrorMessage(9, "not-configured"),
-            ProtocolReader.Parse("{\"version\":11,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"not-configured\"}"));
+            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"not-configured\"}"));
         Assert.Equal(
             new RandomChatTestMessage(),
-            ProtocolReader.Parse("{\"version\":11,\"kind\":\"random-chat-test\"}"));
-        Assert.Null(ProtocolReader.Parse("{\"version\":11,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"free-form\"}"));
+            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-test\"}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"free-form\"}"));
     }
 
     [Fact]
@@ -38,6 +38,7 @@ public sealed class RandomChatTests
         var prompts = MainWindow.BuildRandomChatPrompts(ImmutableArray.Create("要不要休息一分钟，和我聊聊？"));
 
         Assert.Contains(prompts, prompt => prompt.Topic == "news" && prompt.Cta == "点击查阅今日热点");
+        Assert.Contains(prompts, prompt => prompt.Topic == "weather" && prompt.Cta == "点击查询天气");
         Assert.Contains(prompts, prompt => prompt.Text == "要不要休息一分钟，和我聊聊？" && prompt.Topic == "discovery");
     }
 }

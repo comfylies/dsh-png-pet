@@ -11,8 +11,20 @@ public sealed record ResolvedClip(
     ImmutableArray<string> Frames,
     int FrameDurationMs,
     PetClipPlaybackMode Playback,
-    PetStatusAnchor StatusAnchor)
+    PetStatusAnchor StatusAnchor,
+    PetRenderTransform RenderTransform)
 {
+    public ResolvedClip(
+        PetAnimationKey key,
+        string id,
+        ImmutableArray<string> frames,
+        int frameDurationMs,
+        PetClipPlaybackMode playback,
+        PetStatusAnchor statusAnchor)
+        : this(key, id, frames, frameDurationMs, playback, statusAnchor, PetRenderTransform.Identity)
+    {
+    }
+
     // Retained for the existing WPF player and its tests while callers migrate to Clip naming.
     public int IntervalMs => FrameDurationMs;
 }
@@ -141,7 +153,8 @@ public sealed class PetAnimationManifest
         clip.Frames,
         clip.FrameDurationMs,
         clip.Playback,
-        clip.StatusAnchor);
+        clip.StatusAnchor,
+        clip.RenderTransform);
 
     private static PetAnimationManifest ParseVersionTwo(JsonElement root)
     {
@@ -565,7 +578,8 @@ public sealed class PetAnimationManifest
                     legacy.Frames,
                     CalculateLegacyFrameDurationMs(legacy.Frames.Length),
                     PetClipPlaybackMode.Loop,
-                    PetStatusAnchor.Default));
+                    PetStatusAnchor.Default,
+                    PetRenderTransform.Identity));
                 clipIds = ImmutableArray.Create(clipId);
             }
             actions.Add(key, new ActionDefinition(clipIds, legacy.Fallback));
@@ -642,6 +656,7 @@ public sealed class PetAnimationManifest
         int? frameDurationMs = null;
         PetClipPlaybackMode? playback = null;
         PetStatusAnchor? statusAnchor = null;
+        var renderTransform = PetRenderTransform.Identity;
         var seenFields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in element.EnumerateObject())
         {
@@ -652,6 +667,7 @@ public sealed class PetAnimationManifest
                 case "frameDurationMs": frameDurationMs = ParseFrameDuration(field.Value); break;
                 case "playback": playback = ParsePlayback(field.Value); break;
                 case "statusAnchor": statusAnchor = ParseStatusAnchor(field.Value); break;
+                case "renderTransform": renderTransform = ParseRenderTransform(field.Value); break;
                 default: throw InvalidManifest();
             }
         }
@@ -659,7 +675,8 @@ public sealed class PetAnimationManifest
             frames ?? throw InvalidManifest(),
             frameDurationMs ?? throw InvalidManifest(),
             playback ?? throw InvalidManifest(),
-            statusAnchor ?? throw InvalidManifest());
+            statusAnchor ?? throw InvalidManifest(),
+            renderTransform);
     }
 
     private static ImmutableArray<string> ParseFrames(
@@ -741,6 +758,75 @@ public sealed class PetAnimationManifest
             : throw InvalidManifest();
     }
 
+    private static PetRenderTransform ParseRenderTransform(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+        double? scale = null;
+        PetRenderPoint? origin = null;
+        PetRenderOffset? offset = null;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!seen.Add(property.Name)) throw InvalidManifest();
+            switch (property.Name)
+            {
+                case "scale":
+                    if (property.Value.ValueKind != JsonValueKind.Number ||
+                        !property.Value.TryGetDouble(out var scaleValue) ||
+                        !double.IsFinite(scaleValue) || scaleValue < 0.5d || scaleValue > 1.5d)
+                    {
+                        throw InvalidManifest();
+                    }
+                    scale = scaleValue;
+                    break;
+                case "origin": origin = ParseRenderPoint(property.Value); break;
+                case "offset": offset = ParseRenderOffset(property.Value); break;
+                default: throw InvalidManifest();
+            }
+        }
+        return scale is { } validScale && origin is { } validOrigin && offset is { } validOffset
+            ? new PetRenderTransform(validScale, validOrigin, validOffset)
+            : throw InvalidManifest();
+    }
+
+    private static PetRenderPoint ParseRenderPoint(JsonElement element)
+    {
+        var (x, y) = ParseRenderCoordinates(element, 0d, 1d);
+        return new PetRenderPoint(x, y);
+    }
+
+    private static PetRenderOffset ParseRenderOffset(JsonElement element)
+    {
+        var (x, y) = ParseRenderCoordinates(element, -0.25d, 0.25d);
+        return new PetRenderOffset(x, y);
+    }
+
+    private static (double X, double Y) ParseRenderCoordinates(JsonElement element, double minimum, double maximum)
+    {
+        if (element.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+        double? x = null;
+        double? y = null;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!seen.Add(property.Name) || property.Value.ValueKind != JsonValueKind.Number ||
+                !property.Value.TryGetDouble(out var value) || !double.IsFinite(value) ||
+                value < minimum || value > maximum)
+            {
+                throw InvalidManifest();
+            }
+            switch (property.Name)
+            {
+                case "x": x = value; break;
+                case "y": y = value; break;
+                default: throw InvalidManifest();
+            }
+        }
+        return x is { } coordinateX && y is { } coordinateY
+            ? (coordinateX, coordinateY)
+            : throw InvalidManifest();
+    }
+
     private static void ValidateActions(
         ImmutableDictionary<PetAnimationKey, ActionDefinition>.Builder actions,
         PetAnimationKey idleKey)
@@ -814,5 +900,6 @@ public sealed class PetAnimationManifest
         ImmutableArray<string> Frames,
         int FrameDurationMs,
         PetClipPlaybackMode Playback,
-        PetStatusAnchor StatusAnchor);
+        PetStatusAnchor StatusAnchor,
+        PetRenderTransform RenderTransform);
 }

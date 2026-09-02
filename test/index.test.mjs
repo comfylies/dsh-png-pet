@@ -116,6 +116,40 @@ test('starts a helper even when settings are not injected', () => {
   assert.deepEqual(calls, ['helper-created', 'effect', ['inject', ['settings']]])
 })
 
+test('restarts unexpected Helper exits with a bounded retry budget and suppresses retries after a user close', async () => {
+  const calls = []
+  const context = createHostContext(calls)
+  const helpers = []
+
+  applyWithHelper(context, (options) => {
+    const helper = { start: async () => {}, send: () => {}, stop: async () => {} }
+    helpers.push({ helper, options })
+    return helper
+  }, { restartDelaysMs: [0, 0], stableRunMs: 60_000 })
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(helpers.length, 1)
+
+  helpers[0].options.onExit({ code: 7, wasReady: true, closed: false })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(helpers.length, 2)
+
+  helpers[1].options.onExit({ code: 7, wasReady: true, closed: false })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(helpers.length, 3)
+
+  helpers[2].options.onExit({ code: 7, wasReady: true, closed: false })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(helpers.length, 3)
+
+  helpers[2].options.onMessage({ version: 12, kind: 'close-requested' })
+  helpers[2].options.onExit({ code: 7, wasReady: true, closed: false })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(helpers.length, 3)
+
+  context.cleanup()
+})
+
 test('routes a request-history helper message to the controller', () => {
   const calls = []
   const controller = {
@@ -154,6 +188,18 @@ test('routes a closed helper lifecycle message directly to preview cleanup', () 
   assert.deepEqual(calls, ['closed'])
 })
 
+test('routes a user close request to preview cleanup', () => {
+  const calls = []
+  const controller = {
+    acceptInput: () => calls.push('input'),
+    helperClosed: () => calls.push('closed'),
+  }
+
+  routeHelperMessage({ version: 12, kind: 'close-requested' }, controller)
+
+  assert.deepEqual(calls, ['closed'])
+})
+
 test('routes target-open and target-answer helper messages to the target controller', async () => {
   const calls = []
   const targetController = {
@@ -179,12 +225,12 @@ test('routes a random-chat click and dialogue close to the random-chat controlle
   }
 
   await routeHelperMessage(
-    { version: 11, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
+    { version: 12, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
     undefined,
     undefined,
     randomChatController,
   )
-  await routeHelperMessage({ version: 11, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
+  await routeHelperMessage({ version: 12, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
 
   assert.deepEqual(calls, [['open', 9, 'news'], ['dialogue-closed']])
 })

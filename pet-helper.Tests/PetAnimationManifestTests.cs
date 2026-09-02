@@ -87,6 +87,68 @@ public sealed class PetAnimationManifestTests
     }
 
     [Fact]
+    public void Resolves_a_clip_render_transform_for_the_entire_clip()
+    {
+        var manifest = PetAnimationManifest.Parse("""
+            {
+              "formatVersion": 2,
+              "clips": {
+                "working-haul": {
+                  "frames": ["Animations/working/haul/001.png", "Animations/working/haul/002.png"],
+                  "frameDurationMs": 83,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "renderTransform": {
+                    "scale": 1.2,
+                    "origin": { "x": 0.5, "y": 0.921 },
+                    "offset": { "x": 0, "y": 0.025 }
+                  }
+                },
+                "idle-default": {
+                  "frames": ["placeholder-a.png"],
+                  "frameDurationMs": 83,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "actions": { "working": { "clips": ["working-haul"] }, "idle": { "clips": ["idle-default"] } }
+            }
+            """);
+
+        var resolved = manifest.Resolve(PetAnimationKey.Working, _ => true);
+
+        Assert.Equal(1.2d, resolved.RenderTransform.Scale);
+        Assert.Equal(new PetRenderPoint(0.5d, 0.921d), resolved.RenderTransform.Origin);
+        Assert.Equal(new PetRenderOffset(0d, 0.025d), resolved.RenderTransform.Offset);
+        var alignedBaseline = resolved.RenderTransform.TransformPoint(new PetRenderPoint(0.5d, 0.921d));
+        Assert.Equal(0.5d, alignedBaseline.X, precision: 6);
+        Assert.Equal(0.946d, alignedBaseline.Y, precision: 6);
+    }
+
+    [Theory]
+    [InlineData("{ \"scale\": 1.2, \"origin\": { \"x\": 0.5, \"y\": 0.9 } }")]
+    [InlineData("{ \"scale\": 2, \"origin\": { \"x\": 0.5, \"y\": 0.9 }, \"offset\": { \"x\": 0, \"y\": 0 } }")]
+    [InlineData("{ \"scale\": 1.2, \"origin\": { \"x\": 0.5, \"y\": 0.9 }, \"offset\": { \"x\": 0, \"y\": 0 }, \"unexpected\": true }")]
+    public void Rejects_an_invalid_clip_render_transform(string renderTransform)
+    {
+        Assert.Throws<FormatException>(() => PetAnimationManifest.Parse($$"""
+            {
+              "formatVersion": 2,
+              "clips": {
+                "idle-default": {
+                  "frames": ["placeholder-a.png"],
+                  "frameDurationMs": 83,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "renderTransform": {{renderTransform}}
+                }
+              },
+              "actions": { "idle": { "clips": ["idle-default"] } }
+            }
+            """));
+    }
+
+    [Fact]
     public void Converts_a_legacy_action_to_a_looping_default_clip()
     {
         var manifest = PetAnimationManifest.Parse("""

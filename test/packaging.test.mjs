@@ -103,16 +103,16 @@ test('packed Helper completes a ready, config, state, and shutdown handshake', a
       const timeout = setTimeout(() => reject(new Error(`packed Helper did not complete its handshake: ${stderr}`)), 5_000)
       const output = createInterface({ input: child.stdout })
       output.on('line', (line) => {
-        if (line === '{"version":11,"kind":"ready"}') {
-          child.stdin.write('{"version":11,"kind":"config","scale":1,"reducedMotion":false,"petPlacement":"center","dialoguePlacement":"near-pet","dialogueWidth":320,"dialogueHeight":420,"randomChatEnabled":false,"randomChatBrowseOnOpen":false,"randomChatConfigured":false,"randomChatMinIntervalMinutes":8,"randomChatMaxIntervalMinutes":24,"randomChatCustomPrompts":[]}\n')
-          child.stdin.write('{"version":11,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
-          child.stdin.write('{"version":11,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
+        if (line === '{"version":12,"kind":"ready"}') {
+          child.stdin.write('{"version":12,"kind":"config","scale":1,"reducedMotion":false,"petPlacement":"center","dialoguePlacement":"near-pet","dialogueWidth":320,"dialogueHeight":420,"randomChatEnabled":false,"randomChatBrowseOnOpen":false,"randomChatConfigured":false,"randomChatMinIntervalMinutes":8,"randomChatMaxIntervalMinutes":24,"randomChatCustomPrompts":[]}\n')
+          child.stdin.write('{"version":12,"kind":"state","state":"active","activities":["thinking","working"],"label":"思考中/工作中","sequence":1}\n')
+          child.stdin.write('{"version":12,"kind":"state","state":"question","activities":[],"label":"等你回答…","sequence":2}\n')
           setTimeout(() => {
             shutdownSent = true
-            child.stdin.write('{"version":11,"kind":"shutdown"}\n')
+            child.stdin.write('{"version":12,"kind":"shutdown"}\n')
           }, 250)
         }
-        if (line === '{"version":11,"kind":"closed"}') {
+        if (line === '{"version":12,"kind":"closed"}') {
           clearTimeout(timeout)
           resolve()
         }

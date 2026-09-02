@@ -9,6 +9,7 @@ namespace PetHelper;
 public partial class App : System.Windows.Application
 {
     private bool shutdownRequested;
+    private bool closeRequestedByUser;
     private PetTrayIcon? trayIcon;
     private DialogueWindow? dialogue;
     private TargetWindow? targetWindow;
@@ -24,6 +25,13 @@ public partial class App : System.Windows.Application
         var screenLayout = new Win32ScreenLayout();
         var window = new MainWindow(screenLayout);
         MainWindow = window;
+        window.Closing += (_, _) =>
+        {
+            if (!shutdownRequested)
+            {
+                WriteCloseRequested();
+            }
+        };
         var dialogueWindow = new DialogueWindow(screenLayout);
         dialogue = dialogueWindow;
         dialogueWindow.InputSubmitted += (_, input) => WriteInput(input);
@@ -85,6 +93,7 @@ public partial class App : System.Windows.Application
     private void ExitFromTray()
     {
         dialogue?.SaveState();
+        WriteCloseRequested();
         Shutdown();
     }
 
@@ -246,6 +255,18 @@ public partial class App : System.Windows.Application
     private static void WriteDialogueClosed()
     {
         Console.Out.WriteLine(SerializeHelperMessage("dialogue-closed"));
+        Console.Out.Flush();
+    }
+
+    private void WriteCloseRequested()
+    {
+        if (closeRequestedByUser)
+        {
+            return;
+        }
+
+        closeRequestedByUser = true;
+        Console.Out.WriteLine(SerializeHelperMessage("close-requested"));
         Console.Out.Flush();
     }
 

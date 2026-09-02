@@ -2,9 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperCloseRequestedMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperCloseRequestedMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessExit = Readonly<{ code: number | null, wasReady: boolean, closed: boolean }>
 
 export type HelperProcessOptions = {
   command?: string
@@ -13,6 +14,7 @@ export type HelperProcessOptions = {
   shutdownTimeoutMs?: number
   onSend?: (line: string) => void
   onMessage?: (message: HelperProcessMessage) => void
+  onExit?: (exit: HelperProcessExit) => void
 }
 
 const defaultCommand = fileURLToPath(
@@ -50,6 +52,7 @@ export class HelperProcess {
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
       onSend: options.onSend ?? (() => {}),
       onMessage: options.onMessage ?? (() => {}),
+      onExit: options.onExit ?? (() => {}),
     }
   }
 
@@ -82,6 +85,11 @@ export class HelperProcess {
           this.child = undefined
           resolveExit(code)
           if (!this.isReady) finishStart(new Error('helper exited before ready handshake'))
+          try {
+            this.options.onExit({ code, wasReady: this.isReady, closed: this.closed })
+          } catch {
+            // A lifecycle consumer must not break child-process cleanup.
+          }
         })
       })
 
@@ -107,6 +115,14 @@ export class HelperProcess {
             this.options.onMessage({ version: message.version, kind: 'closed' })
           } catch {
             // A lifecycle consumer must not break a validated helper shutdown.
+          }
+          return
+        }
+        if (message.kind === 'close-requested') {
+          try {
+            this.options.onMessage(message)
+          } catch {
+            // A deliberate local close must not destabilize the Helper process.
           }
           return
         }

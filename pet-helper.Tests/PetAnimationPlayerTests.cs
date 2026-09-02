@@ -27,6 +27,24 @@ public sealed class PetAnimationPlayerTests
     }
 
     [Fact]
+    public void Applies_the_working_clip_transform_to_every_rendered_frame()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var player = new PetAnimationPlayer(image);
+
+            player.Apply(PetAnimationKey.Working, reducedMotion: false);
+
+            Assert.Equal(1.2d, player.RenderTransform.Scale);
+            var matrix = Assert.IsType<MatrixTransform>(image.RenderTransform);
+            Assert.Equal(1.2d, matrix.Matrix.M11, precision: 6);
+            Assert.Equal(1.2d, matrix.Matrix.M22, precision: 6);
+            player.Stop();
+        });
+    }
+
+    [Fact]
     public void Uses_the_static_placeholder_without_animation_when_the_manifest_is_missing()
     {
         AssertStaticFallback(static () => null);

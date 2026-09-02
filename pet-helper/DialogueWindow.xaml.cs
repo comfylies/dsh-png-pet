@@ -468,12 +468,14 @@ public partial class DialogueWindow : Window
     private static void RenderMarkdown(RichTextBox host, DialogueMessage message)
     {
         // A fresh RichTextBox already owns a FlowDocument with one empty Paragraph, so a
-        // "has blocks" guard would wrongly skip every render. Mark the host once instead.
-        if (ReferenceEquals(host.Tag, message)) return;
+        // "has blocks" guard would wrongly skip every render. The message object stays
+        // stable while streaming, however, so cache the source text rather than that object.
+        // Otherwise the final full reply is hidden behind its already-rendered short preview.
+        if (!MarkdownRenderer.NeedsRender(host.Tag as string, message.Text)) return;
         try
         {
             host.Document = MarkdownRenderer.Render(message.Text, CopyText);
-            host.Tag = message;
+            host.Tag = message.Text;
         }
         catch
         {

@@ -34,10 +34,28 @@ test('creates a target-workspace session only after a labelled invitation is cli
   }
   const controller = new RandomChatController(api, { get: enabledSettings }, dialogue, (message) => sent.push(message), (items) => items[0])
 
-  await controller.open({ version: 11, kind: 'random-chat-open', invitationId: 9, topic: 'news' })
+  await controller.open({ version: 12, kind: 'random-chat-open', invitationId: 9, topic: 'news' })
 
   assert.deepEqual(calls, [{ workspaceId: 'w-1' }, ['s-random', 'w-1'], [1_000_000_001, 'news']])
   assert.deepEqual(sent, [{ kind: 'random-chat-ready', invitationId: 9 }])
+})
+
+test('uses the same explicit-click path for a weather invitation', async () => {
+  const calls = []
+  const api = {
+    workspace: { list: async () => ({ result: { ok: true, value: { items: [{ workspaceId: 'w-1', title: '工作区', path: 'C:\\private', sessionIds: [] }], archivedSessionIds: [] } } }) },
+    sessions: { create: async () => ({ result: { ok: true, value: { sessionId: 's-weather' } } }) },
+  }
+  const dialogue = {
+    setRandomChatTarget: (sessionId, workspaceId) => calls.push([sessionId, workspaceId]),
+    startRandomChatTopic: async (requestId, topic) => calls.push([requestId, topic]),
+    clearRandomChatTarget: () => {},
+  }
+  const controller = new RandomChatController(api, { get: enabledSettings }, dialogue, () => {}, (items) => items[0])
+
+  await controller.open({ version: 12, kind: 'random-chat-open', invitationId: 10, topic: 'weather' })
+
+  assert.deepEqual(calls, [['s-weather', 'w-1'], [1_000_000_001, 'weather']])
 })
 
 test('does not call the Host API when the user has not completed the explicit opt-in', async () => {
@@ -46,7 +64,7 @@ test('does not call the Host API when the user has not completed the explicit op
   const dialogue = { setRandomChatTarget: () => {}, startRandomChatTopic: async () => {}, clearRandomChatTarget: () => {} }
   const controller = new RandomChatController(api, { get: () => ({ ...enabledSettings(), randomChatBrowseOnOpen: false }) }, dialogue, (message) => sent.push(message))
 
-  await controller.open({ version: 11, kind: 'random-chat-open', invitationId: 4, topic: 'discovery' })
+  await controller.open({ version: 12, kind: 'random-chat-open', invitationId: 4, topic: 'discovery' })
 
   assert.deepEqual(sent, [{ kind: 'random-chat-error', invitationId: 4, reason: 'not-configured' }])
 })
