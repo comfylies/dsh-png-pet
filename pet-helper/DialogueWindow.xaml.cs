@@ -39,12 +39,14 @@ public partial class DialogueWindow : Window
     private Size defaultDialogueSize = new(320d, 420d);
     private string petStatusText = string.Empty;
     private bool atBottom = true;
+    private long? pendingApprovalRequestId;
 
     private bool inSystemDrag;
 
     public event EventHandler<InputSubmittedEventArgs>? InputSubmitted;
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
     public event EventHandler<StopRequestedEventArgs>? StopRequested;
+    public event EventHandler<ApprovalAnsweredEventArgs>? ApprovalAnswered;
     public event EventHandler? HiddenToTray;
     public event EventHandler? DialogueClosed;
 
@@ -174,6 +176,24 @@ public partial class DialogueWindow : Window
         UpdateSendButton();
     }
 
+    /** Displays only the fixed local approval wording; the Host never sends tool payloads here. */
+    public void ApplyApprovalMessage(ProtocolMessage message)
+    {
+        switch (message)
+        {
+            case ApprovalRequestMessage request:
+                pendingApprovalRequestId = request.RequestId;
+                ApprovalCard.Visibility = Visibility.Visible;
+                ApprovalRejectButton.IsEnabled = true;
+                ApprovalAllowButton.IsEnabled = true;
+                break;
+            case ApprovalResolvedMessage resolved when pendingApprovalRequestId == resolved.RequestId:
+                pendingApprovalRequestId = null;
+                ApprovalCard.Visibility = Visibility.Collapsed;
+                break;
+        }
+    }
+
     /// <summary>Pet bubble state, shown in the dialogue status line when no conversation is active (同源联动).</summary>
     public void ApplyPetState(StateMessage state)
     {
@@ -181,6 +201,7 @@ public partial class DialogueWindow : Window
         {
             "idle" => string.Empty,
             "waiting" => "等待你的操作",
+            "question" => state.Label,
             "success" => "已完成",
             "error" => "发生错误",
             "active" => state.Label,
@@ -191,6 +212,7 @@ public partial class DialogueWindow : Window
 
     public void CloseToHidden()
     {
+        AnswerPendingApproval("rejected");
         SaveState();
         Hide();
         DialogueClosed?.Invoke(this, EventArgs.Empty);
@@ -301,6 +323,18 @@ public partial class DialogueWindow : Window
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => CloseToHidden();
+
+    private void ApprovalAllowButton_Click(object sender, RoutedEventArgs e) => AnswerPendingApproval("allowed-once");
+
+    private void ApprovalRejectButton_Click(object sender, RoutedEventArgs e) => AnswerPendingApproval("rejected");
+
+    private void AnswerPendingApproval(string outcome)
+    {
+        if (pendingApprovalRequestId is not { } requestId) return;
+        ApprovalRejectButton.IsEnabled = false;
+        ApprovalAllowButton.IsEnabled = false;
+        ApprovalAnswered?.Invoke(this, new ApprovalAnsweredEventArgs(requestId, outcome));
+    }
 
     private void AttachmentButton_Click(object sender, RoutedEventArgs e)
     {
@@ -689,4 +723,10 @@ public partial class DialogueWindow : Window
 
         public bool IsImage => Base64 is not null;
     }
+}
+
+public sealed class ApprovalAnsweredEventArgs(long requestId, string outcome) : EventArgs
+{
+    public long RequestId { get; } = requestId;
+    public string Outcome { get; } = outcome;
 }

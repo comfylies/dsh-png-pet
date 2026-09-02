@@ -8,7 +8,7 @@ export type DshAgent = {
   status: string
   followup(message: UserMessage): void | Promise<void>
   cancel(cause: { kind: 'user' }): void
-  session?: { events: readonly unknown[] }
+  session?: { id?: string, events: readonly unknown[] }
 }
 
 export type DshResumedAgent = {

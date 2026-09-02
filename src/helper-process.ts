@@ -2,9 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import readline from 'node:readline'
 
-import { encodeHostMessage, parseHelperMessage, type HelperCloseRequestedMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
+import { encodeHostMessage, parseHelperMessage, type HelperApprovalAnswerMessage, type HelperCloseRequestedMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperOpenHarnessMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperCloseRequestedMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperApprovalAnswerMessage | HelperCloseRequestedMessage | HelperOpenHarnessMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
 export type HelperProcessExit = Readonly<{ code: number | null, wasReady: boolean, closed: boolean }>
 
 export type HelperProcessOptions = {
@@ -141,6 +141,13 @@ export class HelperProcess {
             // Ignore consumer failures so a validated stop can be retried.
           }
         }
+        if (message.kind === 'approval-answer') {
+          try {
+            this.options.onMessage(message)
+          } catch {
+            // A malformed or stale local answer must never affect process lifecycle.
+          }
+        }
         if (message.kind === 'request-history' && message.requestId > this.lastHistoryRequestId) {
           try {
             this.options.onMessage(message)
@@ -156,7 +163,7 @@ export class HelperProcess {
             // Ignore consumer failures so a validated target message can be retried.
           }
         }
-        if (message.kind === 'random-chat-open' || message.kind === 'dialogue-closed') {
+        if (message.kind === 'open-harness' || message.kind === 'random-chat-open' || message.kind === 'dialogue-closed') {
           try {
             this.options.onMessage(message)
           } catch {

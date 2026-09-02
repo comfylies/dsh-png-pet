@@ -1,6 +1,6 @@
 import type { DialoguePlacement, PetPlacement } from './dialogue-settings.js'
 
-export const PROTOCOL_VERSION = 12 as const
+export const PROTOCOL_VERSION = 14 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -33,7 +33,7 @@ export type HelperAttachment =
 export const displayLabels = {
   idle: '',
   waiting: '等待你的操作',
-  question: '等你回答…',
+  question: '点击回到 Harness 回答',
   success: '已完成',
   error: '发生错误',
   disconnected: '未连接',
@@ -51,10 +51,11 @@ export type CompanionState = State
 export type HelperLifecycleMessageKind = 'ready' | 'closed'
 export type RandomChatTopic = 'news' | 'weather' | 'discovery'
 export type RandomChatError = 'not-configured' | 'unavailable'
-export type HelperMessageKind = HelperLifecycleMessageKind | 'close-requested' | 'input' | 'stop' | 'request-history' | 'target-open' | 'target-answer' | 'random-chat-open' | 'dialogue-closed'
+export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+export type HelperMessageKind = HelperLifecycleMessageKind | 'close-requested' | 'open-harness' | 'input' | 'stop' | 'request-history' | 'approval-answer' | 'target-open' | 'target-answer' | 'random-chat-open' | 'dialogue-closed'
 export type InputStatus = 'queued' | 'sent' | 'no-default-session' | 'session-unavailable' | 'rejected' | 'stopped' | 'interrupted' | 'failed'
 export type ClearPreviewReason = 'disabled' | 'next-input' | 'cancelled' | 'closed' | 'session-unavailable'
-export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'target-request' | 'random-chat-ready' | 'random-chat-error' | 'random-chat-test'
+export type HostMessageKind = 'hello' | 'config' | 'state' | 'shutdown' | 'conversation-config' | 'input-status' | 'reply-preview' | 'clear-preview' | 'reply' | 'conversation-history' | 'approval-request' | 'approval-resolved' | 'target-request' | 'random-chat-ready' | 'random-chat-error' | 'random-chat-test'
 
 export type TargetWorkspace = {
   id: string
@@ -79,6 +80,12 @@ export type HelperCloseRequestedMessage = {
   kind: 'close-requested'
 }
 
+/** A user-initiated request to open the already-running local DSH Web UI. */
+export type HelperOpenHarnessMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'open-harness'
+}
+
 export type HelperInputMessage = {
   version: typeof PROTOCOL_VERSION
   kind: 'input'
@@ -97,6 +104,14 @@ export type HelperHistoryRequest = {
   version: typeof PROTOCOL_VERSION
   kind: 'request-history'
   requestId: number
+}
+
+/** The Helper can make exactly one one-shot decision for a locally minted request id. */
+export type HelperApprovalAnswerMessage = {
+  version: typeof PROTOCOL_VERSION
+  kind: 'approval-answer'
+  requestId: number
+  outcome: 'allowed-once' | 'rejected'
 }
 
 export type HelperTargetOpenMessage = {
@@ -130,7 +145,7 @@ export type HelperDialogueClosedMessage = {
   kind: 'dialogue-closed'
 }
 
-export type HelperMessage = HelperLifecycleMessage | HelperCloseRequestedMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage
+export type HelperMessage = HelperLifecycleMessage | HelperCloseRequestedMessage | HelperOpenHarnessMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperApprovalAnswerMessage | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
@@ -142,6 +157,8 @@ export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
   | { version: typeof PROTOCOL_VERSION, kind: 'reply', requestId: number, text: string, completed: boolean }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
+  | { version: typeof PROTOCOL_VERSION, kind: 'approval-request', requestId: number }
+  | { version: typeof PROTOCOL_VERSION, kind: 'approval-resolved', requestId: number, outcome: ApprovalOutcome }
   | { version: typeof PROTOCOL_VERSION, kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
   | { version: typeof PROTOCOL_VERSION, kind: 'random-chat-ready', invitationId: number }
   | { version: typeof PROTOCOL_VERSION, kind: 'random-chat-error', invitationId: number, reason: RandomChatError }
@@ -157,6 +174,8 @@ export type HostOutboundMessage =
   | { kind: 'clear-preview', requestId: number, reason: ClearPreviewReason }
   | { kind: 'reply', requestId: number, text: string, completed: boolean }
   | { kind: 'conversation-history', requestId: number, available: boolean, messages: readonly HistoryMessage[] }
+  | { kind: 'approval-request', requestId: number }
+  | { kind: 'approval-resolved', requestId: number, outcome: ApprovalOutcome }
   | { kind: 'target-request', requestId: number, workspaces: readonly TargetWorkspace[], sessionsByWorkspace: Readonly<Record<string, readonly TargetSession[]>>, ungrouped: readonly TargetSession[], defaultWorkspaceId: string | null, defaultSessionId: string | null, error?: string }
   | { kind: 'random-chat-ready', invitationId: number }
   | { kind: 'random-chat-error', invitationId: number, reason: RandomChatError }
@@ -166,7 +185,7 @@ const maxLineLength = 16_000_000
 const maxTextLength = 2_000
 const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
-const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'target-request', 'random-chat-ready', 'random-chat-error', 'random-chat-test'])
+const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'approval-request', 'approval-resolved', 'target-request', 'random-chat-ready', 'random-chat-error', 'random-chat-test'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
 const petPlacements = new Set<PetPlacement>(['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
 const dialoguePlacements = new Set<DialoguePlacement>(['near-pet', 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
@@ -176,6 +195,7 @@ const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input
 const imageMediaTypes = new Set<ImageMediaType>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const randomChatTopics = new Set<RandomChatTopic>(['news', 'weather', 'discovery'])
 const randomChatErrors = new Set<RandomChatError>(['not-configured', 'unavailable'])
+const approvalOutcomes = new Set<ApprovalOutcome>(['allowed-once', 'rejected', 'cancelled', 'unavailable'])
 
 export function labelForPresentation(state: State, activities: readonly Activity[]): string {
   if (state === 'active') {
@@ -195,7 +215,7 @@ export function parseHelperMessage(line: string): HelperMessage {
   if (typeof message.kind !== 'string' || !isHelperMessageKind(message.kind)) {
     throw new Error('helper message has an unknown kind')
   }
-  if (message.kind === 'ready' || message.kind === 'closed' || message.kind === 'close-requested') {
+  if (message.kind === 'ready' || message.kind === 'closed' || message.kind === 'close-requested' || message.kind === 'open-harness') {
     assertExactKeys(message, ['version', 'kind'], 'helper message')
     return { version: PROTOCOL_VERSION, kind: message.kind }
   }
@@ -203,6 +223,14 @@ export function parseHelperMessage(line: string): HelperMessage {
     assertExactKeys(message, ['version', 'kind', 'requestId'], 'helper message')
     assertPositiveSafeInteger(message.requestId, 'helper message requestId')
     return { version: PROTOCOL_VERSION, kind: 'request-history', requestId: message.requestId }
+  }
+  if (message.kind === 'approval-answer') {
+    assertExactKeys(message, ['version', 'kind', 'requestId', 'outcome'], 'helper message')
+    assertPositiveSafeInteger(message.requestId, 'helper message requestId')
+    if (message.outcome !== 'allowed-once' && message.outcome !== 'rejected') {
+      throw new Error('helper message has an invalid approval outcome')
+    }
+    return { version: PROTOCOL_VERSION, kind: 'approval-answer', requestId: message.requestId, outcome: message.outcome }
   }
   if (message.kind === 'dialogue-closed') {
     assertExactKeys(message, ['version', 'kind'], 'helper message')
@@ -363,6 +391,17 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       if (typeof value.available !== 'boolean') throw new Error('host message has an invalid available')
       if (!isHistoryMessages(value.messages)) throw new Error('host message has invalid history messages')
       return { kind: 'conversation-history', requestId: value.requestId, available: value.available, messages: [...value.messages as HistoryMessage[]] }
+    case 'approval-request':
+      assertExactKeys(value, ['version', 'kind', 'requestId'], 'host message', ['kind', 'requestId'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      return { kind: 'approval-request', requestId: value.requestId }
+    case 'approval-resolved':
+      assertExactKeys(value, ['version', 'kind', 'requestId', 'outcome'], 'host message', ['kind', 'requestId', 'outcome'])
+      assertPositiveSafeInteger(value.requestId, 'host message requestId')
+      if (typeof value.outcome !== 'string' || !approvalOutcomes.has(value.outcome as ApprovalOutcome)) {
+        throw new Error('host message has an invalid approval outcome')
+      }
+      return { kind: 'approval-resolved', requestId: value.requestId, outcome: value.outcome as ApprovalOutcome }
     case 'target-request':
       assertExactKeys(value, ['version', 'kind', 'requestId', 'workspaces', 'sessionsByWorkspace', 'ungrouped', 'defaultWorkspaceId', 'defaultSessionId', 'error'], 'host message', ['kind', 'requestId', 'workspaces', 'sessionsByWorkspace', 'ungrouped', 'defaultWorkspaceId', 'defaultSessionId'])
       assertPositiveSafeInteger(value.requestId, 'host message requestId')
@@ -396,7 +435,7 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
 }
 
 function isHelperMessageKind(value: string): value is HelperMessageKind {
-  return value === 'close-requested' || value === 'input' || value === 'stop' || value === 'request-history' || value === 'target-open' || value === 'target-answer' || value === 'random-chat-open' || value === 'dialogue-closed' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
+  return value === 'close-requested' || value === 'open-harness' || value === 'input' || value === 'stop' || value === 'request-history' || value === 'approval-answer' || value === 'target-open' || value === 'target-answer' || value === 'random-chat-open' || value === 'dialogue-closed' || helperLifecycleKinds.has(value as HelperLifecycleMessageKind)
 }
 
 function parseInput(message: Record<string, unknown>): HelperInputMessage {

@@ -2,14 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CompanionBridge } from '../lib/companion-bridge.js'
-import { apply, applyWithHelper, createDialogueContext, inject, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
+import { apply, applyWithHelper, createDialogueContext, inject, registerApprovalAnswerer, registerSessionObservers, routeHelperMessage, watchDialogueSettings } from '../lib/index.js'
 
 test('keeps the production plugin entrypoint to one context argument', () => {
   assert.equal(apply.length, 1)
 })
 
 test('declares the services DSH exposes on the restricted plugin context', () => {
-  assert.deepEqual(inject, ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel'])
+  assert.deepEqual(inject, ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'])
 })
 
 test('keeps prototype-backed DSH services reachable through the dialogue context adapter', () => {
@@ -46,6 +46,7 @@ function createHostContext(calls, register) {
         create: async () => ({ result: { ok: true, value: { sessionId: 's-1' } } }),
       },
     },
+    webServer: { port: 4_321 },
     on(name, listener) { listeners.set(name, listener) },
     effect(factory) { calls.push('effect'); this.cleanup = factory() },
     inject(services, callback) {
@@ -86,6 +87,7 @@ test('defers the helper until settings injection registers the dialogue scope an
     defaultWorkspaceId: null,
     previewEnabled: false,
     previewMaxChars: 480,
+    approvalSurface: 'web',
     randomChatEnabled: false,
     randomChatBrowseOnOpen: false,
     randomChatWorkspaceIds: [],
@@ -142,7 +144,7 @@ test('restarts unexpected Helper exits with a bounded retry budget and suppresse
   await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(helpers.length, 3)
 
-  helpers[2].options.onMessage({ version: 12, kind: 'close-requested' })
+  helpers[2].options.onMessage({ version: 14, kind: 'close-requested' })
   helpers[2].options.onExit({ code: 7, wasReady: true, closed: false })
   await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(helpers.length, 3)
@@ -195,9 +197,53 @@ test('routes a user close request to preview cleanup', () => {
     helperClosed: () => calls.push('closed'),
   }
 
-  routeHelperMessage({ version: 12, kind: 'close-requested' }, controller)
+  routeHelperMessage({ version: 14, kind: 'close-requested' }, controller)
 
   assert.deepEqual(calls, ['closed'])
+})
+
+test('routes the payload-free open-harness request only to the local browser handoff', async () => {
+  const calls = []
+  const controller = {
+    acceptInput: () => calls.push('input'),
+    helperClosed: () => calls.push('closed'),
+  }
+
+  await routeHelperMessage(
+    { version: 14, kind: 'open-harness' },
+    controller,
+    undefined,
+    undefined,
+    () => calls.push('open-harness'),
+  )
+
+  assert.deepEqual(calls, ['open-harness'])
+})
+
+test('routes a one-shot approval answer only to the approval coordinator', async () => {
+  const calls = []
+  const approvalController = { answer: (message) => calls.push(message) }
+
+  await routeHelperMessage(
+    { version: 14, kind: 'approval-answer', requestId: 8, outcome: 'rejected' },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    approvalController,
+  )
+
+  assert.deepEqual(calls, [{ version: 14, kind: 'approval-answer', requestId: 8, outcome: 'rejected' }])
+})
+
+test('registers the approval coordinator before the existing Web answerer', async () => {
+  let listener
+  let prepend
+  const controller = { request: async (_request, next) => next() }
+  registerApprovalAnswerer({ on: (_name, callback, option) => { listener = callback; prepend = option } }, controller)
+
+  assert.equal(prepend, true)
+  assert.equal(await listener({ agent: { session: { id: 's-1' } } }, async () => 'rejected'), 'rejected')
 })
 
 test('routes target-open and target-answer helper messages to the target controller', async () => {
@@ -225,12 +271,12 @@ test('routes a random-chat click and dialogue close to the random-chat controlle
   }
 
   await routeHelperMessage(
-    { version: 12, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
+    { version: 14, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
     undefined,
     undefined,
     randomChatController,
   )
-  await routeHelperMessage({ version: 12, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
+  await routeHelperMessage({ version: 14, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
 
   assert.deepEqual(calls, [['open', 9, 'news'], ['dialogue-closed']])
 })

@@ -73,12 +73,14 @@ test('decodes the Host-resolved settings view after a transformed schema write',
   const client = await loadClientBundle()
   const value = client.decodeDialogueSettings({
     defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
+    approvalSurface: 'pet',
     randomChatEnabled: true, randomChatBrowseOnOpen: true, randomChatWorkspaceIds: ['w-1'], randomChatMinIntervalMinutes: 5, randomChatMaxIntervalMinutes: 60, randomChatCustomPrompts: ['和我聊聊？'], randomChatTestNonce: 0,
     scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
   })
 
   assert.equal(JSON.stringify(value), JSON.stringify({
     defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
+    approvalSurface: 'pet',
     randomChatEnabled: true, randomChatBrowseOnOpen: true, randomChatWorkspaceIds: ['w-1'], randomChatMinIntervalMinutes: 5, randomChatMaxIntervalMinutes: 60, randomChatCustomPrompts: ['和我聊聊？'], randomChatTestNonce: 0,
     scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
   }))
@@ -93,6 +95,9 @@ test('writes preview settings through the standard scope setter', async () => {
   }
 
   assert.equal(await client.writeDialogueSetting(scope, 'previewEnabled', true), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'approvalSurface', 'web'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'approvalSurface', 'pet'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'approvalSurface', 'elsewhere'), false)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 80), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8000), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8001), false)
@@ -113,6 +118,8 @@ test('writes preview settings through the standard scope setter', async () => {
   assert.equal(await client.writeDialogueSetting(scope, 'randomChatTestNonce', -1), false)
   assert.deepEqual(writes, [
     ['previewEnabled', true],
+    ['approvalSurface', 'web'],
+    ['approvalSurface', 'pet'],
     ['previewMaxChars', 80],
     ['previewMaxChars', 8000],
     ['scale', 1.25],

@@ -3,6 +3,7 @@ export type DialogueSettings = {
   defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
+  approvalSurface: 'web' | 'pet'
   randomChatEnabled: boolean
   randomChatBrowseOnOpen: boolean
   randomChatWorkspaceIds: string[]

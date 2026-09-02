@@ -12,6 +12,7 @@ import { projectSessionOptions, projectWorkspaceSessionTree, type DialogueSettin
 const SETTINGS_NAMESPACE = 'dsh-png-pet'
 const DEFAULT_SETTINGS: DialogueSettings = {
   defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: true, previewMaxChars: 2000,
+  approvalSurface: 'web',
   randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatWorkspaceIds: [], randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [], randomChatTestNonce: 0,
   scale: 1, reducedMotion: false, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
 }
@@ -68,6 +69,7 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const defaultWorkspaceId = nullableId(value.defaultWorkspaceId)
   const previewEnabled = value.previewEnabled
   const previewMaxChars = value.previewMaxChars
+  const approvalSurface = value.approvalSurface
   const randomChatEnabled = value.randomChatEnabled
   const randomChatBrowseOnOpen = value.randomChatBrowseOnOpen
   const randomChatWorkspaceIds = value.randomChatWorkspaceIds
@@ -83,6 +85,7 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const dialogueHeight = value.dialogueHeight
   if (defaultSessionId === undefined || defaultWorkspaceId === undefined
     || typeof previewEnabled !== 'boolean' || !isIntegerIn(previewMaxChars, 80, 8000)
+    || !isApprovalSurface(approvalSurface)
     || typeof randomChatEnabled !== 'boolean' || typeof randomChatBrowseOnOpen !== 'boolean'
     || !isWorkspaceIds(randomChatWorkspaceIds) || !isRandomChatIntervalMinutes(randomChatMinIntervalMinutes)
     || !isRandomChatIntervalMinutes(randomChatMaxIntervalMinutes) || randomChatMinIntervalMinutes > randomChatMaxIntervalMinutes
@@ -90,11 +93,12 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
     || (scale !== 0.75 && scale !== 1 && scale !== 1.25 && scale !== 1.5)
     || typeof reducedMotion !== 'boolean' || !isPetPlacement(petPlacement) || !isDialoguePlacement(dialoguePlacement)
     || !isIntegerIn(dialogueWidth, 220, 4000) || !isIntegerIn(dialogueHeight, 240, 3000)) return undefined
-  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
+  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, approvalSurface, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
 }
 
 export async function writeDialogueSetting(settings: Pick<SettingsScope<DialogueSettings>, 'set'>, field: keyof DialogueSettings, value: DialogueSettings[keyof DialogueSettings]): Promise<boolean> {
   if (field === 'previewMaxChars' && (typeof value !== 'number' || !Number.isInteger(value) || value < 80 || value > 8000)) return false
+  if (field === 'approvalSurface' && !isApprovalSurface(value)) return false
   if (field === 'dialogueWidth' && (typeof value !== 'number' || !Number.isInteger(value) || value < 220 || value > 4000)) return false
   if (field === 'dialogueHeight' && (typeof value !== 'number' || !Number.isInteger(value) || value < 240 || value > 3000)) return false
   if ((field === 'randomChatMinIntervalMinutes' || field === 'randomChatMaxIntervalMinutes') && !isRandomChatIntervalMinutes(value)) return false
@@ -159,6 +163,10 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
         createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.previewEnabled, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('previewEnabled', event.currentTarget.checked) } }), '实时流式回复'),
         createElement('label', { style: { display: 'block', marginTop: 12 } }, '流式长度 ', createElement('input', { type: 'number', min: 80, max: 8000, step: 1, value: value.previewMaxChars, disabled: !value.previewEnabled || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('previewMaxChars', 80, 8000, event) }))),
       createElement(SettingCard, { title: '人物大小', description: '桌宠启动与重置时采用的默认大小。' }, createElement(ChoiceCards, { value: value.scale, disabled: settingsUnavailable, name: 'pet-scale', options: ([0.75, 1, 1.25, 1.5] as const).map((scale) => ({ value: scale, label: `${scale * 100}%` })), onChange: (scale) => { void update('scale', scale) } }))),
+    createElement('h2', { style: sectionHeadingStyle }, '权限请求'),
+    createElement('p', null, '选择未来的权限请求由哪里回答。选择 Web 时，桌宠的“等待你的操作”气泡可点击打开 DSH。'),
+    createElement(SettingCard, { title: '请求批准的位置', description: '默认使用 DSH Web；桌宠模式只接管桌宠当前选中的会话。切换不会改变已经等待回答的请求。' },
+      createElement(ChoiceCards, { value: value.approvalSurface, disabled: settingsUnavailable, name: 'approval-surface', options: [{ value: 'web', label: 'Web（默认）' }, { value: 'pet', label: '桌宠' }], onChange: (surface) => { void update('approvalSurface', surface) } })),
     createElement('h2', { style: sectionHeadingStyle }, '外观'),
     createElement('p', null, '这些默认值会在桌宠启动时恢复；当前拖拽位置不会被覆盖。'),
     createElement('div', { style: gridStyle },
@@ -253,6 +261,7 @@ const placementOptions: ReadonlyArray<{ value: DialogueSettings['petPlacement'],
 const dialoguePlacementOptions: ReadonlyArray<{ value: DialogueSettings['dialoguePlacement'], label: string }> = [{ value: 'near-pet', label: '跟随人物' }, ...placementOptions]
 function isPetPlacement(value: unknown): value is DialogueSettings['petPlacement'] { return placementOptions.some((option) => option.value === value) }
 function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return dialoguePlacementOptions.some((option) => option.value === value) }
+function isApprovalSurface(value: unknown): value is DialogueSettings['approvalSurface'] { return value === 'web' || value === 'pet' }
 function isIntegerIn(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max }
 
 function isRandomChatIntervalMinutes(value: unknown): value is number { return isIntegerIn(value, 5, 1440) }

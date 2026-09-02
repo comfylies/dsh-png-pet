@@ -140,6 +140,11 @@ export class DialogueController {
     if (previous.sessionId !== next.sessionId) this.clearAll('cancelled')
   }
 
+  /** The exact session whose dialogue surface may own a one-shot approval. */
+  public isSelectedSession(sessionId: string): boolean {
+    return this.effectiveTarget(this.ctx.settings.get()).sessionId === sessionId
+  }
+
   /** Starts the web-backed first turn only after the user clicked a clearly labelled local invitation. */
   public async startRandomChatTopic(requestId: number, topic: RandomChatTopic): Promise<void> {
     try {
@@ -551,10 +556,6 @@ export class DialogueController {
     }
     this.activeRequests.set(request.requestId, request)
     return request
-  }
-
-  private isSelectedSession(sessionId: string): boolean {
-    return this.effectiveTarget(this.ctx.settings.get()).sessionId === sessionId
   }
 
   private clearCurrentPetInput(request: Request): void {

@@ -58,6 +58,9 @@ public partial class MainWindow : Window
 
     public event EventHandler<RandomChatRequestedEventArgs>? RandomChatRequested;
 
+    /// <summary>Raised when a safe question or Web-routed approval bubble opens the already-running Harness.</summary>
+    public event EventHandler? HarnessOpenRequested;
+
     public MainWindow(IScreenLayout screenLayout)
     {
         InitializeComponent();
@@ -124,6 +127,8 @@ public partial class MainWindow : Window
         lastDisplayState = state;
         StateLabel.Text = state.Label;
         StateBubble.Visibility = state.State == "idle" ? Visibility.Collapsed : Visibility.Visible;
+        StateBubbleCanvas.IsHitTestVisible = StateBubbleCanOpenHarness(state.State);
+        StateBubble.Cursor = StateBubbleCanOpenHarness(state.State) ? Cursors.Hand : Cursors.Arrow;
         StateBubble.Background = state.State switch
         {
             "waiting" => new SolidColorBrush(System.Windows.Media.Color.FromArgb(230, 142, 74, 29)),
@@ -163,6 +168,14 @@ public partial class MainWindow : Window
         }
         ScheduleRandomChatInvitation();
         SaveState();
+    }
+
+    /** Opens the dialogue without toggling it closed when an approval needs an answer. */
+    public void ShowDialogueForApproval()
+    {
+        if (dialogueWindow is null) return;
+        DismissRandomChatInvitation();
+        dialogueWindow.ShowDialogue(CurrentRect());
     }
 
     public void ShowRandomChatDialogue(long invitationId)
@@ -420,6 +433,16 @@ public partial class MainWindow : Window
 
     private void StateBubble_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateStateBubblePosition();
+
+    private void StateBubble_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!StateBubbleCanOpenHarness(lastDisplayState.State)) return;
+        e.Handled = true;
+        HarnessOpenRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static bool StateBubbleCanOpenHarness(string state) =>
+        state is "question" or "waiting";
 
     private void UpdateStateBubblePosition()
     {

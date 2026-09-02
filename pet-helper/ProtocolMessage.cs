@@ -4,7 +4,7 @@ namespace PetHelper;
 
 public abstract record ProtocolMessage(int Version, string Kind)
 {
-    public const int ProtocolVersion = 12;
+    public const int ProtocolVersion = 14;
 }
 
 public sealed record HelloMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "hello");
@@ -46,6 +46,11 @@ public sealed record HistoryImageBlock(string Name, int Width, int Height) : His
 public sealed record HistoryItem(string Role, ImmutableArray<HistoryBlock> Blocks);
 
 public sealed record HistoryMessage(long RequestId, bool Available, ImmutableArray<HistoryItem> Messages) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "conversation-history");
+
+/** A content-free, one-shot approval prompt. No DSH identifiers or tool data reach the Helper. */
+public sealed record ApprovalRequestMessage(long RequestId) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "approval-request");
+
+public sealed record ApprovalResolvedMessage(long RequestId, string Outcome) : ProtocolMessage(ProtocolMessage.ProtocolVersion, "approval-resolved");
 
 public sealed record TargetWorkspaceInfo(string Id, string Title, string Path);
 

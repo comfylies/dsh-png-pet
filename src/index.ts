@@ -1,4 +1,6 @@
 import { CompanionBridge, createSessionObservers } from './companion-bridge.js'
+import open from 'open'
+import { ApprovalController, type ApprovalOutcome, type DshApprovalRequest } from './approval-controller.js'
 import { DialogueController } from './dialogue-controller.js'
 import { dialogueSettingsSchema, type DialogueSettings } from './dialogue-settings.js'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -15,15 +17,17 @@ export const name = 'dsh-png-pet'
  * restricted context: services used through `ctx.*` MUST be declared here or
  * property access throws "cannot get property ... without inject".
  */
-export const inject = ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel'] as const
+export const inject = ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'] as const
 
 export type SessionObserverContext = {
   on(name: 'session/event', listener: (session: unknown, event: unknown) => void): unknown
   on(name: 'session/disposed', listener: (session: unknown) => void): unknown
+  on(name: 'approval/request', listener: (request: DshApprovalRequest, next: () => Promise<ApprovalOutcome>) => Promise<ApprovalOutcome>, options?: boolean): unknown
 }
 
 type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings'> & {
   apiProxy: TargetApi
+  webServer: { port: number }
   effect(factory: () => () => void): void
   inject(services: readonly ['settings'], callback: (ctx: { settings: DshSettingsProvider }) => void): void
 }
@@ -51,6 +55,7 @@ export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory,
 
 function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, lifecycleOptions: HelperLifecycleOptions): void {
   let controller: DialogueController | undefined
+  let approvalController: ApprovalController | undefined
   let targetController: TargetController | undefined
   let randomChatController: RandomChatController | undefined
   let settingsScope: DshDialogueSettingsScope | undefined
@@ -66,6 +71,14 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
   const restartDelays = lifecycleOptions.restartDelaysMs ?? helperRestartDelaysMs
   const stableRunMs = lifecycleOptions.stableRunMs ?? helperStableRunMs
   const bridge = new CompanionBridge((message) => helper?.send(message))
+  const openHarness = () => {
+    const port = ctx.webServer.port
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) return
+    void open(`http://127.0.0.1:${port}`).catch(() => {
+      // A user-initiated browser handoff must never destabilize the Host or expose its URL in logs.
+      console.error('dsh-png-pet could not open Harness')
+    })
+  }
 
   const clearRestartTimer = () => {
     if (restartTimer) clearTimeout(restartTimer)
@@ -100,7 +113,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
           clearRestartTimer()
           clearStableRunTimer()
         }
-        void routeHelperMessage(message, controller, targetController, randomChatController)
+        void routeHelperMessage(message, controller, targetController, randomChatController, openHarness, approvalController)
       },
       onExit: () => handleTermination(),
     })
@@ -112,6 +125,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
       if (helper !== instance) return
       helper = undefined
       helperReady = false
+      approvalController?.helperUnavailable()
       clearStableRunTimer()
 
       if (disposed || restartSuppressed) return
@@ -160,6 +174,13 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
     settingsScope = scope
     const dialogueCtx = createDialogueContext(ctx, scope)
     controller = new DialogueController(dialogueCtx, (message) => helper?.send(message))
+    approvalController = new ApprovalController(
+      (sessionId) => controller?.isSelectedSession(sessionId) ?? false,
+      () => helperReady && helper !== undefined,
+      (message) => helper?.send(message),
+      () => settingsScope?.get().approvalSurface === 'pet',
+    )
+    registerApprovalAnswerer(ctx, approvalController)
     targetController = new TargetController(
       ctx.apiProxy,
       scope,
@@ -212,7 +233,25 @@ export function routeHelperMessage(
   controller: Pick<DialogueController, 'acceptInput' | 'requestHistory' | 'stop' | 'helperClosed'> | undefined,
   targetController?: Pick<TargetController, 'open' | 'answer'>,
   randomChatController?: Pick<RandomChatController, 'open' | 'dialogueClosed'>,
+  openHarness?: () => void,
+  approvalController?: Pick<ApprovalController, 'answer'>,
 ): Promise<void> {
+  if (message.kind === 'open-harness') {
+    try {
+      openHarness?.()
+    } catch {
+      // A user-initiated browser handoff must never disrupt dialogue routing.
+    }
+    return Promise.resolve()
+  }
+  if (message.kind === 'approval-answer') {
+    try {
+      approvalController?.answer(message)
+    } catch {
+      // A stale or malformed local decision must fail closed inside the controller.
+    }
+    return Promise.resolve()
+  }
   if (message.kind === 'input' || message.kind === 'request-history' || message.kind === 'stop') {
     try {
       const handled = message.kind === 'input'
@@ -256,6 +295,18 @@ export function routeHelperMessage(
 
   controller?.helperClosed()
   return Promise.resolve()
+}
+
+/**
+ * Claims only the currently selected conversation's requests. All other
+ * requests delegate to DSH's built-in Web answerer, preserving Web ownership
+ * for sessions the pet is not displaying.
+ */
+export function registerApprovalAnswerer(
+  ctx: SessionObserverContext,
+  controller: Pick<ApprovalController, 'request'>,
+): void {
+  ctx.on('approval/request', (request, next) => controller.request(request, next), true)
 }
 
 export function watchDialogueSettings(

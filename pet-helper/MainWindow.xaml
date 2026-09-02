@@ -97,7 +97,8 @@
     <Image x:Name="PetImage" Stretch="Uniform" VerticalAlignment="Bottom" Margin="0,20,0,0" />
     <Canvas x:Name="StateBubbleCanvas" IsHitTestVisible="False" Panel.ZIndex="1">
       <Border x:Name="StateBubble" Visibility="Collapsed" Background="#E62B4B5F"
-              CornerRadius="12" Padding="12,6" SizeChanged="StateBubble_SizeChanged">
+              CornerRadius="12" Padding="12,6" SizeChanged="StateBubble_SizeChanged"
+              MouseLeftButtonUp="StateBubble_MouseLeftButtonUp">
         <TextBlock x:Name="StateLabel" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
       </Border>
     </Canvas>

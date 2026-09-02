@@ -151,6 +151,20 @@ test('keeps the state bubble visible regardless of other windows', () => {
   assert.doesNotMatch(code, /UpdateStateBubbleVisibility/)
 })
 
+test('uses question and Web-approval waiting bubbles as content-free shortcuts back to Harness', () => {
+  const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+  const app = readFileSync(new URL('../pet-helper/App.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Name="StateBubble"[\s\S]*MouseLeftButtonUp="StateBubble_MouseLeftButtonUp"/)
+  assert.match(code, /StateBubbleCanvas\.IsHitTestVisible\s*=\s*StateBubbleCanOpenHarness\(state\.State\)/)
+  assert.match(code, /StateBubbleCanOpenHarness/)
+  assert.match(code, /HarnessOpenRequested\?\.Invoke/)
+  assert.match(code, /state is "question" or "waiting"/)
+  assert.match(app, /HarnessOpenRequested\s*\+=.*WriteOpenHarness/)
+  assert.match(app, /SerializeHelperMessage\("open-harness"\)/)
+})
+
 test('links the dialogue window to double-click and Ctrl-combined pet dragging', () => {
   const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 
@@ -221,6 +235,21 @@ test('lets the dialogue window drag, resize, and remember its position', () => {
   assert.match(code, /UpdateMaxSize\(\)/)
   assert.match(code, /DialogueWindowState\.MaxSizeFor/)
   assert.match(xaml, /MinWidth="220"/)
+})
+
+test('keeps desktop approval controls content-free and one-shot', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
+  const app = readFileSync(new URL('../pet-helper/App.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /x:Name="ApprovalCard"/)
+  assert.match(xaml, /x:Name="ApprovalRejectButton"/)
+  assert.match(xaml, /x:Name="ApprovalAllowButton"/)
+  assert.match(code, /AnswerPendingApproval\("rejected"\)/)
+  assert.match(code, /ApprovalAnswered/)
+  assert.match(app, /WriteApprovalAnswer\(ApprovalAnsweredEventArgs answer\)/)
+  assert.match(app, /kind\s*=\s*"approval-answer"/)
+  assert.doesNotMatch(xaml, /ToolName|Reason|Arguments|文件路径/)
 })
 
 test('uses the dialogue visual language for the pet menu and collapsed target tree', () => {

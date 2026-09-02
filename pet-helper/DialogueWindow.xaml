@@ -214,9 +214,26 @@
             </ItemsControl.ItemsPanel>
           </ItemsControl>
         </ScrollViewer>
-        <Border x:Name="InputComposer" Grid.Row="2" Background="#D9FFFFFF" CornerRadius="18"
-                BorderBrush="#2B98A2B3" BorderThickness="1" Padding="12,9,9,8">
-          <StackPanel>
+        <StackPanel Grid.Row="2">
+          <Border x:Name="ApprovalCard" Visibility="Collapsed" Background="#FFFDF5E6" CornerRadius="14"
+                  BorderBrush="#D09A6700" BorderThickness="1" Padding="12" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock Text="需要你的权限确认" Foreground="#7A4B00" FontWeight="SemiBold" />
+              <TextBlock Text="智能体请求执行一项受限操作。此授权仅对此次操作有效。"
+                         Foreground="#5D4037" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,8" />
+              <UniformGrid Columns="2">
+                <Button x:Name="ApprovalRejectButton" Content="拒绝" Margin="0,0,4,0"
+                        Style="{StaticResource AccentButton}" Height="30" Background="#7A271A"
+                        Click="ApprovalRejectButton_Click" />
+                <Button x:Name="ApprovalAllowButton" Content="允许本次" Margin="4,0,0,0"
+                        Style="{StaticResource AccentButton}" Height="30" Background="#166534"
+                        Click="ApprovalAllowButton_Click" />
+              </UniformGrid>
+            </StackPanel>
+          </Border>
+          <Border x:Name="InputComposer" Background="#D9FFFFFF" CornerRadius="18"
+                  BorderBrush="#2B98A2B3" BorderThickness="1" Padding="12,9,9,8">
+            <StackPanel>
             <ItemsControl x:Name="PendingAttachmentsList" Visibility="Collapsed"
                           ItemTemplate="{StaticResource PendingAttachmentTemplate}" Margin="0,0,0,4">
               <ItemsControl.ItemsPanel>
@@ -249,8 +266,9 @@
               <TextBlock x:Name="ConversationStatusLabel" Foreground="#667085" FontSize="11.5"
                          VerticalAlignment="Center" Margin="5,0,8,0" TextWrapping="Wrap" />
             </DockPanel>
-          </StackPanel>
-        </Border>
+            </StackPanel>
+          </Border>
+        </StackPanel>
       </Grid>
     </Border>
   </Grid>

@@ -40,7 +40,7 @@ public sealed class PetDisplayStateTests
     [InlineData("active", "思考中/工作中", PetAnimationKey.Thinking)]
     [InlineData("active", "输出中…", PetAnimationKey.Responding)]
     [InlineData("waiting", "等待你的操作", PetAnimationKey.Waiting)]
-    [InlineData("question", "等你回答…", PetAnimationKey.Question)]
+    [InlineData("question", "点击回到 Harness 回答", PetAnimationKey.Question)]
     [InlineData("success", "已完成", PetAnimationKey.Success)]
     [InlineData("error", "发生错误", PetAnimationKey.Error)]
     [InlineData("disconnected", "未连接", PetAnimationKey.Disconnected)]

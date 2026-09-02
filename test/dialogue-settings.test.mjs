@@ -24,12 +24,17 @@ const randomChatDefaults = {
   randomChatTestNonce: 0,
 }
 
+const approvalDefaults = {
+  approvalSurface: 'web',
+}
+
 test('uses the safe dialogue setting defaults', () => {
   assert.deepEqual(dialogueSettingsDefaults, {
     defaultSessionId: null,
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...approvalDefaults,
     ...randomChatDefaults,
     ...layoutDefaults,
   })
@@ -41,6 +46,7 @@ test('includes safe defaults for the pet and dialogue layout', () => {
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...approvalDefaults,
     ...randomChatDefaults,
     ...layoutDefaults,
   })
@@ -54,6 +60,7 @@ test('exposes the dialogue settings as a serializable schemastery schema', () =>
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...approvalDefaults,
     ...randomChatDefaults,
     ...layoutDefaults,
   })
@@ -62,12 +69,13 @@ test('exposes the dialogue settings as a serializable schemastery schema', () =>
     defaultWorkspaceId: null,
     previewEnabled: true,
     previewMaxChars: 2000,
+    ...approvalDefaults,
     ...randomChatDefaults,
     ...layoutDefaults,
   })
   assert.deepEqual(
     dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...randomChatDefaults, ...layoutDefaults },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...approvalDefaults, ...randomChatDefaults, ...layoutDefaults },
   )
   assert.throws(
     () => dialogueSettingsSchema({ defaultSessionId: null, previewEnabled: true, previewMaxChars: 80.5 }),
@@ -94,15 +102,15 @@ test('projects only a session id and its DSH display title', () => {
 test('accepts preview bounds and rejects values outside 80 through 8000', () => {
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480 }),
-    { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480, ...randomChatDefaults, ...layoutDefaults },
+    { defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 480, ...approvalDefaults, ...randomChatDefaults, ...layoutDefaults },
   )
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 80 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...randomChatDefaults, ...layoutDefaults },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 80, ...approvalDefaults, ...randomChatDefaults, ...layoutDefaults },
   )
   assert.deepEqual(
     validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 8000 }),
-    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 8000, ...randomChatDefaults, ...layoutDefaults },
+    { defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: false, previewMaxChars: 8000, ...approvalDefaults, ...randomChatDefaults, ...layoutDefaults },
   )
   assert.throws(
     () => validateDialogueSettings({ defaultSessionId: null, previewEnabled: false, previewMaxChars: 79 }),
@@ -134,6 +142,7 @@ test('keeps random chat disabled until browsing consent and workspace choices ar
       defaultWorkspaceId: null,
       previewEnabled: true,
       previewMaxChars: 2000,
+      ...approvalDefaults,
       randomChatEnabled: true,
       randomChatBrowseOnOpen: true,
       randomChatWorkspaceIds: ['w-1', 'w-2'],
@@ -150,4 +159,10 @@ test('keeps random chat disabled until browsing consent and workspace choices ar
   assert.throws(() => validateDialogueSettings({ randomChatMinIntervalMinutes: 30, randomChatMaxIntervalMinutes: 29 }))
   assert.throws(() => validateDialogueSettings({ randomChatCustomPrompts: ['重复', '重复'] }))
   assert.throws(() => validateDialogueSettings({ randomChatCustomPrompts: ['x'.repeat(121)] }))
+})
+
+test('defaults approval requests to Web and accepts only the two approved surfaces', () => {
+  assert.equal(validateDialogueSettings({}).approvalSurface, 'web')
+  assert.equal(validateDialogueSettings({ approvalSurface: 'pet' }).approvalSurface, 'pet')
+  assert.throws(() => validateDialogueSettings({ approvalSurface: 'browser' }))
 })

@@ -22,14 +22,14 @@ public sealed class RandomChatTests
     {
         Assert.Equal(
             new RandomChatReadyMessage(9),
-            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-ready\",\"invitationId\":9}"));
+            ProtocolReader.Parse("{\"version\":14,\"kind\":\"random-chat-ready\",\"invitationId\":9}"));
         Assert.Equal(
             new RandomChatErrorMessage(9, "not-configured"),
-            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"not-configured\"}"));
+            ProtocolReader.Parse("{\"version\":14,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"not-configured\"}"));
         Assert.Equal(
             new RandomChatTestMessage(),
-            ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-test\"}"));
-        Assert.Null(ProtocolReader.Parse("{\"version\":12,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"free-form\"}"));
+            ProtocolReader.Parse("{\"version\":14,\"kind\":\"random-chat-test\"}"));
+        Assert.Null(ProtocolReader.Parse("{\"version\":14,\"kind\":\"random-chat-error\",\"invitationId\":9,\"reason\":\"free-form\"}"));
     }
 
     [Fact]

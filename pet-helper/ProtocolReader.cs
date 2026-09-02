@@ -49,6 +49,8 @@ public static class ProtocolReader
                     "clear-preview" => ParseClearPreview(root),
                     "reply" => ParseReply(root),
                     "conversation-history" => ParseHistory(root),
+                    "approval-request" => ParseApprovalRequest(root),
+                    "approval-resolved" => ParseApprovalResolved(root),
                     "target-request" => ParseTargetRequest(root),
                     "random-chat-ready" => ParseRandomChatReady(root),
                     "random-chat-error" => ParseRandomChatError(root),
@@ -382,6 +384,29 @@ public static class ProtocolReader
         }
 
         return new ConfigMessage(value, reducedMotion.GetBoolean(), petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
+    }
+
+    private static ApprovalRequestMessage? ParseApprovalRequest(JsonElement root)
+    {
+        return HasExactlyProperties(root, "version", "kind", "requestId")
+            && TryGetRequestId(root, out var requestId)
+            ? new ApprovalRequestMessage(requestId)
+            : null;
+    }
+
+    private static ApprovalResolvedMessage? ParseApprovalResolved(JsonElement root)
+    {
+        if (!HasExactlyProperties(root, "version", "kind", "requestId", "outcome")
+            || !TryGetRequestId(root, out var requestId)
+            || !root.TryGetProperty("outcome", out var outcome)
+            || outcome.ValueKind != JsonValueKind.String
+            || outcome.GetString() is not string outcomeText
+            || outcomeText is not ("allowed-once" or "rejected" or "cancelled" or "unavailable"))
+        {
+            return null;
+        }
+
+        return new ApprovalResolvedMessage(requestId, outcomeText);
     }
 
     private static bool TryParseRandomChatCustomPrompts(JsonElement value, out ImmutableArray<string> prompts)

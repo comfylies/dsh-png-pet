@@ -5,6 +5,7 @@ export const dialoguePlacements = ['near-pet', ...petPlacements] as const
 
 export type PetPlacement = typeof petPlacements[number]
 export type DialoguePlacement = typeof dialoguePlacements[number]
+export type ApprovalSurface = 'web' | 'pet'
 
 export type DialogueSettings = {
   defaultSessionId: string | null
@@ -12,6 +13,8 @@ export type DialogueSettings = {
   defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
+  /** The sole UI allowed to answer future DSH permission requests. */
+  approvalSurface: ApprovalSurface
   /** Explicitly opt-in; without it the Helper never schedules a random invitation. */
   randomChatEnabled: boolean
   /** Separate consent for the model to use its configured web tools after a bubble click. */
@@ -38,6 +41,7 @@ export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freez
   defaultWorkspaceId: null,
   previewEnabled: true,
   previewMaxChars: 2000,
+  approvalSurface: 'web',
   randomChatEnabled: false,
   randomChatBrowseOnOpen: false,
   randomChatWorkspaceIds: [],
@@ -59,6 +63,7 @@ export const dialogueSettingsSchema = z.transform(
     defaultWorkspaceId: z.union([z.string().min(1), z.const(null)]).default(null),
     previewEnabled: z.boolean().default(true),
     previewMaxChars: z.number().step(1).min(80).max(8000).default(2000),
+    approvalSurface: z.union([z.const('web'), z.const('pet')]).default('web'),
     randomChatEnabled: z.boolean().default(false),
     randomChatBrowseOnOpen: z.boolean().default(false),
     randomChatWorkspaceIds: z.array(z.string().min(1).max(200)).max(8).default([]),
@@ -83,6 +88,7 @@ export const dialogueSettingsSchema = z.transform(
     defaultWorkspaceId: settings.defaultWorkspaceId ?? null,
     previewEnabled: settings.previewEnabled ?? true,
     previewMaxChars: settings.previewMaxChars ?? 2000,
+    approvalSurface: settings.approvalSurface ?? 'web',
     randomChatEnabled: settings.randomChatEnabled ?? false,
     randomChatBrowseOnOpen: settings.randomChatBrowseOnOpen ?? false,
     randomChatWorkspaceIds: uniqueWorkspaceIds(settings.randomChatWorkspaceIds ?? []),

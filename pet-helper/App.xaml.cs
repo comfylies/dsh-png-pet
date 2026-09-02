@@ -37,9 +37,11 @@ public partial class App : System.Windows.Application
         dialogueWindow.InputSubmitted += (_, input) => WriteInput(input);
         dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
         dialogueWindow.StopRequested += (_, stop) => WriteStop(stop);
+        dialogueWindow.ApprovalAnswered += (_, answer) => WriteApprovalAnswer(answer);
         dialogueWindow.DialogueClosed += (_, _) => WriteDialogueClosed();
         window.AttachDialogueWindow(dialogueWindow);
         window.RandomChatRequested += (_, request) => WriteRandomChatOpen(request);
+        window.HarnessOpenRequested += (_, _) => WriteOpenHarness();
 
         var priceCard = new PeakValleyCardWindow();
         peakValleyCard = priceCard;
@@ -125,6 +127,16 @@ public partial class App : System.Windows.Application
                         continue;
                     case ConversationConfigMessage or InputStatusMessage or ReplyPreviewMessage or ClearPreviewMessage or ReplyMessage or HistoryMessage:
                         await Dispatcher.InvokeAsync(() => dialogue?.ApplyConversationMessage(message));
+                        continue;
+                    case ApprovalRequestMessage request:
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            ((MainWindow)MainWindow!).ShowDialogueForApproval();
+                            dialogue?.ApplyApprovalMessage(request);
+                        });
+                        continue;
+                    case ApprovalResolvedMessage resolved:
+                        await Dispatcher.InvokeAsync(() => dialogue?.ApplyApprovalMessage(resolved));
                         continue;
                     case TargetRequestMessage target:
                         await Dispatcher.InvokeAsync(() => targetWindow?.ApplyTargetRequest(target));
@@ -246,6 +258,18 @@ public partial class App : System.Windows.Application
         Console.Out.Flush();
     }
 
+    private static void WriteApprovalAnswer(ApprovalAnsweredEventArgs answer)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(new
+        {
+            version = ProtocolMessage.ProtocolVersion,
+            kind = "approval-answer",
+            requestId = answer.RequestId,
+            outcome = answer.Outcome,
+        }));
+        Console.Out.Flush();
+    }
+
     private static void WriteRandomChatOpen(RandomChatRequestedEventArgs request)
     {
         Console.Out.WriteLine(JsonSerializer.Serialize(new { version = ProtocolMessage.ProtocolVersion, kind = "random-chat-open", invitationId = request.InvitationId, topic = request.Topic }));
@@ -255,6 +279,12 @@ public partial class App : System.Windows.Application
     private static void WriteDialogueClosed()
     {
         Console.Out.WriteLine(SerializeHelperMessage("dialogue-closed"));
+        Console.Out.Flush();
+    }
+
+    private static void WriteOpenHarness()
+    {
+        Console.Out.WriteLine(SerializeHelperMessage("open-harness"));
         Console.Out.Flush();
     }
 
