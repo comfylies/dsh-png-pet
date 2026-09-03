@@ -13,8 +13,10 @@ export type DialogueSettings = {
   randomChatTestNonce: number
   scale: 0.75 | 1 | 1.25 | 1.5
   reducedMotion: boolean
-  petPlacement: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  dialoguePlacement: 'near-pet' | 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  physicsEnabled: boolean
+  physicsBouncePercent: number
+  petPlacement: 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
+  dialoguePlacement: 'near-pet' | 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
   dialogueWidth: number
   dialogueHeight: number
 }

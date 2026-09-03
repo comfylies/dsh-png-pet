@@ -9,8 +9,12 @@ public sealed class DefaultLayoutTests
     [Theory]
     [InlineData(DefaultLayout.Center, 300d, 250d)]
     [InlineData(DefaultLayout.TopLeft, 4d, 4d)]
+    [InlineData(DefaultLayout.TopCenter, 300d, 4d)]
     [InlineData(DefaultLayout.TopRight, 596d, 4d)]
+    [InlineData(DefaultLayout.MiddleLeft, 4d, 250d)]
+    [InlineData(DefaultLayout.MiddleRight, 596d, 250d)]
     [InlineData(DefaultLayout.BottomLeft, 4d, 496d)]
+    [InlineData(DefaultLayout.BottomCenter, 300d, 496d)]
     [InlineData(DefaultLayout.BottomRight, 596d, 496d)]
     public void Place_uses_a_semantic_work_area_anchor(string placement, double expectedLeft, double expectedTop)
     {

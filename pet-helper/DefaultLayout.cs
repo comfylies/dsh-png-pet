@@ -10,12 +10,20 @@ public static class DefaultLayout
 {
     public const string Center = "center";
     public const string TopLeft = "top-left";
+    public const string TopCenter = "top-center";
     public const string TopRight = "top-right";
+    public const string MiddleLeft = "middle-left";
+    public const string MiddleRight = "middle-right";
     public const string BottomLeft = "bottom-left";
+    public const string BottomCenter = "bottom-center";
     public const string BottomRight = "bottom-right";
     public const string NearPet = "near-pet";
 
-    public static bool IsPetPlacement(string value) => value is Center or TopLeft or TopRight or BottomLeft or BottomRight;
+    public static bool IsPetPlacement(string value) => value is
+        Center or
+        TopLeft or TopCenter or TopRight or
+        MiddleLeft or MiddleRight or
+        BottomLeft or BottomCenter or BottomRight;
 
     public static bool IsDialoguePlacement(string value) => value == NearPet || IsPetPlacement(value);
 
@@ -28,14 +36,14 @@ public static class DefaultLayout
             new Size(0d, 0d));
         var x = placement switch
         {
-            TopLeft or BottomLeft => workArea.Left + PlacementPlanner.ScreenMargin,
-            TopRight or BottomRight => workArea.Right - PlacementPlanner.ScreenMargin - fitted.Width,
+            TopLeft or MiddleLeft or BottomLeft => workArea.Left + PlacementPlanner.ScreenMargin,
+            TopRight or MiddleRight or BottomRight => workArea.Right - PlacementPlanner.ScreenMargin - fitted.Width,
             _ => workArea.Left + (workArea.Width - fitted.Width) / 2d,
         };
         var y = placement switch
         {
-            TopLeft or TopRight => workArea.Top + PlacementPlanner.ScreenMargin,
-            BottomLeft or BottomRight => workArea.Bottom - PlacementPlanner.ScreenMargin - fitted.Height,
+            TopLeft or TopCenter or TopRight => workArea.Top + PlacementPlanner.ScreenMargin,
+            BottomLeft or BottomCenter or BottomRight => workArea.Bottom - PlacementPlanner.ScreenMargin - fitted.Height,
             _ => workArea.Top + (workArea.Height - fitted.Height) / 2d,
         };
         return PlacementPlanner.ClampIntoWorkArea(new Rect(x, y, fitted.Width, fitted.Height), workArea);

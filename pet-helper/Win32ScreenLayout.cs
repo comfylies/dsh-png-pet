@@ -17,18 +17,19 @@ public sealed class Win32ScreenLayout : IScreenLayout
 
     private readonly Rect primaryWorkArea;
     private readonly IReadOnlyList<Rect> workAreas;
+    private readonly MonitorWorkAreaCache monitorWorkAreaCache = new();
 
     public Win32ScreenLayout()
     {
         try
         {
-            var monitors = new List<(RECT Work, bool Primary)>();
+            var monitors = new List<(IntPtr Handle, RECT Work, bool Primary)>();
             EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (monitor, _, _, _) =>
             {
                 var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
                 if (GetMonitorInfo(monitor, ref info))
                 {
-                    monitors.Add((info.rcWork, (info.dwFlags & MonitorInfoFPrimary) != 0));
+                    monitors.Add((monitor, info.rcWork, (info.dwFlags & MonitorInfoFPrimary) != 0));
                 }
                 return true;
             }, IntPtr.Zero);
@@ -36,7 +37,7 @@ public sealed class Win32ScreenLayout : IScreenLayout
             if (monitors.Count == 0) throw new InvalidOperationException("no monitors enumerated");
 
             var converted = monitors
-                .Select(entry => new { Rect = ToDip(entry.Work, MonitorDpi(entry.Work)), Primary = entry.Primary })
+                .Select(entry => new { Rect = ToDip(entry.Work, MonitorDpi(entry.Handle)), Primary = entry.Primary })
                 .ToList();
             workAreas = converted.Select(entry => entry.Rect).ToList();
             primaryWorkArea = converted.FirstOrDefault(entry => entry.Primary)?.Rect ?? workAreas[0];
@@ -57,15 +58,18 @@ public sealed class Win32ScreenLayout : IScreenLayout
         var center = new Point(windowRect.X + windowRect.Width / 2, windowRect.Y + windowRect.Height / 2);
         var point = new POINT((int)Math.Round(center.X), (int)Math.Round(center.Y));
         var monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        if (monitorWorkAreaCache.TryGet(monitor, out var cached)) return cached;
         var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        return GetMonitorInfo(monitor, ref info)
-            ? ToDip(info.rcWork, MonitorDpi(info.rcWork))
+        var workArea = GetMonitorInfo(monitor, ref info)
+            ? ToDip(info.rcWork, MonitorDpi(monitor))
             : primaryWorkArea;
+        monitorWorkAreaCache.Add(monitor, workArea);
+        return workArea;
     }
 
-    private static uint MonitorDpi(RECT physical)
+    private static uint MonitorDpi(nint monitor)
     {
-        if (GetDpiForMonitor(MonitorFromPoint(new POINT(physical.Left, physical.Top), MonitorDefaultToNearest), 0, out var dpiX, out _) == 0)
+        if (GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0)
         {
             return Math.Max(dpiX, 1u);
         }

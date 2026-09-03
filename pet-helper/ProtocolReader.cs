@@ -339,9 +339,11 @@ public static class ProtocolReader
 
     private static ConfigMessage? ParseConfig(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight", "randomChatEnabled", "randomChatBrowseOnOpen", "randomChatConfigured", "randomChatMinIntervalMinutes", "randomChatMaxIntervalMinutes", "randomChatCustomPrompts")
+        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "physicsEnabled", "physicsBouncePercent", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight", "randomChatEnabled", "randomChatBrowseOnOpen", "randomChatConfigured", "randomChatMinIntervalMinutes", "randomChatMaxIntervalMinutes", "randomChatCustomPrompts")
             || !root.TryGetProperty("scale", out var scale)
             || !root.TryGetProperty("reducedMotion", out var reducedMotion)
+            || !root.TryGetProperty("physicsEnabled", out var physicsEnabled)
+            || !root.TryGetProperty("physicsBouncePercent", out var physicsBouncePercent)
             || !root.TryGetProperty("petPlacement", out var petPlacement)
             || !root.TryGetProperty("dialoguePlacement", out var dialoguePlacement)
             || !root.TryGetProperty("dialogueWidth", out var dialogueWidth)
@@ -355,6 +357,10 @@ public static class ProtocolReader
             || scale.ValueKind != JsonValueKind.Number
             || !scale.TryGetDouble(out var value)
             || reducedMotion.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || physicsEnabled.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || physicsBouncePercent.ValueKind != JsonValueKind.Number
+            || !physicsBouncePercent.TryGetInt32(out var physicsBouncePercentValue)
+            || physicsBouncePercentValue is < 0 or > 100
             || petPlacement.ValueKind != JsonValueKind.String
             || petPlacement.GetString() is not { } petPlacementValue
             || !DefaultLayout.IsPetPlacement(petPlacementValue)
@@ -383,7 +389,7 @@ public static class ProtocolReader
             return null;
         }
 
-        return new ConfigMessage(value, reducedMotion.GetBoolean(), petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
+        return new ConfigMessage(value, reducedMotion.GetBoolean(), physicsEnabled.GetBoolean(), physicsBouncePercentValue, petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
     }
 
     private static ApprovalRequestMessage? ParseApprovalRequest(JsonElement root)

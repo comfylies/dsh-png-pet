@@ -75,14 +75,14 @@ test('decodes the Host-resolved settings view after a transformed schema write',
     defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
     approvalSurface: 'pet',
     randomChatEnabled: true, randomChatBrowseOnOpen: true, randomChatWorkspaceIds: ['w-1'], randomChatMinIntervalMinutes: 5, randomChatMaxIntervalMinutes: 60, randomChatCustomPrompts: ['和我聊聊？'], randomChatTestNonce: 0,
-    scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+    scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
   })
 
   assert.equal(JSON.stringify(value), JSON.stringify({
     defaultSessionId: 's-1', defaultWorkspaceId: 'w-1', previewEnabled: true, previewMaxChars: 500,
     approvalSurface: 'pet',
     randomChatEnabled: true, randomChatBrowseOnOpen: true, randomChatWorkspaceIds: ['w-1'], randomChatMinIntervalMinutes: 5, randomChatMaxIntervalMinutes: 60, randomChatCustomPrompts: ['和我聊聊？'], randomChatTestNonce: 0,
-    scale: 1, reducedMotion: false, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+    scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'top-right', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
   }))
   assert.equal(client.decodeDialogueSettings({ defaultSessionId: 's-1' }), undefined)
 })
@@ -102,8 +102,11 @@ test('writes preview settings through the standard scope setter', async () => {
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8000), true)
   assert.equal(await client.writeDialogueSetting(scope, 'previewMaxChars', 8001), false)
   assert.equal(await client.writeDialogueSetting(scope, 'scale', 1.25), true)
-  assert.equal(await client.writeDialogueSetting(scope, 'petPlacement', 'bottom-right'), true)
-  assert.equal(await client.writeDialogueSetting(scope, 'dialoguePlacement', 'near-pet'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'physicsEnabled', true), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'physicsBouncePercent', 100), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'physicsBouncePercent', 101), false)
+  assert.equal(await client.writeDialogueSetting(scope, 'petPlacement', 'top-center'), true)
+  assert.equal(await client.writeDialogueSetting(scope, 'dialoguePlacement', 'middle-right'), true)
   assert.equal(await client.writeDialogueSetting(scope, 'dialogueWidth', 220), true)
   assert.equal(await client.writeDialogueSetting(scope, 'dialogueHeight', 240), true)
   assert.equal(await client.writeDialogueSetting(scope, 'dialogueWidth', 219), false)
@@ -123,8 +126,10 @@ test('writes preview settings through the standard scope setter', async () => {
     ['previewMaxChars', 80],
     ['previewMaxChars', 8000],
     ['scale', 1.25],
-    ['petPlacement', 'bottom-right'],
-    ['dialoguePlacement', 'near-pet'],
+    ['physicsEnabled', true],
+    ['physicsBouncePercent', 100],
+    ['petPlacement', 'top-center'],
+    ['dialoguePlacement', 'middle-right'],
     ['dialogueWidth', 220],
     ['dialogueHeight', 240],
     ['randomChatWorkspaceIds', ['w-1', 'w-2']],

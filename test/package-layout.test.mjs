@@ -60,3 +60,18 @@ test('ships the LLM message factory required by the dialogue host', async () => 
   assert.equal(packageJson.dependencies?.['@deepseek-ai/dsh-llm'], '^0.1.1-rc.2')
   assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-llm'], undefined)
 })
+
+test('provides a bounded release-packaging command', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const script = await readFile(new URL('../scripts/package-release.ps1', import.meta.url), 'utf8')
+
+  assert.match(packageJson.scripts['package:release'], /package-release\.ps1/)
+  assert.match(script, /npm\.cmd test/)
+  assert.match(script, /npm\.cmd run build:helper/)
+  assert.match(script, /npm\.cmd pack --pack-destination/)
+  assert.match(script, /Select-Object -Skip 5/)
+  assert.match(script, /Join-Path \$projectRoot 'dist\/packages'/)
+  assert.match(script, /-Filter "\$packageName-\*\.tgz"/)
+  assert.match(script, /must be a dedicated folder/)
+  assert.doesNotMatch(script, /plugin --profile/)
+})

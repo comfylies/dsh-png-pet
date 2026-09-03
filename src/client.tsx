@@ -14,18 +14,25 @@ const DEFAULT_SETTINGS: DialogueSettings = {
   defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: true, previewMaxChars: 2000,
   approvalSurface: 'web',
   randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatWorkspaceIds: [], randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [], randomChatTestNonce: 0,
-  scale: 1, reducedMotion: false, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+  scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
 }
 const SESSION_LIST_UNAVAILABLE = '会话列表尚未就绪。'
 const SELECTED_SESSION_UNAVAILABLE = '所选会话已不可用。'
 const SETTINGS_WRITE_FAILED = '无法保存桌宠设置。'
 
-const cardStyle = { border: '1px solid rgba(15, 23, 42, 0.14)', borderRadius: 16, overflow: 'hidden', background: 'transparent' }
-const selectedCardStyle = { ...cardStyle, border: '1px solid currentColor' }
+// Let the Harness page provide typography, colors, focus rings, and its light/dark theme.  These
+// few layout rules only describe the content's geometry; they do not create a second visual system.
+const softBorderColor = 'color-mix(in srgb, currentColor 16%, transparent)'
+const hoverSurfaceColor = '#f4f4f4'
+const hoverShadow = '0 4px 10px rgba(0, 0, 0, 0.08)'
+const placementBaseSurface = '#fff'
+const cardStyle = { border: `1px solid ${softBorderColor}`, borderRadius: 16, overflow: 'hidden', background: 'transparent' }
+const selectedCardStyle = { ...cardStyle, outline: '2px solid currentColor', outlineOffset: -2, opacity: 1 }
 const cardHeaderStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', padding: '16px 18px', border: 0, background: 'transparent', color: 'inherit', font: 'inherit', fontWeight: 650, textAlign: 'left' as const, cursor: 'pointer' }
-const cardBodyStyle = { borderTop: '1px solid rgba(15, 23, 42, 0.12)', padding: 12 }
+const cardBodyStyle = { borderTop: `1px solid ${softBorderColor}`, padding: 12 }
+const cardBodyFlushStyle = { borderTop: `1px solid ${softBorderColor}`, padding: 0 }
 const optionButtonStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', padding: '11px 12px', border: 0, borderRadius: 10, background: 'transparent', color: 'inherit', font: 'inherit', textAlign: 'left' as const, cursor: 'pointer' }
-const activeOptionStyle = { ...optionButtonStyle, background: 'rgba(15, 23, 42, 0.07)', fontWeight: 650 }
+const activeOptionStyle = { ...optionButtonStyle, fontWeight: 650 }
 
 type SnapshotSource<T> = { getSnapshot(): T, subscribe(listener: () => void): () => void }
 type SessionRow = { id: string, displayTitle: string }
@@ -79,6 +86,8 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const randomChatTestNonce = value.randomChatTestNonce
   const scale = value.scale
   const reducedMotion = value.reducedMotion
+  const physicsEnabled = value.physicsEnabled
+  const physicsBouncePercent = value.physicsBouncePercent
   const petPlacement = value.petPlacement
   const dialoguePlacement = value.dialoguePlacement
   const dialogueWidth = value.dialogueWidth
@@ -91,9 +100,10 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
     || !isRandomChatIntervalMinutes(randomChatMaxIntervalMinutes) || randomChatMinIntervalMinutes > randomChatMaxIntervalMinutes
     || !isRandomChatCustomPrompts(randomChatCustomPrompts) || !isRandomChatTestNonce(randomChatTestNonce)
     || (scale !== 0.75 && scale !== 1 && scale !== 1.25 && scale !== 1.5)
-    || typeof reducedMotion !== 'boolean' || !isPetPlacement(petPlacement) || !isDialoguePlacement(dialoguePlacement)
+    || typeof reducedMotion !== 'boolean' || typeof physicsEnabled !== 'boolean' || !isIntegerIn(physicsBouncePercent, 0, 100)
+    || !isPetPlacement(petPlacement) || !isDialoguePlacement(dialoguePlacement)
     || !isIntegerIn(dialogueWidth, 220, 4000) || !isIntegerIn(dialogueHeight, 240, 3000)) return undefined
-  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, approvalSurface, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
+  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, approvalSurface, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, physicsEnabled, physicsBouncePercent, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
 }
 
 export async function writeDialogueSetting(settings: Pick<SettingsScope<DialogueSettings>, 'set'>, field: keyof DialogueSettings, value: DialogueSettings[keyof DialogueSettings]): Promise<boolean> {
@@ -105,6 +115,7 @@ export async function writeDialogueSetting(settings: Pick<SettingsScope<Dialogue
   if (field === 'randomChatCustomPrompts' && !isRandomChatCustomPrompts(value)) return false
   if (field === 'randomChatTestNonce' && !isRandomChatTestNonce(value)) return false
   if (field === 'scale' && value !== 0.75 && value !== 1 && value !== 1.25 && value !== 1.5) return false
+  if (field === 'physicsBouncePercent' && (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100)) return false
   if (field === 'petPlacement' && !isPetPlacement(value)) return false
   if (field === 'dialoguePlacement' && !isDialoguePlacement(value)) return false
   if (field === 'randomChatWorkspaceIds' && !isWorkspaceIds(value)) return false
@@ -139,7 +150,7 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
   const { tree, value, listUnavailable, selectedSessionUnavailable, error } = projectDialogueSettingsView(sessionSnapshot, workspaceSnapshot, settingsSnapshot, writeFailed)
   const settingsUnavailable = settingsSnapshot.status === 'unavailable'
   async function update(field: keyof DialogueSettings, nextValue: DialogueSettings[keyof DialogueSettings]): Promise<void> { setWriteFailed(!await writeDialogueSetting(settings, field, nextValue)) }
-  function onIntegerChange(field: 'previewMaxChars' | 'dialogueWidth' | 'dialogueHeight' | 'randomChatMinIntervalMinutes' | 'randomChatMaxIntervalMinutes', min: number, max: number, event: ChangeEvent<HTMLInputElement>): void {
+  function onIntegerChange(field: 'dialogueWidth' | 'dialogueHeight' | 'randomChatMinIntervalMinutes' | 'randomChatMaxIntervalMinutes', min: number, max: number, event: ChangeEvent<HTMLInputElement>): void {
     const nextValue = Number(event.currentTarget.value)
     if (!Number.isInteger(nextValue) || nextValue < min || nextValue > max) return setWriteFailed(true)
     void update(field, nextValue)
@@ -158,30 +169,34 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
     createElement('h2', null, '会话'),
     createElement('p', null, '默认会话会优先于右键菜单中的临时选择；右键选择仅在本次桌宠运行期间有效。'),
     createElement(DefaultSessionPicker, { tree, selectedSessionId: pendingDefaultSessionId === undefined ? (selectedSessionUnavailable ? null : value.defaultSessionId) : pendingDefaultSessionId, disabled: listUnavailable || pendingDefaultSessionId !== undefined, onSelect: (session) => { void selectDefaultSession(session) } }),
-    createElement('div', { style: gridStyle },
-      createElement(SettingCard, { title: '实时回复', description: '将生成中的文字同步显示在桌宠会话栏。' },
-        createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.previewEnabled, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('previewEnabled', event.currentTarget.checked) } }), '实时流式回复'),
-        createElement('label', { style: { display: 'block', marginTop: 12 } }, '流式长度 ', createElement('input', { type: 'number', min: 80, max: 8000, step: 1, value: value.previewMaxChars, disabled: !value.previewEnabled || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('previewMaxChars', 80, 8000, event) }))),
-      createElement(SettingCard, { title: '人物大小', description: '桌宠启动与重置时采用的默认大小。' }, createElement(ChoiceCards, { value: value.scale, disabled: settingsUnavailable, name: 'pet-scale', options: ([0.75, 1, 1.25, 1.5] as const).map((scale) => ({ value: scale, label: `${scale * 100}%` })), onChange: (scale) => { void update('scale', scale) } }))),
     createElement('h2', { style: sectionHeadingStyle }, '权限请求'),
     createElement('p', null, '选择未来的权限请求由哪里回答。选择 Web 时，桌宠的“等待你的操作”气泡可点击打开 DSH。'),
     createElement(SettingCard, { title: '请求批准的位置', description: '默认使用 DSH Web；桌宠模式只接管桌宠当前选中的会话。切换不会改变已经等待回答的请求。' },
       createElement(ChoiceCards, { value: value.approvalSurface, disabled: settingsUnavailable, name: 'approval-surface', options: [{ value: 'web', label: 'Web（默认）' }, { value: 'pet', label: '桌宠' }], onChange: (surface) => { void update('approvalSurface', surface) } })),
     createElement('h2', { style: sectionHeadingStyle }, '外观'),
     createElement('p', null, '这些默认值会在桌宠启动时恢复；当前拖拽位置不会被覆盖。'),
-    createElement('div', { style: gridStyle },
-      createElement(SettingCard, { title: '默认位置', description: '右键“重置位置”将回到这里。' }, createElement(ChoiceCards, { value: value.petPlacement, disabled: settingsUnavailable, name: 'pet-placement', options: placementOptions, onChange: (placement) => { void update('petPlacement', placement) } })),
-      createElement(SettingCard, { title: '动态效果', description: '减少动画与视觉变化。' }, createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.reducedMotion, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('reducedMotion', event.currentTarget.checked) } }), '减少动态效果'))),
+    createElement(SettingCard, { title: '默认位置', description: '九宫格代表屏幕；右键“重置位置”将回到选中的位置。', flush: true },
+      createElement(PlacementGrid, { value: value.petPlacement, disabled: settingsUnavailable, name: 'pet-placement', ariaLabel: '默认桌宠位置', options: placementOptions, onChange: (placement) => { void update('petPlacement', placement) } })),
+    createElement(SettingCard, { title: '人物与动态', description: '这些偏好会立即同步给桌宠，并在下次启动时恢复。' },
+      createElement(ChoiceCards, { value: value.scale, disabled: settingsUnavailable, name: 'pet-scale', options: ([0.75, 1, 1.25, 1.5] as const).map((scale) => ({ value: scale, label: `${scale * 100}%` })), onChange: (scale) => { void update('scale', scale) } }),
+      createElement('label', { style: { ...inlineLabelStyle, marginTop: 14 } }, createElement('input', { type: 'checkbox', checked: value.reducedMotion, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('reducedMotion', event.currentTarget.checked) } }), '减少动态效果')),
+    createElement('h2', { style: sectionHeadingStyle }, '趣味功能'),
+    createElement('p', null, '物理效果只在本机桌宠窗口中运行；开启后可拖拽角色并松手抛出。减少动态效果开启时会暂停物理效果。'),
+    createElement(SettingCard, { title: '角色物理化', description: '标准重力会让角色落下并在显示器工作区边缘反弹。' },
+      createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.physicsEnabled, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('physicsEnabled', event.currentTarget.checked) } }), '启用角色物理化'),
+      createElement('label', { style: { display: 'block', marginTop: 12 } }, '弹力 ', value.physicsBouncePercent, '% ', createElement('input', { type: 'range', min: 0, max: 100, step: 1, value: value.physicsBouncePercent, disabled: !value.physicsEnabled || value.reducedMotion || settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('physicsBouncePercent', Number(event.currentTarget.value)) } }))),
     createElement('h2', { style: sectionHeadingStyle }, '会话栏'),
     createElement('p', null, '双击桌宠打开会话栏时使用。最小尺寸可避免窗口内容被遮挡。'),
-    createElement('div', { style: gridStyle },
-      createElement(SettingCard, { title: '默认打开位置', description: '可跟随桌宠，也可固定在屏幕边角。' }, createElement(ChoiceCards, { value: value.dialoguePlacement, disabled: settingsUnavailable, name: 'dialogue-placement', options: dialoguePlacementOptions, onChange: (placement) => { void update('dialoguePlacement', placement) } })),
-      createElement(SettingCard, { title: '默认大小', description: '最小 220 × 240 px。' },
-        createElement('label', { style: { display: 'block' } }, '宽度 ', createElement('input', { type: 'number', min: 220, max: 4000, step: 1, value: value.dialogueWidth, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueWidth', 220, 4000, event) }), ' px'),
-        createElement('label', { style: { display: 'block', marginTop: 12 } }, '高度 ', createElement('input', { type: 'number', min: 240, max: 3000, step: 1, value: value.dialogueHeight, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueHeight', 240, 3000, event) }), ' px'))),
+    createElement(SettingCard, { title: '默认打开位置', description: '可跟随人物；选择固定位置时，九宫格代表屏幕。', flush: true },
+      createElement('div', { style: placementOptionStyle }, createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'radio', name: 'dialogue-placement', checked: value.dialoguePlacement === 'near-pet', disabled: settingsUnavailable, onChange: () => { void update('dialoguePlacement', 'near-pet') } }), '跟随人物')),
+      createElement(PlacementGrid, { value: value.dialoguePlacement, disabled: settingsUnavailable, name: 'dialogue-placement', ariaLabel: '会话栏固定打开位置', options: placementOptions, onChange: (placement) => { void update('dialoguePlacement', placement) } })),
+    createElement(SettingCard, { title: '默认大小', description: '最小 220 × 240 px。' },
+      createElement('div', { style: compactFieldsStyle },
+        createElement('label', { style: inlineLabelStyle }, '宽度', createElement('input', { type: 'number', min: 220, max: 4000, step: 1, value: value.dialogueWidth, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueWidth', 220, 4000, event) }), 'px'),
+        createElement('label', { style: inlineLabelStyle }, '高度', createElement('input', { type: 'number', min: 240, max: 3000, step: 1, value: value.dialogueHeight, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueHeight', 240, 3000, event) }), 'px'))),
     createElement('h2', { style: sectionHeadingStyle }, '待机互动'),
     createElement('p', null, '随机聊聊默认关闭。桌宠只会在你启用功能、同意点击后联网并选择目标工作区后显示本地邀约气泡。'),
-    createElement('div', { style: gridStyle },
+    createElement('div', { style: verticalGroupStyle },
       createElement(SettingCard, { title: '随机待机动画', description: '即将推出。' }, createElement('input', { type: 'checkbox', disabled: true })),
       createElement(SettingCard, { title: '随机聊聊', description: '桌宠会在随机时间用本地短句邀你继续聊；点击后才打开会话栏。' },
         createElement('label', { style: inlineLabelStyle }, createElement('input', { type: 'checkbox', checked: value.randomChatEnabled, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => { void update('randomChatEnabled', event.currentTarget.checked) } }), '启用随机聊聊'),
@@ -197,10 +212,10 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
     error === undefined ? null : createElement('p', { role: 'alert' }, error))
 }
 
-function SettingCard({ title, description, children }: { title: string, description: string, children?: ReactNode }): ReactElement {
+function SettingCard({ title, description, flush = false, children }: { title: string, description: string, flush?: boolean, children?: ReactNode }): ReactElement {
   return createElement('section', { style: cardStyle },
     createElement('div', { style: { padding: '16px 18px 12px' } }, createElement('strong', null, title), createElement('p', { style: { margin: '8px 0 0', opacity: 0.72, lineHeight: 1.5 } }, description)),
-    createElement('div', { style: cardBodyStyle }, children))
+    createElement('div', { style: flush ? cardBodyFlushStyle : cardBodyStyle }, children))
 }
 
 function DefaultSessionPicker({ tree, selectedSessionId, disabled, onSelect }: { tree: WorkspaceSessionTree, selectedSessionId: string | null, disabled: boolean, onSelect(session: { id: string, workspaceId: string | null } | null): void }): ReactElement {
@@ -252,15 +267,52 @@ function ChoiceCards<T extends string | number>({ value, disabled, name, options
   return createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 } }, ...options.map((option) => createElement('label', { key: String(option.value), style: option.value === value ? selectedCardStyle : cardStyle }, createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' } }, createElement('input', { type: 'radio', name, checked: option.value === value, disabled, onChange: () => onChange(option.value) }), option.label))))
 }
 
-const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16, marginTop: 16 }
+/** A screen-shaped, keyboard-accessible radio group. It fills its setting card directly: the
+ * one-pixel gap is the visible screen divider, not a nested container. */
+function PlacementGrid<T extends DialogueSettings['petPlacement']>({ value, disabled, name, ariaLabel, options, onChange }: { value: T | DialogueSettings['dialoguePlacement'], disabled: boolean, name: string, ariaLabel: string, options: readonly { value: T, label: string }[], onChange(value: T): void }): ReactElement {
+  const [hovered, setHovered] = useState<T | undefined>(undefined)
+  return createElement('fieldset', { 'aria-label': ariaLabel, style: placementFieldsetStyle },
+    createElement('legend', { style: visuallyHiddenStyle }, ariaLabel),
+    createElement('div', { style: placementGridStyle, onMouseLeave: () => setHovered(undefined) },
+      ...options.map((option) => {
+        const selected = option.value === value
+        const previewed = option.value === hovered
+        return createElement('label', {
+          key: option.value,
+          // Hover deliberately wins over selection. A selected cell keeps its marker, but has
+          // exactly the same single pale hover surface as every other cell.
+          style: previewed ? placementPreviewStyle : selected ? placementSelectedStyle : placementCellStyle,
+          onMouseEnter: () => setHovered(option.value),
+          onFocus: () => setHovered(option.value),
+          onBlur: () => setHovered(undefined),
+        },
+        createElement('input', { type: 'radio', name, checked: selected, disabled, onChange: () => onChange(option.value), style: visuallyHiddenStyle }),
+        createElement('span', { 'aria-hidden': true, style: { fontSize: 18, lineHeight: 1 } }, selected ? '●' : '○'),
+        createElement('span', { style: visuallyHiddenStyle }, option.label))
+      }),
+    ),
+  )
+}
+
 const sectionHeadingStyle = { marginTop: 28 }
 const inlineLabelStyle = { display: 'flex', alignItems: 'center', gap: 8 }
-const pillStyle = { borderRadius: 999, padding: '3px 8px', background: '#111827', color: '#fff', fontSize: 12, whiteSpace: 'nowrap' as const }
+const compactFieldsStyle = { display: 'flex', flexWrap: 'wrap' as const, gap: 16 }
+const verticalGroupStyle = { display: 'grid', gap: 16, marginTop: 16 }
+const placementOptionStyle = { padding: '12px 18px' }
+const placementFieldsetStyle = { border: 0, padding: 0, margin: 0 }
+const placementGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1, width: '100%', aspectRatio: '16 / 10', background: softBorderColor }
+const placementCellStyle = { display: 'grid', placeItems: 'center', border: 0, background: placementBaseSurface, cursor: 'pointer', minHeight: 76, transition: 'background 120ms ease, box-shadow 120ms ease, transform 120ms ease', position: 'relative' as const }
+const placementPreviewStyle = { ...placementCellStyle, background: hoverSurfaceColor, boxShadow: hoverShadow, transform: 'translateY(-1px)', zIndex: 1 }
+const placementSelectedStyle = { ...placementCellStyle, boxShadow: `inset 0 0 0 2px currentColor`, zIndex: 1 }
+const visuallyHiddenStyle = { position: 'absolute' as const, width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden' as const, clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap' as const, border: 0 }
+const pillStyle = { border: '1px solid currentColor', borderRadius: 999, padding: '3px 8px', fontSize: 12, whiteSpace: 'nowrap' as const }
 const placementOptions: ReadonlyArray<{ value: DialogueSettings['petPlacement'], label: string }> = [
-  { value: 'center', label: '屏幕中央' }, { value: 'top-left', label: '左上角' }, { value: 'top-right', label: '右上角' }, { value: 'bottom-left', label: '左下角' }, { value: 'bottom-right', label: '右下角' },]
-const dialoguePlacementOptions: ReadonlyArray<{ value: DialogueSettings['dialoguePlacement'], label: string }> = [{ value: 'near-pet', label: '跟随人物' }, ...placementOptions]
+  { value: 'top-left', label: '屏幕左上' }, { value: 'top-center', label: '屏幕上方中央' }, { value: 'top-right', label: '屏幕右上' },
+  { value: 'middle-left', label: '屏幕左侧中央' }, { value: 'center', label: '屏幕中央' }, { value: 'middle-right', label: '屏幕右侧中央' },
+  { value: 'bottom-left', label: '屏幕左下' }, { value: 'bottom-center', label: '屏幕下方中央' }, { value: 'bottom-right', label: '屏幕右下' },
+]
 function isPetPlacement(value: unknown): value is DialogueSettings['petPlacement'] { return placementOptions.some((option) => option.value === value) }
-function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return dialoguePlacementOptions.some((option) => option.value === value) }
+function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return value === 'near-pet' || isPetPlacement(value) }
 function isApprovalSurface(value: unknown): value is DialogueSettings['approvalSurface'] { return value === 'web' || value === 'pet' }
 function isIntegerIn(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max }
 

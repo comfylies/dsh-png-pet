@@ -325,6 +325,8 @@ function helperConfig(settings: DialogueSettings) {
     kind: 'config' as const,
     scale: settings.scale,
     reducedMotion: settings.reducedMotion,
+    physicsEnabled: settings.physicsEnabled,
+    physicsBouncePercent: settings.physicsBouncePercent,
     petPlacement: settings.petPlacement,
     dialoguePlacement: settings.dialoguePlacement,
     dialogueWidth: settings.dialogueWidth,

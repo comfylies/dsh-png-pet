@@ -20,22 +20,29 @@ npm run test:package
 
 ## 安装到 DSH Harness
 
-先完成构建并生成 npm 包：
+可用一条命令完成验证、构建、打包和归档：
 
 ```powershell
-npm run build:helper
-npm pack
+npm run package:release
 ```
 
-DSH CLI 对含空格的插件包路径解析不稳定。请将生成的 `dsh-png-pet-<version>.tgz` 复制到无空格路径后，再安装到 Web profile：
+它会先运行 Node 与打包回归测试、构建自包含 Helper，再将 `.tgz` 写入项目内的 `dist\packages`。该目录只会保留最新 5 个 `dsh-png-pet-*.tgz`；其他文件和已安装的 DSH 插件不会被删除。若要使用其他专用目录或在已完成验证后重打包：
 
 ```powershell
-New-Item -ItemType Directory -Force C:\dsh-packages
-Copy-Item .\dsh-png-pet-<version>.tgz C:\dsh-packages\
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Destination D:\dsh-packages
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -SkipTests
+```
+
+DSH CLI 对含空格的插件包路径解析不稳定。项目路径含空格时，请将最新包复制到无空格的临时中转位置；使用固定文件名会在下次安装时覆盖它，不会累积历史包：
+
+```powershell
+$latest = Get-ChildItem .\dist\packages\dsh-png-pet-*.tgz | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+New-Item -ItemType Directory -Force C:\dsh-packages | Out-Null
+Copy-Item -LiteralPath $latest.FullName -Destination C:\dsh-packages\dsh-png-pet-current.tgz -Force
 
 # 更新前先从桌宠右键菜单选择“关闭桌宠”，避免 Windows 锁定 Helper。
 & C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web remove dsh-png-pet
-& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-<version>.tgz
+& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-current.tgz
 & C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web list
 ```
 
@@ -78,6 +85,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\new-dsh-pet-shortc
 
 - 按住角色左键拖动可移动位置；位置会在下次启动时恢复。
 - 右键可选择 75%、100%、125% 或 150% 缩放，也可重置大小和位置。
+- 在“设置 → 桌宠 → 趣味功能”可开启角色物理化。它采用固定标准重力；拖拽后松手可抛出角色，使用 0–100% 线性弹力滑块控制边界反弹。开启“减少动态效果”会暂停物理效果。
 - 右键“隐藏”后，双击通知区域的 `DSH PNG 桌宠` 图标或选择“显示桌宠”可恢复。
 - 右键“关闭桌宠”或托盘“退出桌宠”会彻底结束进程。
 - 单击桌宠可输入消息并发送到“设置 → 桌宠”中选择的 DSH 会话；发送状态会显示在气泡中。
@@ -87,4 +95,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\new-dsh-pet-shortc
 
 该插件不读取 API Key、不直接请求模型服务、不创建 HTTP 或 WebSocket 端口。桌宠输入与可选的模型回复预览仅经本地 stdin/stdout JSON Lines 暂存，不写入日志、文件或设置；预览只处理关联回合的普通文本增量。
 
-协议 v12 的状态气泡只支持固定活动标签：`思考中…`、`工作中…`、`思考中/工作中` 和 `输出中…`；活动文本来自插件固定枚举映射，绝不来自 DSH 会话正文。仅 DSH 的用户可见文本块（`text-delta` 或 `text`）显示“输出中…”；思维链、工具块和未知形状仍显示“思考中…”。新的工具调用会立即切回工作状态。
+协议 v15 的状态气泡只支持固定活动标签：`思考中…`、`工作中…`、`思考中/工作中` 和 `输出中…`；活动文本来自插件固定枚举映射，绝不来自 DSH 会话正文。仅 DSH 的用户可见文本块（`text-delta` 或 `text`）显示“输出中…”；思维链、工具块和未知形状仍显示“思考中…”。新的工具调用会立即切回工作状态。

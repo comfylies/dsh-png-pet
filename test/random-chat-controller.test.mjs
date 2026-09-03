@@ -34,7 +34,7 @@ test('creates a target-workspace session only after a labelled invitation is cli
   }
   const controller = new RandomChatController(api, { get: enabledSettings }, dialogue, (message) => sent.push(message), (items) => items[0])
 
-  await controller.open({ version: 14, kind: 'random-chat-open', invitationId: 9, topic: 'news' })
+  await controller.open({ version: 16, kind: 'random-chat-open', invitationId: 9, topic: 'news' })
 
   assert.deepEqual(calls, [{ workspaceId: 'w-1' }, ['s-random', 'w-1'], [1_000_000_001, 'news']])
   assert.deepEqual(sent, [{ kind: 'random-chat-ready', invitationId: 9 }])
@@ -53,7 +53,7 @@ test('uses the same explicit-click path for a weather invitation', async () => {
   }
   const controller = new RandomChatController(api, { get: enabledSettings }, dialogue, () => {}, (items) => items[0])
 
-  await controller.open({ version: 14, kind: 'random-chat-open', invitationId: 10, topic: 'weather' })
+  await controller.open({ version: 16, kind: 'random-chat-open', invitationId: 10, topic: 'weather' })
 
   assert.deepEqual(calls, [['s-weather', 'w-1'], [1_000_000_001, 'weather']])
 })
@@ -64,7 +64,7 @@ test('does not call the Host API when the user has not completed the explicit op
   const dialogue = { setRandomChatTarget: () => {}, startRandomChatTopic: async () => {}, clearRandomChatTarget: () => {} }
   const controller = new RandomChatController(api, { get: () => ({ ...enabledSettings(), randomChatBrowseOnOpen: false }) }, dialogue, (message) => sent.push(message))
 
-  await controller.open({ version: 14, kind: 'random-chat-open', invitationId: 4, topic: 'discovery' })
+  await controller.open({ version: 16, kind: 'random-chat-open', invitationId: 4, topic: 'discovery' })
 
   assert.deepEqual(sent, [{ kind: 'random-chat-error', invitationId: 4, reason: 'not-configured' }])
 })

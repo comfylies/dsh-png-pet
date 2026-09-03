@@ -39,7 +39,7 @@ test('starts a helper after a ready handshake and closes it gracefully', async (
   assert.equal(helper.exitCode, 0)
 })
 
-test('sends only typed v14 config and state messages', async () => {
+test('sends only typed v16 config and state messages', async () => {
   const lines = []
   const helper = new HelperProcess({
     command: process.execPath,
@@ -50,13 +50,13 @@ test('sends only typed v14 config and state messages', async () => {
   })
 
   await helper.start()
-  helper.send({ kind: 'config', scale: 1, reducedMotion: false, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420, randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatConfigured: false, randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [] })
+  helper.send({ kind: 'config', scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420, randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatConfigured: false, randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [] })
   helper.send({ kind: 'state', state: 'idle', activities: [], label: '', sequence: 0 })
   await helper.stop()
 
   assert.deepEqual(lines.slice(0, 2), [
-    '{"version":14,"kind":"config","scale":1,"reducedMotion":false,"petPlacement":"center","dialoguePlacement":"near-pet","dialogueWidth":320,"dialogueHeight":420,"randomChatEnabled":false,"randomChatBrowseOnOpen":false,"randomChatConfigured":false,"randomChatMinIntervalMinutes":8,"randomChatMaxIntervalMinutes":24,"randomChatCustomPrompts":[]}\n',
-    '{"version":14,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
+    '{"version":16,"kind":"config","scale":1,"reducedMotion":false,"physicsEnabled":false,"physicsBouncePercent":65,"petPlacement":"center","dialoguePlacement":"near-pet","dialogueWidth":320,"dialogueHeight":420,"randomChatEnabled":false,"randomChatBrowseOnOpen":false,"randomChatConfigured":false,"randomChatMinIntervalMinutes":8,"randomChatMaxIntervalMinutes":24,"randomChatCustomPrompts":[]}\n',
+    '{"version":16,"kind":"state","state":"idle","activities":[],"label":"","sequence":0}\n',
   ])
 })
 
@@ -80,7 +80,7 @@ test('forwards only validated helper input messages to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 14, kind: 'input', requestId: 9, text: 'hello' }])
+    assert.deepEqual(received, [{ version: 16, kind: 'input', requestId: 9, text: 'hello' }])
   } finally {
     await helper.stop()
   }
@@ -129,7 +129,7 @@ test('forwards a validated closed lifecycle message without an input body', asyn
   await helper.start()
   await helper.stop()
 
-  assert.deepEqual(received, [{ version: 14, kind: 'closed' }])
+  assert.deepEqual(received, [{ version: 16, kind: 'closed' }])
 })
 
 test('reports an unexpected Helper exit without treating it as a graceful close', async () => {
@@ -225,7 +225,7 @@ test('forwards a validated stop message to onMessage', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 14, kind: 'stop', requestId: 9 }])
+    assert.deepEqual(received, [{ version: 16, kind: 'stop', requestId: 9 }])
   } finally {
     await helper.stop()
   }
@@ -245,7 +245,7 @@ test('forwards a constrained one-shot approval answer to the host', async () => 
   await new Promise((resolve) => setImmediate(resolve))
   await helper.stop()
 
-  assert.deepEqual(received[0], { version: 14, kind: 'approval-answer', requestId: 17, outcome: 'rejected' })
+  assert.deepEqual(received[0], { version: 16, kind: 'approval-answer', requestId: 17, outcome: 'rejected' })
 })
 
 test('forwards target-open and target-answer helper messages to onMessage', async () => {
@@ -269,8 +269,8 @@ test('forwards target-open and target-answer helper messages to onMessage', asyn
     await helper.start()
     await secondReceived
     assert.deepEqual(received, [
-      { version: 14, kind: 'target-open', requestId: 21 },
-      { version: 14, kind: 'target-answer', requestId: 22, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
+      { version: 16, kind: 'target-open', requestId: 21 },
+      { version: 16, kind: 'target-answer', requestId: 22, sessionId: 's-1', workspaceId: 'w-1', newBlank: false },
     ])
   } finally {
     await helper.stop()
@@ -298,8 +298,8 @@ test('forwards random-chat opening and dialogue-close messages to the host', asy
     await helper.start()
     await secondReceived
     assert.deepEqual(received, [
-      { version: 14, kind: 'random-chat-open', invitationId: 31, topic: 'news' },
-      { version: 14, kind: 'dialogue-closed' },
+      { version: 16, kind: 'random-chat-open', invitationId: 31, topic: 'news' },
+      { version: 16, kind: 'dialogue-closed' },
     ])
   } finally {
     await helper.stop()
@@ -326,7 +326,7 @@ test('forwards the payload-free open-harness request to the host', async () => {
   try {
     await helper.start()
     await messageReceived
-    assert.deepEqual(received, [{ version: 14, kind: 'open-harness' }])
+    assert.deepEqual(received, [{ version: 16, kind: 'open-harness' }])
   } finally {
     await helper.stop()
   }

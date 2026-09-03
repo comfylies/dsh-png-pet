@@ -1,6 +1,7 @@
 import z from '@deepseek-ai/schemastery'
 
-export const petPlacements = ['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const
+/** The nine semantic anchors represented by the settings page's screen grid. */
+export const petPlacements = ['top-left', 'top-center', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'] as const
 export const dialoguePlacements = ['near-pet', ...petPlacements] as const
 
 export type PetPlacement = typeof petPlacements[number]
@@ -30,6 +31,10 @@ export type DialogueSettings = {
   randomChatTestNonce: number
   scale: 0.75 | 1 | 1.25 | 1.5
   reducedMotion: boolean
+  /** Opt-in local WPF window physics; never affects DSH sessions or requests. */
+  physicsEnabled: boolean
+  /** Linear 0–100 rebound slider sent only to the local Helper. */
+  physicsBouncePercent: number
   petPlacement: PetPlacement
   dialoguePlacement: DialoguePlacement
   dialogueWidth: number
@@ -51,6 +56,8 @@ export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freez
   randomChatTestNonce: 0,
   scale: 1,
   reducedMotion: false,
+  physicsEnabled: false,
+  physicsBouncePercent: 65,
   petPlacement: 'center',
   dialoguePlacement: 'near-pet',
   dialogueWidth: 320,
@@ -73,8 +80,10 @@ export const dialogueSettingsSchema = z.transform(
     randomChatTestNonce: z.number().step(1).min(0).max(2_147_483_647).default(0),
     scale: z.union([z.const(0.75), z.const(1), z.const(1.25), z.const(1.5)]).default(1),
     reducedMotion: z.boolean().default(false),
-    petPlacement: z.union([z.const('center'), z.const('top-left'), z.const('top-right'), z.const('bottom-left'), z.const('bottom-right')]).default('center'),
-    dialoguePlacement: z.union([z.const('near-pet'), z.const('center'), z.const('top-left'), z.const('top-right'), z.const('bottom-left'), z.const('bottom-right')]).default('near-pet'),
+    physicsEnabled: z.boolean().default(false),
+    physicsBouncePercent: z.number().step(1).min(0).max(100).default(65),
+    petPlacement: z.union([z.const('top-left'), z.const('top-center'), z.const('top-right'), z.const('middle-left'), z.const('center'), z.const('middle-right'), z.const('bottom-left'), z.const('bottom-center'), z.const('bottom-right')]).default('center'),
+    dialoguePlacement: z.union([z.const('near-pet'), z.const('top-left'), z.const('top-center'), z.const('top-right'), z.const('middle-left'), z.const('center'), z.const('middle-right'), z.const('bottom-left'), z.const('bottom-center'), z.const('bottom-right')]).default('near-pet'),
     dialogueWidth: z.number().step(1).min(220).max(4000).default(320),
     dialogueHeight: z.number().step(1).min(240).max(3000).default(420),
   }).default(dialogueSettingsDefaults),
@@ -98,6 +107,8 @@ export const dialogueSettingsSchema = z.transform(
     randomChatTestNonce: settings.randomChatTestNonce ?? 0,
     scale: settings.scale ?? 1,
     reducedMotion: settings.reducedMotion ?? false,
+    physicsEnabled: settings.physicsEnabled ?? false,
+    physicsBouncePercent: settings.physicsBouncePercent ?? 65,
     petPlacement: settings.petPlacement ?? 'center',
     dialoguePlacement: settings.dialoguePlacement ?? 'near-pet',
     dialogueWidth: settings.dialogueWidth ?? 320,

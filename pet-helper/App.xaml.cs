@@ -90,6 +90,7 @@ public partial class App : System.Windows.Application
 
         MainWindow.Show();
         MainWindow.Activate();
+        (MainWindow as MainWindow)?.ResumePhysicsAfterRestore();
     }
 
     private void ExitFromTray()

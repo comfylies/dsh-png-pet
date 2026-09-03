@@ -13,8 +13,8 @@ test('projects a selected-session approval without exposing its DSH payload and 
   const result = controller.request(request(), async () => 'unavailable')
 
   assert.deepEqual(sent, [{ kind: 'approval-request', requestId: 1 }])
-  controller.answer({ version: 14, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
-  controller.answer({ version: 14, kind: 'approval-answer', requestId: 1, outcome: 'rejected' })
+  controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
+  controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'rejected' })
 
   assert.equal(await result, 'allowed-once')
   assert.deepEqual(sent, [
@@ -49,7 +49,7 @@ test('delegates a second concurrent request so one desktop card cannot orphan an
   assert.equal(await controller.request(request('s-2'), async () => 'rejected'), 'rejected')
   assert.equal(sent.length, 1)
 
-  controller.answer({ version: 14, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
+  controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
   assert.equal(await first, 'allowed-once')
 })
 
@@ -75,7 +75,7 @@ test('withdraws an aborted approval and ignores a late Helper answer', async () 
   const controller = new ApprovalController(() => true, () => true, (message) => sent.push(message))
   const result = controller.request(request('s-1', abort.signal), async () => 'rejected')
   abort.abort()
-  controller.answer({ version: 14, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
+  controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
 
   assert.equal(await result, 'cancelled')
   assert.deepEqual(sent, [

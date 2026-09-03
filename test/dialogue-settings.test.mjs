@@ -8,6 +8,8 @@ import { validateDialogueSettings } from '../lib/dialogue-settings.js'
 const layoutDefaults = {
   scale: 1,
   reducedMotion: false,
+  physicsEnabled: false,
+  physicsBouncePercent: 65,
   petPlacement: 'center',
   dialoguePlacement: 'near-pet',
   dialogueWidth: 320,
@@ -126,6 +128,16 @@ test('accepts preview bounds and rejects values outside 80 through 8000', () => 
   )
 })
 
+test('accepts all nine screen anchors while reserving near-pet for the dialogue window', () => {
+  const anchors = ['top-left', 'top-center', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']
+  for (const anchor of anchors) {
+    assert.equal(validateDialogueSettings({ petPlacement: anchor }).petPlacement, anchor)
+    assert.equal(validateDialogueSettings({ dialoguePlacement: anchor }).dialoguePlacement, anchor)
+  }
+  assert.equal(validateDialogueSettings({ dialoguePlacement: 'near-pet' }).dialoguePlacement, 'near-pet')
+  assert.throws(() => validateDialogueSettings({ petPlacement: 'near-pet' }))
+})
+
 test('keeps random chat disabled until browsing consent and workspace choices are explicitly saved', () => {
   assert.deepEqual(
     validateDialogueSettings({
@@ -165,4 +177,12 @@ test('defaults approval requests to Web and accepts only the two approved surfac
   assert.equal(validateDialogueSettings({}).approvalSurface, 'web')
   assert.equal(validateDialogueSettings({ approvalSurface: 'pet' }).approvalSurface, 'pet')
   assert.throws(() => validateDialogueSettings({ approvalSurface: 'browser' }))
+})
+
+test('keeps local physics opt-in and bounds the linear bounce slider', () => {
+  assert.deepEqual(validateDialogueSettings({ physicsEnabled: true, physicsBouncePercent: 100 }).physicsEnabled, true)
+  assert.equal(validateDialogueSettings({ physicsEnabled: true, physicsBouncePercent: 100 }).physicsBouncePercent, 100)
+  assert.throws(() => validateDialogueSettings({ physicsBouncePercent: -1 }))
+  assert.throws(() => validateDialogueSettings({ physicsBouncePercent: 50.5 }))
+  assert.throws(() => validateDialogueSettings({ physicsBouncePercent: 101 }))
 })

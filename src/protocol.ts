@@ -1,6 +1,6 @@
 import type { DialoguePlacement, PetPlacement } from './dialogue-settings.js'
 
-export const PROTOCOL_VERSION = 14 as const
+export const PROTOCOL_VERSION = 16 as const
 
 export const HISTORY_LIMIT = 20
 export const HISTORY_MESSAGE_MAX_CHARS = 2000
@@ -149,7 +149,7 @@ export type HelperMessage = HelperLifecycleMessage | HelperCloseRequestedMessage
 
 export type HostMessage =
   | { version: typeof PROTOCOL_VERSION, kind: 'hello' | 'shutdown' }
-  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
+  | { version: typeof PROTOCOL_VERSION, kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, physicsEnabled: boolean, physicsBouncePercent: number, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
   | { version: typeof PROTOCOL_VERSION, kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { version: typeof PROTOCOL_VERSION, kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { version: typeof PROTOCOL_VERSION, kind: 'input-status', requestId: number, status: InputStatus }
@@ -166,7 +166,7 @@ export type HostMessage =
 
 export type HostOutboundMessage =
   | { kind: 'hello' | 'shutdown' }
-  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
+  | { kind: 'config', scale: 0.75 | 1 | 1.25 | 1.5, reducedMotion: boolean, physicsEnabled: boolean, physicsBouncePercent: number, petPlacement: PetPlacement, dialoguePlacement: DialoguePlacement, dialogueWidth: number, dialogueHeight: number, randomChatEnabled: boolean, randomChatBrowseOnOpen: boolean, randomChatConfigured: boolean, randomChatMinIntervalMinutes: number, randomChatMaxIntervalMinutes: number, randomChatCustomPrompts: readonly string[] }
   | { kind: 'state', state: State, activities: readonly Activity[], label: string, sequence: number }
   | { kind: 'conversation-config', previewEnabled: boolean, previewMaxChars: number, defaultSessionId: string | null, defaultWorkspaceId: string | null }
   | { kind: 'input-status', requestId: number, status: InputStatus }
@@ -187,8 +187,8 @@ const minPreviewMaxChars = 80
 const helperLifecycleKinds = new Set<HelperLifecycleMessageKind>(['ready', 'closed'])
 const hostKinds = new Set<HostMessageKind>(['hello', 'config', 'state', 'shutdown', 'conversation-config', 'input-status', 'reply-preview', 'clear-preview', 'reply', 'conversation-history', 'approval-request', 'approval-resolved', 'target-request', 'random-chat-ready', 'random-chat-error', 'random-chat-test'])
 const scales = new Set([0.75, 1, 1.25, 1.5])
-const petPlacements = new Set<PetPlacement>(['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
-const dialoguePlacements = new Set<DialoguePlacement>(['near-pet', 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right'])
+const petPlacements = new Set<PetPlacement>(['top-left', 'top-center', 'top-right', 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right'])
+const dialoguePlacements = new Set<DialoguePlacement>(['near-pet', ...petPlacements])
 const compositeActivities: readonly Activity[] = ['thinking', 'working']
 const inputStatuses = new Set<InputStatus>(['queued', 'sent', 'no-default-session', 'session-unavailable', 'rejected', 'stopped', 'interrupted', 'failed'])
 const clearPreviewReasons = new Set<ClearPreviewReason>(['disabled', 'next-input', 'cancelled', 'closed', 'session-unavailable'])
@@ -299,8 +299,9 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
       assertExactKeys(value, ['version', 'kind'], 'host message', ['kind'])
       return { kind: value.kind }
     case 'config':
-      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'], 'host message', ['kind', 'scale', 'reducedMotion', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'])
+      assertExactKeys(value, ['version', 'kind', 'scale', 'reducedMotion', 'physicsEnabled', 'physicsBouncePercent', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'], 'host message', ['kind', 'scale', 'reducedMotion', 'physicsEnabled', 'physicsBouncePercent', 'petPlacement', 'dialoguePlacement', 'dialogueWidth', 'dialogueHeight', 'randomChatEnabled', 'randomChatBrowseOnOpen', 'randomChatConfigured', 'randomChatMinIntervalMinutes', 'randomChatMaxIntervalMinutes', 'randomChatCustomPrompts'])
       if (typeof value.scale !== 'number' || !scales.has(value.scale) || typeof value.reducedMotion !== 'boolean'
+        || typeof value.physicsEnabled !== 'boolean' || !isIntegerInRange(value.physicsBouncePercent, 0, 100)
         || typeof value.petPlacement !== 'string' || !petPlacements.has(value.petPlacement as PetPlacement)
         || typeof value.dialoguePlacement !== 'string' || !dialoguePlacements.has(value.dialoguePlacement as DialoguePlacement)
         || !isDialogueWidth(value.dialogueWidth) || !isDialogueHeight(value.dialogueHeight)
@@ -313,6 +314,8 @@ function validateHostMessage(value: Record<string, unknown> | HostOutboundMessag
         kind: 'config',
         scale: value.scale as 0.75 | 1 | 1.25 | 1.5,
         reducedMotion: value.reducedMotion,
+        physicsEnabled: value.physicsEnabled,
+        physicsBouncePercent: value.physicsBouncePercent,
         petPlacement: value.petPlacement as PetPlacement,
         dialoguePlacement: value.dialoguePlacement as DialoguePlacement,
         dialogueWidth: value.dialogueWidth,
@@ -625,6 +628,10 @@ function assertExactKeys(
   if (requiredKeys.some((key) => !Object.hasOwn(message, key))) {
     throw new Error(`${subject} is missing required fields`)
   }
+}
+
+function isIntegerInRange(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= minimum && value <= maximum
 }
 
 function assertAllowedKeys(

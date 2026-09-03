@@ -17,7 +17,7 @@ DSH Host / Web profile
               └─ 仅保存窗口布局；不保存对话内容
 ```
 
-当前源码版本为 `dsh-png-pet@0.1.55`，JSON Lines 协议为 **v11**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
+当前源码版本为 `dsh-png-pet@0.2.3`，JSON Lines 协议为 **v15**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
 
 ## 绝不能突破的边界
 
@@ -94,7 +94,7 @@ npm test
 dotnet test pet-helper.Tests\PetHelper.Tests.csproj --no-restore
 npm run build:helper
 npm run test:package
-npm pack
+npm run package:release
 ```
 
 测试优先：修改行为前先阅读对应 `docs/superpowers/specs/` 与 `docs/superpowers/plans/`，添加或调整最贴近模块的 Node/C# 测试，再实现并运行相关测试；变更协议、打包、资源或生命周期时运行完整验证序列。
@@ -103,13 +103,15 @@ npm pack
 
 1. 同步递增 `package.json` 与 `package-lock.json` 的版本。
 2. 确保 `runtime/bin/win32-x64/pet-helper.exe` 未被运行中的桌宠锁定。应请用户从右键菜单关闭；只有用户明确同意才能终止进程。
-3. 因工作区路径含空格，将 `.tgz` 复制到 `C:\dsh-packages` 后安装。当前终端不保证全局 npm bin 在 PATH 中，调用 CLI 使用 `C:\Users\root\AppData\Roaming\npm\dsh.cmd`。
+3. `npm run package:release` 会自动运行测试、发布自包含 Helper，并将包输出至项目内的 `dist\packages`；该目录只保留最新 5 个 `dsh-png-pet-*.tgz`。它不会修改已安装的 DSH 插件。
+4. 因工作区路径含空格，安装时将最新包覆盖复制为 `C:\dsh-packages\dsh-png-pet-current.tgz` 后安装。这样 `C:\dsh-packages` 不会按版本累积安装包。当前终端不保证全局 npm bin 在 PATH 中，调用 CLI 使用 `C:\Users\root\AppData\Roaming\npm\dsh.cmd`。
 
 ```powershell
-New-Item -ItemType Directory -Force C:\dsh-packages
-Copy-Item .\dsh-png-pet-<version>.tgz C:\dsh-packages\
+$latest = Get-ChildItem .\dist\packages\dsh-png-pet-*.tgz | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+New-Item -ItemType Directory -Force C:\dsh-packages | Out-Null
+Copy-Item -LiteralPath $latest.FullName -Destination C:\dsh-packages\dsh-png-pet-current.tgz -Force
 & C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web remove dsh-png-pet
-& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-<version>.tgz
+& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-current.tgz
 & C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web list
 ```
 

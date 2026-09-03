@@ -97,6 +97,8 @@ test('defers the helper until settings injection registers the dialogue scope an
     randomChatTestNonce: 0,
     scale: 1,
     reducedMotion: false,
+    physicsEnabled: false,
+    physicsBouncePercent: 65,
     petPlacement: 'center',
     dialoguePlacement: 'near-pet',
     dialogueWidth: 320,
@@ -144,7 +146,7 @@ test('restarts unexpected Helper exits with a bounded retry budget and suppresse
   await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(helpers.length, 3)
 
-  helpers[2].options.onMessage({ version: 14, kind: 'close-requested' })
+  helpers[2].options.onMessage({ version: 16, kind: 'close-requested' })
   helpers[2].options.onExit({ code: 7, wasReady: true, closed: false })
   await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal(helpers.length, 3)
@@ -197,7 +199,7 @@ test('routes a user close request to preview cleanup', () => {
     helperClosed: () => calls.push('closed'),
   }
 
-  routeHelperMessage({ version: 14, kind: 'close-requested' }, controller)
+  routeHelperMessage({ version: 16, kind: 'close-requested' }, controller)
 
   assert.deepEqual(calls, ['closed'])
 })
@@ -210,7 +212,7 @@ test('routes the payload-free open-harness request only to the local browser han
   }
 
   await routeHelperMessage(
-    { version: 14, kind: 'open-harness' },
+    { version: 16, kind: 'open-harness' },
     controller,
     undefined,
     undefined,
@@ -225,7 +227,7 @@ test('routes a one-shot approval answer only to the approval coordinator', async
   const approvalController = { answer: (message) => calls.push(message) }
 
   await routeHelperMessage(
-    { version: 14, kind: 'approval-answer', requestId: 8, outcome: 'rejected' },
+    { version: 16, kind: 'approval-answer', requestId: 8, outcome: 'rejected' },
     undefined,
     undefined,
     undefined,
@@ -233,7 +235,7 @@ test('routes a one-shot approval answer only to the approval coordinator', async
     approvalController,
   )
 
-  assert.deepEqual(calls, [{ version: 14, kind: 'approval-answer', requestId: 8, outcome: 'rejected' }])
+  assert.deepEqual(calls, [{ version: 16, kind: 'approval-answer', requestId: 8, outcome: 'rejected' }])
 })
 
 test('registers the approval coordinator before the existing Web answerer', async () => {
@@ -271,12 +273,12 @@ test('routes a random-chat click and dialogue close to the random-chat controlle
   }
 
   await routeHelperMessage(
-    { version: 14, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
+    { version: 16, kind: 'random-chat-open', invitationId: 9, topic: 'news' },
     undefined,
     undefined,
     randomChatController,
   )
-  await routeHelperMessage({ version: 14, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
+  await routeHelperMessage({ version: 16, kind: 'dialogue-closed' }, undefined, undefined, randomChatController)
 
   assert.deepEqual(calls, [['open', 9, 'news'], ['dialogue-closed']])
 })
