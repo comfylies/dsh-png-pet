@@ -339,7 +339,7 @@ public static class ProtocolReader
 
     private static ConfigMessage? ParseConfig(JsonElement root)
     {
-        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "physicsEnabled", "physicsBouncePercent", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight", "randomChatEnabled", "randomChatBrowseOnOpen", "randomChatConfigured", "randomChatMinIntervalMinutes", "randomChatMaxIntervalMinutes", "randomChatCustomPrompts")
+        if (!HasExactlyProperties(root, "version", "kind", "scale", "reducedMotion", "physicsEnabled", "physicsBouncePercent", "petPlacement", "dialoguePlacement", "dialogueWidth", "dialogueHeight", "dialogueFontSize", "randomChatEnabled", "randomChatBrowseOnOpen", "randomChatConfigured", "randomChatMinIntervalMinutes", "randomChatMaxIntervalMinutes", "randomChatCustomPrompts")
             || !root.TryGetProperty("scale", out var scale)
             || !root.TryGetProperty("reducedMotion", out var reducedMotion)
             || !root.TryGetProperty("physicsEnabled", out var physicsEnabled)
@@ -348,6 +348,7 @@ public static class ProtocolReader
             || !root.TryGetProperty("dialoguePlacement", out var dialoguePlacement)
             || !root.TryGetProperty("dialogueWidth", out var dialogueWidth)
             || !root.TryGetProperty("dialogueHeight", out var dialogueHeight)
+            || !root.TryGetProperty("dialogueFontSize", out var dialogueFontSize)
             || !root.TryGetProperty("randomChatEnabled", out var randomChatEnabled)
             || !root.TryGetProperty("randomChatBrowseOnOpen", out var randomChatBrowseOnOpen)
             || !root.TryGetProperty("randomChatConfigured", out var randomChatConfigured)
@@ -373,6 +374,9 @@ public static class ProtocolReader
             || dialogueHeight.ValueKind != JsonValueKind.Number
             || !dialogueHeight.TryGetInt32(out var dialogueHeightValue)
             || dialogueHeightValue is < 240 or > 3000
+            || dialogueFontSize.ValueKind != JsonValueKind.Number
+            || !dialogueFontSize.TryGetInt32(out var dialogueFontSizeValue)
+            || dialogueFontSizeValue is not (12 or 14 or 16 or 18)
             || randomChatEnabled.ValueKind is not JsonValueKind.True and not JsonValueKind.False
             || randomChatBrowseOnOpen.ValueKind is not JsonValueKind.True and not JsonValueKind.False
             || randomChatConfigured.ValueKind is not JsonValueKind.True and not JsonValueKind.False
@@ -389,7 +393,7 @@ public static class ProtocolReader
             return null;
         }
 
-        return new ConfigMessage(value, reducedMotion.GetBoolean(), physicsEnabled.GetBoolean(), physicsBouncePercentValue, petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
+        return new ConfigMessage(value, reducedMotion.GetBoolean(), physicsEnabled.GetBoolean(), physicsBouncePercentValue, petPlacementValue, dialoguePlacementValue, dialogueWidthValue, dialogueHeightValue, dialogueFontSizeValue, randomChatEnabled.GetBoolean(), randomChatBrowseOnOpen.GetBoolean(), randomChatConfigured.GetBoolean(), randomChatMinIntervalMinutesValue, randomChatMaxIntervalMinutesValue, randomChatCustomPromptsValue);
     }
 
     private static ApprovalRequestMessage? ParseApprovalRequest(JsonElement root)

@@ -37,6 +37,7 @@ public partial class DialogueWindow : Window
     private string? lastDefaultSessionId;
     private string defaultDialoguePlacement = DefaultLayout.NearPet;
     private Size defaultDialogueSize = new(320d, 420d);
+    private double dialogueFontSize = 14d;
     private string petStatusText = string.Empty;
     private bool atBottom = true;
     private long? pendingApprovalRequestId;
@@ -149,6 +150,17 @@ public partial class DialogueWindow : Window
     {
         defaultDialoguePlacement = config.DialoguePlacement;
         defaultDialogueSize = new Size(config.DialogueWidth, config.DialogueHeight);
+        if (Math.Abs(dialogueFontSize - config.DialogueFontSize) < 0.01) return;
+        dialogueFontSize = config.DialogueFontSize;
+        Resources["DialogueFontSize"] = dialogueFontSize;
+        foreach (var message in messages)
+        {
+            if (!message.ShowMarkdown) continue;
+            if (MessageList.ItemContainerGenerator.ContainerFromItem(message) is not ContentPresenter container) continue;
+            var host = FindDescendantRichTextBox(container);
+            if (host is not null) host.Tag = null;
+        }
+        EnsureAllMarkdownRendered();
     }
 
     public void ApplyConversationMessage(ProtocolMessage message)
@@ -499,7 +511,7 @@ public partial class DialogueWindow : Window
         return null;
     }
 
-    private static void RenderMarkdown(RichTextBox host, DialogueMessage message)
+    private void RenderMarkdown(RichTextBox host, DialogueMessage message)
     {
         // A fresh RichTextBox already owns a FlowDocument with one empty Paragraph, so a
         // "has blocks" guard would wrongly skip every render. The message object stays
@@ -508,7 +520,7 @@ public partial class DialogueWindow : Window
         if (!MarkdownRenderer.NeedsRender(host.Tag as string, message.Text)) return;
         try
         {
-            host.Document = MarkdownRenderer.Render(message.Text, CopyText);
+            host.Document = MarkdownRenderer.Render(message.Text, dialogueFontSize, CopyText);
             host.Tag = message.Text;
         }
         catch

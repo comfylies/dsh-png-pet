@@ -1000,6 +1000,9 @@ public partial class MainWindow : Window
         SaveState();
     }
 
+    private void OpenHarnessMenuItem_Click(object sender, RoutedEventArgs e) =>
+        HarnessOpenRequested?.Invoke(this, EventArgs.Empty);
+
     private void ResetMenuItem_Click(object sender, RoutedEventArgs e)
     {
         ApplyState(PetWindowState.Normalize(null, null, defaultScale));

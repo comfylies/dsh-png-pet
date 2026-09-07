@@ -1,25 +1,11 @@
-export type DialogueSettings = {
-  defaultSessionId: string | null
-  defaultWorkspaceId: string | null
-  previewEnabled: boolean
-  previewMaxChars: number
-  approvalSurface: 'web' | 'pet'
-  randomChatEnabled: boolean
-  randomChatBrowseOnOpen: boolean
-  randomChatWorkspaceIds: string[]
-  randomChatMinIntervalMinutes: number
-  randomChatMaxIntervalMinutes: number
-  randomChatCustomPrompts: string[]
-  randomChatTestNonce: number
-  scale: 0.75 | 1 | 1.25 | 1.5
-  reducedMotion: boolean
-  physicsEnabled: boolean
-  physicsBouncePercent: number
-  petPlacement: 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
-  dialoguePlacement: 'near-pet' | 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
-  dialogueWidth: number
-  dialogueHeight: number
-}
+import type { DialogueSettings as HostDialogueSettings } from './dialogue-settings.js'
+
+/**
+ * The browser receives Host-resolved settings only.  A type-only import keeps
+ * the client bundle free of the Host schema while preventing the two settings
+ * views from drifting when a persisted preference is added.
+ */
+export type DialogueSettings = HostDialogueSettings
 
 export type SessionOption = {
   id: string

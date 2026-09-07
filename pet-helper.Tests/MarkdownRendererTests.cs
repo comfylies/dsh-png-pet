@@ -35,6 +35,25 @@ public sealed class MarkdownRendererTests
     }
 
     [Fact]
+    public void Scales_completed_markdown_to_the_configured_dialogue_font_size()
+    {
+        double bodyFontSize = 0;
+        double headingFontSize = 0;
+        var thread = new Thread(() =>
+        {
+            var result = MarkdownRenderer.Render("# 标题\n\n正文", 18);
+            bodyFontSize = result.FontSize;
+            headingFontSize = Assert.IsType<Paragraph>(result.Blocks.First()).FontSize;
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        Assert.Equal(18d, bodyFontSize);
+        Assert.True(headingFontSize > bodyFontSize);
+    }
+
+    [Fact]
     public void Requests_a_refresh_when_a_completed_reply_replaces_the_stream_preview()
     {
         Assert.False(MarkdownRenderer.NeedsRender("预览末尾", "预览末尾"));

@@ -18,35 +18,35 @@ npm run test:package
 
 构建结果位于 `runtime/bin/win32-x64/pet-helper.exe`，并以 .NET 自包含单文件形式发布。
 
-## 安装到 DSH Harness
+## 一行安装到其他电脑
 
-可用一条命令完成验证、构建、打包和归档：
+项目提供 `scripts/install.ps1`，自动准备兼容的 Node/DSH/pnpm、校验并安装预编译插件、创建稳定的桌面启动入口。接收者不需要安装 .NET SDK 或编译源码。
+
+在 Windows PowerShell 中运行以下一行命令安装 v0.2.8：
+
+```powershell
+& ([scriptblock]::Create((irm 'https://github.com/comfylies/dsh-png-pet/releases/download/v0.2.8/install.ps1')))
+```
+
+也可从 [v0.2.8 Release](https://github.com/comfylies/dsh-png-pet/releases/tag/v0.2.8) 下载 `install.ps1`、`release.json` 和 `.tgz`，放在同一目录后运行下方本地安装命令。
+
+开发者可生成本地发布目录：
 
 ```powershell
 npm run package:release
 ```
 
-它会先运行 Node 与打包回归测试、构建自包含 Helper，再将 `.tgz` 写入项目内的 `dist\packages`。该目录只会保留最新 5 个 `dsh-png-pet-*.tgz`；其他文件和已安装的 DSH 插件不会被删除。若要使用其他专用目录或在已完成验证后重打包：
+产物是 `dist\packages` 中的 `install.ps1`、`release.json` 和版本化 `.tgz`。将这三个文件交给接收者，在该目录运行一行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Destination D:\dsh-packages
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -SkipTests
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Manifest .\release.json
 ```
 
-DSH CLI 对含空格的插件包路径解析不稳定。项目路径含空格时，请将最新包复制到无空格的临时中转位置；使用固定文件名会在下次安装时覆盖它，不会累积历史包：
+发布脚本通过 `-BaseUrl` 生成带地址的在线入口。具体参数、重复安装、更新、卸载及发布操作见 [一行安装与发布](docs/一行安装与发布.md)。首次使用仍需在 DSH 中配置用户自己的模型和工作区。
 
-```powershell
-$latest = Get-ChildItem .\dist\packages\dsh-png-pet-*.tgz | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-New-Item -ItemType Directory -Force C:\dsh-packages | Out-Null
-Copy-Item -LiteralPath $latest.FullName -Destination C:\dsh-packages\dsh-png-pet-current.tgz -Force
+## 开发目录的旧启动入口
 
-# 更新前先从桌宠右键菜单选择“关闭桌宠”，避免 Windows 锁定 Helper。
-& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web remove dsh-png-pet
-& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web add C:\dsh-packages\dsh-png-pet-current.tgz
-& C:\Users\root\AppData\Roaming\npm\dsh.cmd plugin --profile web list
-```
-
-确认列表显示目标版本后，重启 DSH Harness；已运行的 Harness 不会自动加载更新。`.tgz` 是本地安装产物，已由 `.gitignore` 排除，不应提交到仓库。如果不知道怎么安装，可以让 AI 帮忙。
+以下方式用于已有开发目录；一行安装器创建的 `DSH Pet` 快捷方式不依赖源码目录。
 
 ## 双击启动桌宠
 

@@ -14,6 +14,7 @@ const layoutDefaults = {
   dialoguePlacement: 'near-pet',
   dialogueWidth: 320,
   dialogueHeight: 420,
+  dialogueFontSize: 14,
 }
 
 const randomChatDefaults = {
@@ -185,4 +186,12 @@ test('keeps local physics opt-in and bounds the linear bounce slider', () => {
   assert.throws(() => validateDialogueSettings({ physicsBouncePercent: -1 }))
   assert.throws(() => validateDialogueSettings({ physicsBouncePercent: 50.5 }))
   assert.throws(() => validateDialogueSettings({ physicsBouncePercent: 101 }))
+})
+
+test('limits dialogue font size to the four readable desktop-pet presets', () => {
+  for (const size of [12, 14, 16, 18]) {
+    assert.equal(validateDialogueSettings({ dialogueFontSize: size }).dialogueFontSize, size)
+  }
+  assert.throws(() => validateDialogueSettings({ dialogueFontSize: 13 }))
+  assert.throws(() => validateDialogueSettings({ dialogueFontSize: 20 }))
 })

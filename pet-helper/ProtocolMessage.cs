@@ -4,7 +4,7 @@ namespace PetHelper;
 
 public abstract record ProtocolMessage(int Version, string Kind)
 {
-    public const int ProtocolVersion = 16;
+    public const int ProtocolVersion = 17;
 }
 
 public sealed record HelloMessage() : ProtocolMessage(ProtocolMessage.ProtocolVersion, "hello");
@@ -20,6 +20,7 @@ public sealed record ConfigMessage(
     string DialoguePlacement,
     int DialogueWidth,
     int DialogueHeight,
+    int DialogueFontSize,
     bool RandomChatEnabled = false,
     bool RandomChatBrowseOnOpen = false,
     bool RandomChatConfigured = false,

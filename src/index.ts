@@ -331,6 +331,7 @@ function helperConfig(settings: DialogueSettings) {
     dialoguePlacement: settings.dialoguePlacement,
     dialogueWidth: settings.dialogueWidth,
     dialogueHeight: settings.dialogueHeight,
+    dialogueFontSize: settings.dialogueFontSize,
     randomChatEnabled: settings.randomChatEnabled,
     randomChatBrowseOnOpen: settings.randomChatBrowseOnOpen,
     randomChatConfigured: settings.randomChatWorkspaceIds.length > 0,

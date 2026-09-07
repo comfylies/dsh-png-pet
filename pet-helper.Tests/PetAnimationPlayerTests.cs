@@ -10,6 +10,50 @@ namespace PetHelper.Tests;
 public sealed class PetAnimationPlayerTests
 {
     [Fact]
+    public void Responding_reuses_all_49_decoded_frames_across_loops_after_a_state_change()
+    {
+        RunOnSta(() =>
+        {
+            var image = new WpfImage();
+            var player = new PetAnimationPlayer(image);
+            try
+            {
+                // Fill the cache with a different state before entering the 49-frame loop.
+                player.Apply(PetAnimationKey.Working, reducedMotion: false);
+                player.Pause();
+                for (var frame = 1; frame < 48; frame++) player.AdvanceFrame();
+
+                player.Apply(PetAnimationKey.Responding, reducedMotion: false);
+                player.Pause();
+                var firstLoop = new ImageSource[49];
+                for (var frame = 0; frame < firstLoop.Length; frame++)
+                {
+                    Assert.NotNull(image.Source);
+                    firstLoop[frame] = image.Source;
+                    Assert.InRange(player.CachedFrameCount, 1, 49);
+                    player.AdvanceFrame();
+                }
+                Assert.Equal(49, firstLoop.Distinct().Count());
+
+                // Object identity proves reuse of the decoded bitmap, not just the frame URI.
+                for (var loop = 0; loop < 2; loop++)
+                {
+                    foreach (var expected in firstLoop)
+                    {
+                        Assert.Same(expected, image.Source);
+                        Assert.Equal(49, player.CachedFrameCount);
+                        player.AdvanceFrame();
+                    }
+                }
+            }
+            finally
+            {
+                player.Stop();
+            }
+        });
+    }
+
+    [Fact]
     public void Starting_a_large_clip_decodes_only_its_visible_first_frame()
     {
         RunOnSta(() =>

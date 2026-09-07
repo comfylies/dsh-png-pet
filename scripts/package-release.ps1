@@ -4,6 +4,9 @@ param(
     [string]$Destination,
 
     [Parameter()]
+    [string]$BaseUrl,
+
+    [Parameter()]
     [switch]$SkipTests
 )
 
@@ -35,6 +38,8 @@ try {
     if (-not $SkipTests) {
         & npm.cmd test
         if ($LASTEXITCODE -ne 0) { throw 'npm test failed; release package was not created.' }
+        & dotnet test pet-helper.Tests/PetHelper.Tests.csproj --no-restore
+        if ($LASTEXITCODE -ne 0) { throw 'C# tests failed; release package was not created.' }
     }
 
     & npm.cmd run build:helper
@@ -54,6 +59,8 @@ try {
     if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
         throw "npm pack did not create the expected archive: $archiveName"
     }
+
+    & (Join-Path $PSScriptRoot 'new-installer-release.ps1') -ArchivePath $archivePath -Destination $destinationPath -BaseUrl $BaseUrl
 
     Get-ChildItem -LiteralPath $destinationPath -File -Filter "$packageName-*.tgz" |
         Sort-Object -Property @{ Expression = 'LastWriteTimeUtc'; Descending = $true }, @{ Expression = 'Name'; Descending = $true } |

@@ -7,6 +7,7 @@ export const dialoguePlacements = ['near-pet', ...petPlacements] as const
 export type PetPlacement = typeof petPlacements[number]
 export type DialoguePlacement = typeof dialoguePlacements[number]
 export type ApprovalSurface = 'web' | 'pet'
+export type DialogueFontSize = 12 | 14 | 16 | 18
 
 export type DialogueSettings = {
   defaultSessionId: string | null
@@ -39,6 +40,8 @@ export type DialogueSettings = {
   dialoguePlacement: DialoguePlacement
   dialogueWidth: number
   dialogueHeight: number
+  /** Body text size for the local dialogue window, in device-independent pixels. */
+  dialogueFontSize: DialogueFontSize
 }
 
 export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freeze({
@@ -62,6 +65,7 @@ export const dialogueSettingsDefaults: Readonly<DialogueSettings> = Object.freez
   dialoguePlacement: 'near-pet',
   dialogueWidth: 320,
   dialogueHeight: 420,
+  dialogueFontSize: 14,
 })
 
 export const dialogueSettingsSchema = z.transform(
@@ -86,6 +90,7 @@ export const dialogueSettingsSchema = z.transform(
     dialoguePlacement: z.union([z.const('near-pet'), z.const('top-left'), z.const('top-center'), z.const('top-right'), z.const('middle-left'), z.const('center'), z.const('middle-right'), z.const('bottom-left'), z.const('bottom-center'), z.const('bottom-right')]).default('near-pet'),
     dialogueWidth: z.number().step(1).min(220).max(4000).default(320),
     dialogueHeight: z.number().step(1).min(240).max(3000).default(420),
+    dialogueFontSize: z.union([z.const(12), z.const(14), z.const(16), z.const(18)]).default(14),
   }).default(dialogueSettingsDefaults),
   (settings) => {
     const [randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes] = normalizeRandomChatInterval(
@@ -113,6 +118,7 @@ export const dialogueSettingsSchema = z.transform(
     dialoguePlacement: settings.dialoguePlacement ?? 'near-pet',
     dialogueWidth: settings.dialogueWidth ?? 320,
     dialogueHeight: settings.dialogueHeight ?? 420,
+    dialogueFontSize: settings.dialogueFontSize ?? 14,
     }
   },
 ).default(dialogueSettingsDefaults)

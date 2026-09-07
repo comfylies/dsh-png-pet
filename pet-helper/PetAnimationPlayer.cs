@@ -10,9 +10,10 @@ public sealed class PetAnimationPlayer
 {
     private const string ManifestResourceName = "PetHelper.Assets.pet-animations.json";
     private const string ManifestUnavailableMessage = "The pet animation manifest is unavailable.";
-    // At 512px RGBA, 48 frames are about 48 MiB of decoded pixels before WPF compositor copies.
-    // Keeping this bounded prevents a long-running pet from retaining every state it has visited.
-    private const int MaximumCachedFrames = 48;
+    // Hold the entire 49-frame responding loop: a smaller LRU would evict every frame
+    // before its next lap. At 512px square RGBA this caps decoded pixels near 49 MiB,
+    // before WPF compositor copies, without retaining every state the pet has visited.
+    private const int MaximumCachedFrames = 49;
     private const int AnimationDecodePixelWidth = 512;
 
     private readonly WpfImage image;
@@ -131,7 +132,9 @@ public sealed class PetAnimationPlayer
     /// <summary>Reapplies normalized translation after the WPF image receives a new layout size.</summary>
     public void RefreshPresentation() => ApplyRenderTransform();
 
-    private void Timer_Tick(object? sender, EventArgs e)
+    private void Timer_Tick(object? sender, EventArgs e) => AdvanceFrame();
+
+    internal void AdvanceFrame()
     {
         if (playback is null)
         {

@@ -39,21 +39,23 @@ public static class MarkdownRenderer
         return brush;
     }
 
-    public static FlowDocument Render(string markdown, Action<string>? copyCode = null)
+    public static FlowDocument Render(string markdown, double fontSize = 14d, Action<string>? copyCode = null)
     {
+        if (fontSize is not (12d or 14d or 16d or 18d)) throw new ArgumentOutOfRangeException(nameof(fontSize));
+        var scale = fontSize / 14d;
         var flow = new FlowDocument
         {
             PagePadding = new Thickness(0),
-            FontSize = 12.5,
+            FontSize = fontSize,
             FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI"),
-            LineHeight = 18,
+            LineHeight = 18d * scale,
             Foreground = new SolidColorBrush(Color.FromArgb(221, 0, 0, 0)),
         };
 
         var document = Markdown.Parse(markdown, Pipeline);
         foreach (var block in document)
         {
-            AppendBlock(flow, block, copyCode);
+            AppendBlock(flow, block, fontSize, copyCode);
         }
 
         if (flow.Blocks.Count == 0)
@@ -71,30 +73,30 @@ public static class MarkdownRenderer
     public static bool NeedsRender(string? renderedSource, string markdown) =>
         !string.Equals(renderedSource, markdown, StringComparison.Ordinal);
 
-    private static void AppendBlock(FlowDocument flow, MdBlock block, Action<string>? copyCode)
+    private static void AppendBlock(FlowDocument flow, MdBlock block, double fontSize, Action<string>? copyCode)
     {
         switch (block)
         {
             case HeadingBlock heading:
                 var headingParagraph = new Paragraph
                 {
-                    FontSize = FontSizeForHeading(heading.Level),
+                    FontSize = FontSizeForHeading(heading.Level, fontSize),
                     FontWeight = FontWeights.Bold,
                     Margin = new Thickness(0, 4, 0, 2),
                 };
-                headingParagraph.Inlines.AddRange(RenderInlines(heading.Inline));
+                headingParagraph.Inlines.AddRange(RenderInlines(heading.Inline, fontSize));
                 flow.Blocks.Add(headingParagraph);
                 break;
             case ParagraphBlock paragraph:
                 var paragraphBlock = new Paragraph { Margin = new Thickness(0, 2, 0, 2) };
-                paragraphBlock.Inlines.AddRange(RenderInlines(paragraph.Inline));
+                paragraphBlock.Inlines.AddRange(RenderInlines(paragraph.Inline, fontSize));
                 flow.Blocks.Add(paragraphBlock);
                 break;
             case FencedCodeBlock fenced:
-                AppendCodeBlock(flow, fenced.Lines.ToString(), copyCode);
+                AppendCodeBlock(flow, fenced.Lines.ToString(), fontSize, copyCode);
                 break;
             case CodeBlock code:
-                AppendCodeBlock(flow, code.Lines.ToString(), copyCode);
+                AppendCodeBlock(flow, code.Lines.ToString(), fontSize, copyCode);
                 break;
             case QuoteBlock quote:
                 var quoteParagraph = new Paragraph
@@ -110,16 +112,16 @@ public static class MarkdownRenderer
                 {
                     if (child is not ParagraphBlock quotedParagraph) continue;
                     if (hasQuoteParagraph) quoteParagraph.Inlines.Add(new LineBreak());
-                    quoteParagraph.Inlines.AddRange(RenderInlines(quotedParagraph.Inline));
+                    quoteParagraph.Inlines.AddRange(RenderInlines(quotedParagraph.Inline, fontSize));
                     hasQuoteParagraph = true;
                 }
                 flow.Blocks.Add(quoteParagraph);
                 break;
             case ListBlock list:
-                AppendList(flow, list);
+                AppendList(flow, list, fontSize);
                 break;
             case MdTable table:
-                AppendTable(flow, table);
+                AppendTable(flow, table, fontSize);
                 break;
             case ThematicBreakBlock:
                 flow.Blocks.Add(new Paragraph(new Run(string.Empty))
@@ -134,7 +136,7 @@ public static class MarkdownRenderer
         }
     }
 
-    private static void AppendCodeBlock(FlowDocument flow, string code, Action<string>? copyCode)
+    private static void AppendCodeBlock(FlowDocument flow, string code, double fontSize, Action<string>? copyCode)
     {
         var codeBlock = new Border
         {
@@ -147,7 +149,7 @@ public static class MarkdownRenderer
         {
             Text = code,
             FontFamily = new FontFamily("Consolas, Microsoft YaHei UI"),
-            FontSize = 11.5,
+            FontSize = fontSize * 0.92d,
             TextWrapping = TextWrapping.Wrap,
         };
 
@@ -175,7 +177,7 @@ public static class MarkdownRenderer
         flow.Blocks.Add(new BlockUIContainer(panel) { Margin = new Thickness(0, 0, 0, 0) });
     }
 
-    private static void AppendList(FlowDocument flow, ListBlock list)
+    private static void AppendList(FlowDocument flow, ListBlock list, double fontSize)
     {
         var index = 1;
         foreach (var item in list)
@@ -190,7 +192,7 @@ public static class MarkdownRenderer
                 {
                     if (child is ParagraphBlock childParagraph)
                     {
-                        paragraph.Inlines.AddRange(RenderInlines(childParagraph.Inline));
+                        paragraph.Inlines.AddRange(RenderInlines(childParagraph.Inline, fontSize));
                     }
                     else if (child is ListBlock nestedList)
                     {
@@ -202,7 +204,7 @@ public static class MarkdownRenderer
                                 if (nestedChild is not ParagraphBlock nestedParagraph) continue;
                                 paragraph.Inlines.Add(new LineBreak());
                                 paragraph.Inlines.Add(new Run("  - "));
-                                paragraph.Inlines.AddRange(RenderInlines(nestedParagraph.Inline));
+                                paragraph.Inlines.AddRange(RenderInlines(nestedParagraph.Inline, fontSize));
                             }
                         }
                     }
@@ -212,7 +214,7 @@ public static class MarkdownRenderer
         }
     }
 
-    private static void AppendTable(FlowDocument flow, MdTable table)
+    private static void AppendTable(FlowDocument flow, MdTable table, double fontSize)
     {
         var rows = new List<List<string>>();
         var columns = 0;
@@ -254,7 +256,7 @@ public static class MarkdownRenderer
                 {
                     Text = text,
                     TextWrapping = TextWrapping.Wrap,
-                    FontSize = 12,
+                    FontSize = fontSize * 0.96d,
                     FontWeight = rowIndex == 0 ? FontWeights.SemiBold : FontWeights.Normal,
                 };
                 Grid.SetRow(border, rowIndex);
@@ -278,16 +280,16 @@ public static class MarkdownRenderer
         return text;
     }
 
-    private static IEnumerable<WpfInline> RenderInlines(ContainerInline? inline)
+    private static IEnumerable<WpfInline> RenderInlines(ContainerInline? inline, double fontSize)
     {
         if (inline is null) yield break;
         foreach (var child in inline)
         {
-            yield return RenderInline(child);
+            yield return RenderInline(child, fontSize);
         }
     }
 
-    private static WpfInline RenderInline(MdInline inline)
+    private static WpfInline RenderInline(MdInline inline, double fontSize)
     {
         switch (inline)
         {
@@ -299,14 +301,14 @@ public static class MarkdownRenderer
                 return new Run(code.Content)
                 {
                     FontFamily = new FontFamily("Consolas, Microsoft YaHei UI"),
-                    FontSize = 11.5,
+                    FontSize = fontSize * 0.92d,
                     Background = CodeBackground,
                 };
             case LinkInline link:
-                return RenderLink(link);
+                return RenderLink(link, fontSize);
             case EmphasisInline emphasis:
                 var emphasisRun = new Span();
-                emphasisRun.Inlines.AddRange(RenderInlines(emphasis));
+                emphasisRun.Inlines.AddRange(RenderInlines(emphasis, fontSize));
                 if (emphasis.DelimiterChar is '*' or '_')
                 {
                     if (emphasis.DelimiterCount >= 2)
@@ -321,7 +323,7 @@ public static class MarkdownRenderer
                 return emphasisRun;
             case ContainerInline container:
                 var containerSpan = new Span();
-                containerSpan.Inlines.AddRange(RenderInlines(container));
+                containerSpan.Inlines.AddRange(RenderInlines(container, fontSize));
                 return containerSpan;
             case HtmlInline:
                 return new Run(string.Empty);
@@ -330,14 +332,14 @@ public static class MarkdownRenderer
         }
     }
 
-    private static WpfInline RenderLink(LinkInline link)
+    private static WpfInline RenderLink(LinkInline link, double fontSize)
     {
         var hyperlink = new Hyperlink
         {
             Foreground = LinkBrush,
             NavigateUri = Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) ? uri : null,
         };
-        hyperlink.Inlines.AddRange(RenderInlines(link));
+        hyperlink.Inlines.AddRange(RenderInlines(link, fontSize));
         if (hyperlink.Inlines.Count == 0)
         {
             hyperlink.Inlines.Add(new Run(link.Url ?? string.Empty));
@@ -372,11 +374,11 @@ public static class MarkdownRenderer
             _ => inline.ToString() ?? string.Empty,
         };
 
-    private static double FontSizeForHeading(int level) => level switch
+    private static double FontSizeForHeading(int level, double bodyFontSize) => level switch
     {
-        1 => 17,
-        2 => 15.5,
-        3 => 14,
-        _ => 13,
+        1 => bodyFontSize * 1.36d,
+        2 => bodyFontSize * 1.24d,
+        3 => bodyFontSize * 1.12d,
+        _ => bodyFontSize * 1.04d,
     };
 }

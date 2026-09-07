@@ -165,6 +165,25 @@ test('uses question and Web-approval waiting bubbles as content-free shortcuts b
   assert.match(app, /SerializeHelperMessage\("open-harness"\)/)
 })
 
+test('makes Harness navigation discoverable and labels context-menu scaling as temporary', () => {
+  const xaml = readFileSync(new URL('../pet-helper/MainWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /Header="打开 Harness" Click="OpenHarnessMenuItem_Click"/)
+  assert.match(code, /OpenHarnessMenuItem_Click[\s\S]*HarnessOpenRequested\?\.Invoke/)
+  assert.match(xaml, /Header="本次缩放（不保存）"/)
+})
+
+test('declares dynamic dialogue typography so readable presets apply at every display scale', () => {
+  const xaml = readFileSync(new URL('../pet-helper/DialogueWindow.xaml', import.meta.url), 'utf8')
+  const code = readFileSync(new URL('../pet-helper/DialogueWindow.xaml.cs', import.meta.url), 'utf8')
+
+  assert.match(xaml, /<sys:Double x:Key="DialogueFontSize">14<\/sys:Double>/)
+  assert.match(xaml, /FontSize="\{DynamicResource DialogueFontSize\}"/)
+  assert.match(code, /Resources\["DialogueFontSize"\] = dialogueFontSize/)
+  assert.match(code, /MarkdownRenderer\.Render\(message\.Text, dialogueFontSize, CopyText\)/)
+})
+
 test('links the dialogue window to double-click and Ctrl-combined pet dragging', () => {
   const code = readFileSync(new URL('../pet-helper/MainWindow.xaml.cs', import.meta.url), 'utf8')
 

@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS: DialogueSettings = {
   defaultSessionId: null, defaultWorkspaceId: null, previewEnabled: true, previewMaxChars: 2000,
   approvalSurface: 'web',
   randomChatEnabled: false, randomChatBrowseOnOpen: false, randomChatWorkspaceIds: [], randomChatMinIntervalMinutes: 8, randomChatMaxIntervalMinutes: 24, randomChatCustomPrompts: [], randomChatTestNonce: 0,
-  scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420,
+  scale: 1, reducedMotion: false, physicsEnabled: false, physicsBouncePercent: 65, petPlacement: 'center', dialoguePlacement: 'near-pet', dialogueWidth: 320, dialogueHeight: 420, dialogueFontSize: 14,
 }
 const SESSION_LIST_UNAVAILABLE = '会话列表尚未就绪。'
 const SELECTED_SESSION_UNAVAILABLE = '所选会话已不可用。'
@@ -92,6 +92,7 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
   const dialoguePlacement = value.dialoguePlacement
   const dialogueWidth = value.dialogueWidth
   const dialogueHeight = value.dialogueHeight
+  const dialogueFontSize = value.dialogueFontSize
   if (defaultSessionId === undefined || defaultWorkspaceId === undefined
     || typeof previewEnabled !== 'boolean' || !isIntegerIn(previewMaxChars, 80, 8000)
     || !isApprovalSurface(approvalSurface)
@@ -102,8 +103,8 @@ export function decodeDialogueSettings(section: unknown): DialogueSettings | und
     || (scale !== 0.75 && scale !== 1 && scale !== 1.25 && scale !== 1.5)
     || typeof reducedMotion !== 'boolean' || typeof physicsEnabled !== 'boolean' || !isIntegerIn(physicsBouncePercent, 0, 100)
     || !isPetPlacement(petPlacement) || !isDialoguePlacement(dialoguePlacement)
-    || !isIntegerIn(dialogueWidth, 220, 4000) || !isIntegerIn(dialogueHeight, 240, 3000)) return undefined
-  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, approvalSurface, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, physicsEnabled, physicsBouncePercent, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight }
+    || !isIntegerIn(dialogueWidth, 220, 4000) || !isIntegerIn(dialogueHeight, 240, 3000) || !isDialogueFontSize(dialogueFontSize)) return undefined
+  return { defaultSessionId, defaultWorkspaceId, previewEnabled, previewMaxChars, approvalSurface, randomChatEnabled, randomChatBrowseOnOpen, randomChatWorkspaceIds: [...randomChatWorkspaceIds], randomChatMinIntervalMinutes, randomChatMaxIntervalMinutes, randomChatCustomPrompts: [...randomChatCustomPrompts], randomChatTestNonce, scale, reducedMotion, physicsEnabled, physicsBouncePercent, petPlacement, dialoguePlacement, dialogueWidth, dialogueHeight, dialogueFontSize }
 }
 
 export async function writeDialogueSetting(settings: Pick<SettingsScope<DialogueSettings>, 'set'>, field: keyof DialogueSettings, value: DialogueSettings[keyof DialogueSettings]): Promise<boolean> {
@@ -111,6 +112,7 @@ export async function writeDialogueSetting(settings: Pick<SettingsScope<Dialogue
   if (field === 'approvalSurface' && !isApprovalSurface(value)) return false
   if (field === 'dialogueWidth' && (typeof value !== 'number' || !Number.isInteger(value) || value < 220 || value > 4000)) return false
   if (field === 'dialogueHeight' && (typeof value !== 'number' || !Number.isInteger(value) || value < 240 || value > 3000)) return false
+  if (field === 'dialogueFontSize' && !isDialogueFontSize(value)) return false
   if ((field === 'randomChatMinIntervalMinutes' || field === 'randomChatMaxIntervalMinutes') && !isRandomChatIntervalMinutes(value)) return false
   if (field === 'randomChatCustomPrompts' && !isRandomChatCustomPrompts(value)) return false
   if (field === 'randomChatTestNonce' && !isRandomChatTestNonce(value)) return false
@@ -194,6 +196,8 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
       createElement('div', { style: compactFieldsStyle },
         createElement('label', { style: inlineLabelStyle }, '宽度', createElement('input', { type: 'number', min: 220, max: 4000, step: 1, value: value.dialogueWidth, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueWidth', 220, 4000, event) }), 'px'),
         createElement('label', { style: inlineLabelStyle }, '高度', createElement('input', { type: 'number', min: 240, max: 3000, step: 1, value: value.dialogueHeight, disabled: settingsUnavailable, onChange: (event: ChangeEvent<HTMLInputElement>) => onIntegerChange('dialogueHeight', 240, 3000, event) }), 'px'))),
+    createElement(SettingCard, { title: '对话字体大小', description: '立即应用于输入框和所有对话内容。' },
+      createElement(ChoiceCards, { value: value.dialogueFontSize, disabled: settingsUnavailable, name: 'dialogue-font-size', options: ([12, 14, 16, 18] as const).map((fontSize) => ({ value: fontSize, label: `${fontSize} px` })), onChange: (fontSize) => { void update('dialogueFontSize', fontSize) } })),
     createElement('h2', { style: sectionHeadingStyle }, '待机互动'),
     createElement('p', null, '随机聊聊默认关闭。桌宠只会在你启用功能、同意点击后联网并选择目标工作区后显示本地邀约气泡。'),
     createElement('div', { style: verticalGroupStyle },
@@ -314,6 +318,7 @@ const placementOptions: ReadonlyArray<{ value: DialogueSettings['petPlacement'],
 function isPetPlacement(value: unknown): value is DialogueSettings['petPlacement'] { return placementOptions.some((option) => option.value === value) }
 function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return value === 'near-pet' || isPetPlacement(value) }
 function isApprovalSurface(value: unknown): value is DialogueSettings['approvalSurface'] { return value === 'web' || value === 'pet' }
+function isDialogueFontSize(value: unknown): value is DialogueSettings['dialogueFontSize'] { return value === 12 || value === 14 || value === 16 || value === 18 }
 function isIntegerIn(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max }
 
 function isRandomChatIntervalMinutes(value: unknown): value is number { return isIntegerIn(value, 5, 1440) }

@@ -103,6 +103,7 @@ test('defers the helper until settings injection registers the dialogue scope an
     dialoguePlacement: 'near-pet',
     dialogueWidth: 320,
     dialogueHeight: 420,
+    dialogueFontSize: 14,
   })
   assert.deepEqual(calls.slice(4), ['watch'])
   assert.equal(calls.includes('start'), true)

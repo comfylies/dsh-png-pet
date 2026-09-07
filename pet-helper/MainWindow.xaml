@@ -78,8 +78,9 @@
         <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource PetContextMenuSeparator}" />
       </ContextMenu.Resources>
       <MenuItem Header="选择会话" Click="SelectTargetMenuItem_Click" />
+      <MenuItem Header="打开 Harness" Click="OpenHarnessMenuItem_Click" />
       <MenuItem Header="隐藏" Click="HideMenuItem_Click" />
-      <MenuItem Header="缩放">
+      <MenuItem Header="本次缩放（不保存）">
         <MenuItem Header="75%" Tag="0.75" Click="ScaleMenuItem_Click" />
         <MenuItem Header="100%" Tag="1" Click="ScaleMenuItem_Click" />
         <MenuItem Header="125%" Tag="1.25" Click="ScaleMenuItem_Click" />
