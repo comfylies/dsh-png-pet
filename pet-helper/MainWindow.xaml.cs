@@ -38,10 +38,12 @@ public partial class MainWindow : Window
     /// Uniform-scaled: body is ≈54px from the window's left, ≈21px from its top, ≈29px from
     /// its right, ≈5px from its bottom. Recompute when the character art changes.
     /// </summary>
-    private static readonly PlacementPlanner.EdgeProtrusion PetProtrusion = new(54, 21, 29, 5);
+    private static readonly PlacementPlanner.EdgeProtrusion DefaultPetProtrusion = new(54, 21, 29, 5);
+    private PlacementPlanner.EdgeProtrusion PetProtrusion => currentCharacterId is null
+        ? DefaultPetProtrusion : new(0, 0, 0, 0);
 
     private readonly PetWindowStateStore stateStore = new();
-    private readonly PetAnimationPlayer animationPlayer;
+    private PetAnimationPlayer animationPlayer;
     private readonly IScreenLayout screenLayout;
     private PetDisplayState lastDisplayState = new("idle", string.Empty, 0);
     private bool reducedMotion;
@@ -151,6 +153,7 @@ public partial class MainWindow : Window
         RestoreState();
         restoringState = false;
         Loaded += (_, _) => UpdateStateBubblePosition();
+        Loaded += async (_, _) => await RestoreCharacterAsync();
         if (physicsSelfTestMode)
         {
             Loaded += (_, _) => BeginPhysicsSelfTest();
@@ -159,6 +162,7 @@ public partial class MainWindow : Window
         {
             StopPhysicsRendering();
             animationPlayer.Stop();
+            CloseCharacterLibrary();
             singleClickTimer.Stop();
             randomChatTimer.Stop();
             randomChatExpiryTimer.Stop();
@@ -186,6 +190,12 @@ public partial class MainWindow : Window
     public void ToggleDialogueWindow()
     {
         if (dialogueWindow is null) return;
+        if (dialogueWindow.IsResidentMode && dialogueWindow.IsVisible)
+        {
+            dialogueWindow.SetPetAnchor(CurrentRect());
+            dialogueWindow.ExpandResidentReply();
+            return;
+        }
         if (dialogueWindow.IsVisible)
         {
             dialogueWindow.CloseToHidden();
@@ -195,8 +205,17 @@ public partial class MainWindow : Window
         {
             PausePhysics();
             DismissRandomChatInvitation();
+            dialogueWindow.SetPetAnchor(CurrentRect());
             dialogueWindow.ShowDialogue(CurrentRect());
         }
+    }
+
+    private void ResidentDialogueMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (dialogueWindow is null) return;
+        dialogueWindow.SetResidentMode(ResidentDialogueMenuItem.IsChecked);
+        ResidentDialogueMenuItem.Header = ResidentDialogueMenuItem.IsChecked ? "✓ 对话框常驻" : "对话框常驻";
+        if (ResidentDialogueMenuItem.IsChecked && !dialogueWindow.IsVisible) ToggleDialogueWindow();
     }
 
     public void ApplyDisplayState(PetDisplayState state)
@@ -736,7 +755,9 @@ public partial class MainWindow : Window
 
         pointerGesture.Begin(
             e.GetPosition(this),
-            combinedDrag: (Keyboard.Modifiers & ModifierKeys.Control) != 0);
+            // A normal character drag keeps the dialogue attached. Holding Ctrl opts out
+            // so the character can be moved independently.
+            combinedDrag: (Keyboard.Modifiers & ModifierKeys.Control) == 0);
         PetLayout.CaptureMouse();
         PausePhysics();
         e.Handled = true;
@@ -865,6 +886,7 @@ public partial class MainWindow : Window
             screenLayout.WorkAreaFor(dialogueTarget));
         lastMovedDialogueRect = dialogueClamped;
         WindowMover.Move(dialogueWindow, dialogueClamped.X, dialogueClamped.Y);
+        dialogueWindow.SetPetAnchor(CurrentRect());
     }
 
     /// <summary>

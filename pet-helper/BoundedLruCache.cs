@@ -4,13 +4,18 @@ namespace PetHelper;
 internal sealed class BoundedLruCache<TKey, TValue> where TKey : notnull
 {
     private readonly int capacity;
+    private readonly long maximumWeight;
+    private readonly Func<TValue, long> weigh;
+    private long weight;
     private readonly Dictionary<TKey, LinkedListNode<Entry>> entries = [];
     private readonly LinkedList<Entry> recency = [];
 
-    public BoundedLruCache(int capacity)
+    public BoundedLruCache(int capacity, long maximumWeight = long.MaxValue, Func<TValue, long>? weigh = null)
     {
         if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
         this.capacity = capacity;
+        this.maximumWeight = maximumWeight;
+        this.weigh = weigh ?? (_ => 1);
     }
 
     public int Count => entries.Count;
@@ -33,20 +38,28 @@ internal sealed class BoundedLruCache<TKey, TValue> where TKey : notnull
     {
         if (entries.TryGetValue(key, out var existing))
         {
+            weight -= weigh(existing.Value.Value);
             existing.Value = new Entry(key, value);
+            weight += weigh(value);
             recency.Remove(existing);
             recency.AddLast(existing);
-            return;
         }
-
-        var node = recency.AddLast(new Entry(key, value));
-        entries.Add(key, node);
-        if (entries.Count <= capacity) return;
-
-        var leastRecent = recency.First!;
-        recency.RemoveFirst();
-        entries.Remove(leastRecent.Value.Key);
+        else
+        {
+            var node = recency.AddLast(new Entry(key, value));
+            entries.Add(key, node);
+            weight += weigh(value);
+        }
+        while (entries.Count > capacity || weight > maximumWeight)
+        {
+            var leastRecent = recency.First!;
+            weight -= weigh(leastRecent.Value.Value);
+            recency.RemoveFirst();
+            entries.Remove(leastRecent.Value.Key);
+        }
     }
+
+    public void Clear() { entries.Clear(); recency.Clear(); weight = 0; }
 
     private readonly record struct Entry(TKey Key, TValue Value);
 }

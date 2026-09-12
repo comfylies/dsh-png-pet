@@ -23,6 +23,9 @@ public sealed class PetClipPlaybackTests
 
         playback.Advance();
         Assert.Equal("Animations/idle/003.png", playback.Frame);
+        Assert.True(playback.IsAnimating);
+        Assert.Equal(0, completed);
+        playback.Advance(); // The final frame has now been displayed for its full interval.
         Assert.False(playback.IsAnimating);
         Assert.Equal(1, completed);
 
@@ -78,7 +81,7 @@ public sealed class PetClipPlaybackTests
     }
 
     [Fact]
-    public void A_single_frame_once_clip_completes_without_starting_a_timer()
+    public void A_single_frame_once_clip_completes_after_its_display_interval()
     {
         var playback = new PetClipPlayback();
         var completed = 0;
@@ -87,6 +90,9 @@ public sealed class PetClipPlaybackTests
         playback.Start(SingleFrameOnceClip, reducedMotion: false);
 
         Assert.Equal("Animations/idle/001.png", playback.Frame);
+        Assert.True(playback.IsAnimating);
+        Assert.Equal(0, completed);
+        playback.Advance();
         Assert.False(playback.IsAnimating);
         Assert.Equal(1, completed);
     }

@@ -16,15 +16,18 @@ public sealed class PetAnimationPlayer
     private const int MaximumCachedFrames = 49;
     private const int AnimationDecodePixelWidth = 512;
 
-    private readonly WpfImage image;
+    private WpfImage image;
+    private readonly CharacterAssetSource? characterSource;
     private readonly Func<ImageSource?> staticPlaceholderLoader;
     private PetStateAnimationCoordinator? playback;
     private readonly DispatcherTimer timer;
-    private readonly BoundedLruCache<string, BitmapImage> imagesByFrame = new(MaximumCachedFrames);
+    private readonly BoundedLruCache<string, BitmapImage> imagesByFrame;
     private readonly HashSet<string> availableFrames = new(StringComparer.Ordinal);
     private readonly HashSet<string> unavailableFrames = new(StringComparer.Ordinal);
 
     public event EventHandler? Completed;
+    internal event EventHandler? AssetFailed;
+    internal bool HasFailed { get; private set; }
 
     public PetAnimationPlayer(WpfImage image)
         : this(
@@ -46,9 +49,14 @@ public sealed class PetAnimationPlayer
         WpfImage image,
         Func<Stream?> manifestStreamReader,
         Func<Stream, TextReader> manifestReaderFactory,
-        Func<ImageSource?> staticPlaceholderLoader)
+        Func<ImageSource?> staticPlaceholderLoader,
+        CharacterAssetSource? characterSource = null,
+        int cacheFrames = MaximumCachedFrames)
     {
         this.image = image ?? throw new ArgumentNullException(nameof(image));
+        this.characterSource = characterSource;
+        imagesByFrame = new(cacheFrames, cacheFrames * 1024L * 1024,
+            bitmap => (long)bitmap.PixelWidth * bitmap.PixelHeight * Math.Max(4, (bitmap.Format.BitsPerPixel + 7) / 8));
         this.staticPlaceholderLoader = staticPlaceholderLoader
             ?? throw new ArgumentNullException(nameof(staticPlaceholderLoader));
         // State updates from a streaming reply arrive at normal dispatcher priority.  Render
@@ -58,15 +66,28 @@ public sealed class PetAnimationPlayer
 
         try
         {
-            playback = new PetStateAnimationCoordinator(
-                LoadManifest(manifestStreamReader, manifestReaderFactory),
-                IsFrameAvailable);
+            playback = characterSource is null
+                ? new PetStateAnimationCoordinator(LoadManifest(manifestStreamReader, manifestReaderFactory), IsFrameAvailable)
+                : new PetStateAnimationCoordinator(characterSource.ResolveProgram, IsFrameAvailable);
             playback.Completed += Playback_Completed;
         }
         catch (InvalidOperationException)
         {
             ActivateStaticFallback();
         }
+    }
+
+    internal PetAnimationPlayer(WpfImage image, CharacterAssetSource? characterSource, bool preview = false)
+        : this(image, () => typeof(PetAnimationPlayer).Assembly.GetManifestResourceStream(ManifestResourceName),
+            static stream => new StreamReader(stream), LoadStaticPlaceholder, characterSource, preview ? 8 : MaximumCachedFrames) { }
+
+    internal void AttachImage(WpfImage target)
+    {
+        var current = image.Source;
+        image.Source = null;
+        image = target;
+        image.Source = current;
+        ApplyRenderTransform();
     }
 
     public void Apply(PetAnimationKey key, bool reducedMotion)
@@ -82,7 +103,7 @@ public sealed class PetAnimationPlayer
             playback.Apply(key, reducedMotion);
             UpdateImage();
 
-            if (playback.IsAnimating)
+            if (playback is { IsAnimating: true })
             {
                 timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
                 timer.Start();
@@ -91,7 +112,7 @@ public sealed class PetAnimationPlayer
 
             timer.Stop();
         }
-        catch (InvalidOperationException)
+        catch (Exception)
         {
             ActivateStaticFallback();
         }
@@ -102,6 +123,10 @@ public sealed class PetAnimationPlayer
         timer.Stop();
         timer.Tick -= Timer_Tick;
         if (playback is not null) playback.Completed -= Playback_Completed;
+        playback = null;
+        imagesByFrame.Clear();
+        availableFrames.Clear();
+        unavailableFrames.Clear();
     }
 
     /// <summary>
@@ -142,14 +167,14 @@ public sealed class PetAnimationPlayer
             return;
         }
 
-        playback.Advance();
-        UpdateImage();
-        if (!playback.IsAnimating)
+        try
         {
-            timer.Stop();
-            return;
+            playback.Advance();
+            UpdateImage();
+            if (playback is null || !playback.IsAnimating) { timer.Stop(); return; }
+            timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
         }
-        timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
+        catch { ActivateStaticFallback(); }
     }
 
     private void Playback_Completed(object? sender, EventArgs e) => Completed?.Invoke(this, EventArgs.Empty);
@@ -161,7 +186,9 @@ public sealed class PetAnimationPlayer
             return;
         }
 
-        image.Source = TryLoadFrame(playback.Frame);
+        var next = TryLoadFrame(playback.Frame);
+        if (next is null) { ActivateStaticFallback(); return; }
+        image.Source = next;
         ApplyRenderTransform();
     }
 
@@ -190,6 +217,7 @@ public sealed class PetAnimationPlayer
 
         try
         {
+            if (characterSource is not null) return characterSource.HasFrame(frame);
             // Resolve() checks every frame in a clip.  Decoding all 32/49 720px PNGs here
             // blocks the UI for the whole state transition.  Opening the controlled resource
             // is enough to establish availability; only the currently displayed frame is
@@ -212,7 +240,7 @@ public sealed class PetAnimationPlayer
         if (imagesByFrame.TryGetValue(frame, out var bitmap)) return bitmap;
         try
         {
-            bitmap = LoadBitmap(FrameUri(frame));
+            bitmap = characterSource is null ? LoadBitmap(FrameUri(frame)) : LoadExternalBitmap(characterSource.ReadFrame(frame));
             imagesByFrame.AddOrUpdate(frame, bitmap);
             availableFrames.Add(frame);
             return bitmap;
@@ -233,6 +261,31 @@ public sealed class PetAnimationPlayer
         playback = null;
         ApplyRenderTransform();
         image.Source = TryLoadStaticPlaceholder(staticPlaceholderLoader);
+        if (!HasFailed)
+        {
+            HasFailed = true;
+            AssetFailed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    internal static BitmapImage LoadExternalBitmap(byte[] bytes, int decodeWidth = 512)
+    {
+        if (bytes.Length < 33 || !bytes.AsSpan(0, 8).SequenceEqual(new byte[] {137,80,78,71,13,10,26,10}) ||
+            !bytes.AsSpan(12, 4).SequenceEqual("IHDR"u8)) throw CharacterManifest.Invalid();
+        var width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4));
+        var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(20, 4));
+        if (width is < 1 or > 512 || width != height) throw CharacterManifest.Invalid();
+        using var stream = new MemoryStream(bytes, writable: false);
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        // Stream-backed bitmaps have no URI cache entry. IgnoreImageCache asks WPF to
+        // remove a null URI and fails on .NET 10; OnLoad already detaches the stream.
+        bitmap.DecodePixelWidth = Math.Min(width, decodeWidth);
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static ImageSource? TryLoadStaticPlaceholder(Func<ImageSource?> staticPlaceholderLoader)

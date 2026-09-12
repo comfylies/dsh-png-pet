@@ -78,6 +78,9 @@
         <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource PetContextMenuSeparator}" />
       </ContextMenu.Resources>
       <MenuItem Header="选择会话" Click="SelectTargetMenuItem_Click" />
+      <MenuItem Header="人物形象…" Click="CharacterMenuItem_Click" />
+      <MenuItem x:Name="ResidentDialogueMenuItem" Header="对话框常驻" IsCheckable="True"
+                Click="ResidentDialogueMenuItem_Click" />
       <MenuItem Header="打开 Harness" Click="OpenHarnessMenuItem_Click" />
       <MenuItem Header="隐藏" Click="HideMenuItem_Click" />
       <MenuItem Header="本次缩放（不保存）">
@@ -103,5 +106,9 @@
         <TextBlock x:Name="StateLabel" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
       </Border>
     </Canvas>
+    <Border x:Name="CharacterToast" Visibility="Collapsed" Background="#F0273449" CornerRadius="9"
+            Padding="9,6" VerticalAlignment="Bottom" IsHitTestVisible="False" Panel.ZIndex="2">
+      <TextBlock x:Name="CharacterToastText" TextWrapping="Wrap" Foreground="White" FontSize="12"/>
+    </Border>
   </Grid>
 </Window>

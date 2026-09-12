@@ -14,6 +14,120 @@ public sealed class DialogueWindowFaultTests
         "# 标题\n\n**粗体** 与 *斜体* 和 `代码`\n\n> 引用行\n\n- 列表 A\n- 列表 B\n\n1. 有序 1\n2. 有序 2\n\n```csharp\nvar x = 1;\nConsole.WriteLine(x);\n```\n\n| 列1 | 列2 |\n| --- | --- |\n| a | b |\n\n[链接](https://example.com) 结尾。";
 
     [Fact]
+    public void Resident_mode_projects_latest_reply_and_restores_full_conversation()
+    {
+        RunWindowFlow(window =>
+        {
+            window.ApplyConversationMessage(new ConversationConfigMessage(true, 2000, "s-1", "w-1"));
+            window.ApplyConversationMessage(new HistoryMessage(1, true, ImmutableArray.Create(
+                new HistoryItem("assistant", ImmutableArray.Create<HistoryBlock>(new HistoryTextBlock("old"))),
+                new HistoryItem("user", ImmutableArray.Create<HistoryBlock>(new HistoryTextBlock("question"))),
+                new HistoryItem("assistant", ImmutableArray.Create<HistoryBlock>(new HistoryTextBlock("latest"))))));
+            window.SetResidentMode(true);
+            window.Show();
+            window.UpdateLayout();
+            var list = (System.Windows.Controls.ItemsControl)window.FindName("MessageList");
+            Assert.Equal("latest", Assert.IsType<DialogueMessage>(Assert.Single(list.Items.Cast<object>())).Text);
+            Assert.Equal(Visibility.Collapsed, ((UIElement)window.FindName("SendButton")).Visibility);
+            Assert.True(((UIElement)window.FindName("InputTextBox")).IsVisible);
+            Assert.False(list.IsVisible);
+            Assert.InRange(window.ActualHeight, 60, 160);
+            var compactHeight = window.ActualHeight;
+            window.ToggleResidentReply();
+            window.UpdateLayout();
+            Assert.True(list.IsVisible);
+            Assert.InRange(window.ActualHeight, compactHeight + 1, 560);
+            window.ToggleResidentReply();
+            window.UpdateLayout();
+            Assert.False(list.IsVisible);
+            Assert.Equal(compactHeight, window.ActualHeight);
+            window.SetResidentMode(false);
+            window.UpdateLayout();
+            Assert.True(list.IsVisible);
+            Assert.Equal(3, list.Items.Count);
+            Assert.Equal(Visibility.Visible, ((UIElement)window.FindName("SendButton")).Visibility);
+        });
+    }
+
+    [Fact]
+    public void Pasted_screenshot_uses_existing_image_submission_and_attachment_limit()
+    {
+        RunWindowFlow(window =>
+        {
+            window.SetResidentMode(true);
+            var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(2, 2, 96, 96,
+                PixelFormats.Bgra32, null, new byte[16], 8);
+            for (var i = 0; i < 5; i++)
+            {
+                var data = new DataObject(DataFormats.Bitmap, bitmap);
+                var paste = new DataObjectPastingEventArgs(data, false, DataFormats.Bitmap);
+                ((System.Windows.Controls.TextBox)window.FindName("InputTextBox")).RaiseEvent(paste);
+                Assert.True(paste.CommandCancelled);
+            }
+            InputSubmittedEventArgs? submitted = null;
+            window.InputSubmitted += (_, input) => submitted = input;
+            ((System.Windows.Controls.Button)window.FindName("SendButton")).RaiseEvent(
+                new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Assert.NotNull(submitted);
+            Assert.Equal(4, submitted.Attachments.Length);
+            Assert.All(submitted.Attachments, attachment =>
+            {
+                var image = Assert.IsType<ImageInputAttachment>(attachment);
+                Assert.Equal("image/png", image.MediaType);
+                Assert.InRange(Convert.FromBase64String(image.Base64).Length, 1, 2 * 1024 * 1024);
+            });
+        });
+    }
+
+    [Fact]
+    public void Screenshot_size_rejection_preserves_text_paste_and_empty_composer()
+    {
+        RunWindowFlow(window =>
+        {
+            var pixels = new byte[1024 * 1024 * 4];
+            new Random(42).NextBytes(pixels);
+            window.AddClipboardImage(System.Windows.Media.Imaging.BitmapSource.Create(1024, 1024,
+                96, 96, PixelFormats.Bgra32, null, pixels, 4096));
+            Assert.Empty(((System.Windows.Controls.ItemsControl)window.FindName("PendingAttachmentsList")).Items);
+            Assert.Contains("2 MB", ((System.Windows.Controls.TextBlock)window.FindName("ConversationStatusLabel")).Text);
+            var paste = new DataObjectPastingEventArgs(new DataObject(DataFormats.UnicodeText, "hello"),
+                false, DataFormats.UnicodeText);
+            ((System.Windows.Controls.TextBox)window.FindName("InputTextBox")).RaiseEvent(paste);
+            Assert.False(paste.CommandCancelled);
+        });
+    }
+
+    [Fact]
+    public void Resident_reply_scrolls_and_keeps_approval_and_composer_visible()
+    {
+        RunWindowFlow(window =>
+        {
+            window.SetResidentMode(true);
+            window.ApplyConversationMessage(new InputStatusMessage(1, "sent"));
+            window.ApplyConversationMessage(new ReplyMessage(1, string.Join("\n\n", Enumerable.Repeat("long reply", 100)), true));
+            window.Show();
+            window.ToggleResidentReply();
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+            window.UpdateLayout();
+            var scroll = (System.Windows.Controls.ScrollViewer)window.FindName("MessageScroll");
+            Assert.True(scroll.ScrollableHeight > 0);
+            scroll.ScrollToTop();
+            window.UpdateLayout();
+            scroll.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -120)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseWheelEvent,
+            });
+            window.UpdateLayout();
+            Assert.True(scroll.VerticalOffset > 0);
+            window.ApplyApprovalMessage(new ApprovalRequestMessage(1));
+            window.UpdateLayout();
+            Assert.True(((UIElement)window.FindName("ApprovalAllowButton")).IsVisible);
+            Assert.True(((UIElement)window.FindName("InputTextBox")).IsVisible);
+        });
+    }
+
+    [Fact]
     public void Dialogue_window_survives_history_with_rich_markdown()
     {
         RunWindowFlow(window =>

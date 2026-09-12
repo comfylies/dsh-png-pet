@@ -14,6 +14,8 @@ public sealed record ResolvedClip(
     PetStatusAnchor StatusAnchor,
     PetRenderTransform RenderTransform)
 {
+    public ImmutableArray<int> FrameDurationsMs { get; init; }
+
     public ResolvedClip(
         PetAnimationKey key,
         string id,

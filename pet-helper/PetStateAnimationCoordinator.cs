@@ -7,7 +7,7 @@ namespace PetHelper;
 /// </summary>
 public sealed class PetStateAnimationCoordinator
 {
-    private readonly PetAnimationManifest manifest;
+    private readonly Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram;
     private readonly Func<string, bool> isFrameAvailable;
     private readonly PetClipPlayback clipPlayback = new();
     private ResolvedStateProgram? currentProgram;
@@ -24,8 +24,13 @@ public sealed class PetStateAnimationCoordinator
     public event EventHandler? Completed;
 
     public PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable)
+        : this(manifest.ResolveProgram, isFrameAvailable) { }
+
+    internal PetStateAnimationCoordinator(
+        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram,
+        Func<string, bool> isFrameAvailable)
     {
-        this.manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+        this.resolveProgram = resolveProgram;
         this.isFrameAvailable = isFrameAvailable ?? throw new ArgumentNullException(nameof(isFrameAvailable));
         clipPlayback.Completed += (_, _) =>
         {
@@ -98,18 +103,19 @@ public sealed class PetStateAnimationCoordinator
 
     public void Advance()
     {
+        if (!IsAnimating) return;
+        clipPlayback.Advance();
         if (clipCompleted)
         {
             clipCompleted = false;
             MoveToNextClip();
             return;
         }
-        clipPlayback.Advance();
     }
 
     private void StartTarget(PetAnimationKey target, bool useEnter)
     {
-        currentProgram = manifest.ResolveProgram(target, isFrameAvailable);
+        currentProgram = resolveProgram(target, isFrameAvailable);
         currentTransition = null;
         transitionAfterEnter = null;
         requested = target;

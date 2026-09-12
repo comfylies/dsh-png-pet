@@ -192,22 +192,26 @@
     </DataTemplate>
   </Window.Resources>
   <Grid>
-    <Border Background="#FFF8F9FC" CornerRadius="20" BorderBrush="#140F172A" BorderThickness="1"
+    <Border x:Name="DialogueSurface" Background="#FFF8F9FC" CornerRadius="20" BorderBrush="#140F172A" BorderThickness="1"
             Margin="1">
-      <Grid Margin="16">
+      <Grid x:Name="DialogueContent" Margin="16">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid Grid.Row="0" Height="28">
+        <Button x:Name="ReplyExpandHandle" Grid.Row="0" Height="14" Visibility="Collapsed"
+                Content="━" Style="{StaticResource SubtleIconButton}" Cursor="Hand"
+                ToolTip="展开最近回复" Click="ReplyExpandHandle_Click" />
+        <Grid x:Name="DialogueHeader" Grid.Row="0" Height="28">
           <TextBlock Text="桌宠对话" Foreground="#344054" FontWeight="SemiBold" FontSize="13"
                      VerticalAlignment="Center" />
           <Button HorizontalAlignment="Right" Width="28" Height="28" Content="×"
                   Style="{StaticResource SubtleIconButton}" FontSize="18" Click="CloseButton_Click" ToolTip="关闭对话" />
         </Grid>
         <ScrollViewer Grid.Row="1" x:Name="MessageScroll" Style="{StaticResource NarrowScrollViewer}"
-                      Margin="0,6,0,12" ScrollChanged="MessageScroll_ScrollChanged">
+                      Margin="0,6,0,12" ScrollChanged="MessageScroll_ScrollChanged"
+                      PreviewMouseWheel="MessageScroll_PreviewMouseWheel">
           <ItemsControl x:Name="MessageList" ItemTemplate="{StaticResource MessageTemplate}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
@@ -262,7 +266,7 @@
                         Data="M 8,1 L 1,9 L 5.5,9 L 5.5,15 L 10.5,15 L 10.5,9 L 15,9 Z" />
                 </Viewbox>
               </Button>
-              <Button DockPanel.Dock="Left" Content="＋" Width="30" Height="30" FontSize="20"
+              <Button x:Name="AttachmentButton" DockPanel.Dock="Left" Content="＋" Width="30" Height="30" FontSize="20"
                       Padding="0" Style="{StaticResource SubtleIconButton}"
                       Click="AttachmentButton_Click" ToolTip="添加图片或文件（也支持拖入）" />
               <TextBlock x:Name="ConversationStatusLabel" Foreground="#667085" FontSize="11.5"

@@ -50,7 +50,11 @@ test('packed archive includes the helper executable and default idle asset', () 
     assert.ok(archiveEntries.includes('package/runtime/bin/win32-x64/pet-helper.exe'))
     assert.ok(archiveEntries.includes('package/assets/placeholder-a.png'))
     assert.ok(archiveEntries.includes('package/licenses/ZCOOL-KuaiLe-OFL.txt'))
+    assert.equal(archiveEntries.some(entry => /(?:^|\/)(?:Characters|library|staging)(?:\/|$)/i.test(entry)), false)
+    assert.equal(archiveEntries.some(entry => /(?:^|\/)(?:character|selection)\.json$|\.gif$/i.test(entry)), false)
     execFileSync('tar', ['-xzf', archivePath, '-C', packageDirectory])
+    // Windows tar may quote non-ASCII filenames in its listing; inspect the extracted path.
+    assert.equal(existsSync(join(packageDirectory, 'package', 'docs', '外置人物使用说明.md')), true)
     assert.equal(existsSync(join(packageDirectory, 'package', '启动 DSH 桌宠.vbs')), true)
   } finally {
     rmSync(packageDirectory, { recursive: true, force: true })

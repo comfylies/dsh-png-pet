@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace PetHelper;
@@ -43,6 +44,10 @@ public partial class DialogueWindow : Window
     private long? pendingApprovalRequestId;
 
     private bool inSystemDrag;
+    private bool residentReplyExpanded;
+    private double regularHeight;
+    private Rect? petAnchorRect;
+    public bool IsResidentMode { get; private set; }
 
     public event EventHandler<InputSubmittedEventArgs>? InputSubmitted;
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
@@ -60,9 +65,104 @@ public partial class DialogueWindow : Window
         UpdateMaxSize();
         MessageList.ItemsSource = messages;
         PendingAttachmentsList.ItemsSource = pendingAttachments;
+        DataObject.AddPastingHandler(InputTextBox, InputTextBox_Pasting);
         streamFlushTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
         streamFlushTimer.Tick += StreamFlushTick;
         streamFlushTimer.Start();
+    }
+
+    public void FocusComposer()
+    {
+        Activate();
+        InputTextBox.Focus();
+    }
+
+    public void SetResidentMode(bool enabled)
+    {
+        if (IsResidentMode == enabled) return;
+        if (enabled) regularHeight = Height;
+        IsResidentMode = enabled;
+        residentReplyExpanded = false;
+        DialogueHeader.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        ReplyExpandHandle.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        SendButton.Visibility = AttachmentButton.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        DialogueSurface.Background = new SolidColorBrush(enabled
+            ? Color.FromArgb(190, 248, 249, 252) : Color.FromArgb(255, 248, 249, 252));
+        InputComposer.Background = new SolidColorBrush(Color.FromArgb(enabled ? (byte)80 : (byte)217, 255, 255, 255));
+        DialogueContent.Margin = new Thickness(enabled ? 10 : 16);
+        InputTextBox.Padding = enabled ? new Thickness(0, 2, 0, 2) : new Thickness(0, 2, 34, 2);
+        InputHint.Margin = enabled ? new Thickness(1, 3, 0, 3) : new Thickness(1, 3, 34, 3);
+        InputHint.Text = enabled ? "输入消息或粘贴截图…" : "给智能体发消息（Enter 发送，Shift+Enter 换行）";
+        InputTextBox.ToolTip = "Enter 发送 · Shift+Enter 换行 · Esc 停止生成 · Ctrl+V 粘贴截图";
+        ResizeMode = enabled ? ResizeMode.NoResize : ResizeMode.CanResize;
+        UpdateReplyVisibility();
+        UpdateMaxSize();
+        Height = enabled ? ResidentHeight() : regularHeight;
+        SyncMessages();
+        if (IsVisible) ClampDialogueOnScreen();
+    }
+
+    private double ResidentHeight() => Math.Min(MaxHeight,
+        residentReplyExpanded ? 520 : 120);
+
+    private void UpdateReplyVisibility()
+    {
+        var collapsed = IsResidentMode && !residentReplyExpanded;
+        MessageScroll.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        DialogueContent.RowDefinitions[1].Height = collapsed ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        MinHeight = IsResidentMode ? 60 : DialogueWindowState.MinHeight;
+        // Fit only the composer (including multiline input, attachments and approval when present).
+        SizeToContent = collapsed ? SizeToContent.Height : SizeToContent.Manual;
+        ReplyExpandHandle.ToolTip = collapsed ? "展开最近回复" : "收起最近回复";
+    }
+
+    internal void ToggleResidentReply()
+    {
+        if (!IsResidentMode) return;
+        var bottom = Top + ActualHeight;
+        residentReplyExpanded = !residentReplyExpanded;
+        UpdateReplyVisibility();
+        Height = ResidentHeight();
+        UpdateLayout();
+        if (residentReplyExpanded && petAnchorRect is { } anchor)
+        {
+            var target = PlacementPlanner.PlaceBeside(anchor,
+                screenLayout.WorkAreaFor(anchor),
+                new Size(ActualWidth, ActualHeight), PlacementPlanner.PetGap,
+                [PlaceSide.Above, PlaceSide.Below, PlaceSide.Right, PlaceSide.Left]);
+            Left = target.X;
+            Top = target.Y;
+        }
+        else
+        {
+            Top = bottom - ActualHeight;
+        }
+        ReplyExpandHandle.ToolTip = residentReplyExpanded ? "收起最近回复" : "展开最近回复";
+        ClampDialogueOnScreen();
+    }
+
+    public void ExpandResidentReply()
+    {
+        if (IsResidentMode && !residentReplyExpanded)
+        {
+            ToggleResidentReply();
+        }
+        else
+        {
+            FocusComposer();
+        }
+    }
+
+    private void ReplyExpandHandle_Click(object sender, RoutedEventArgs e) => ToggleResidentReply();
+
+    /// <summary>Updates the character rectangle used to anchor resident expansion.</summary>
+    public void SetPetAnchor(Rect petRect) => petAnchorRect = petRect;
+
+    private void MessageScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        // Route wheel input from nested markdown/text controls to the bounded reply viewport.
+        MessageScroll.ScrollToVerticalOffset(MessageScroll.VerticalOffset - e.Delta / 3d);
+        e.Handled = true;
     }
 
     private void DialogueWindow_LocationChanged(object? sender, EventArgs e) => UpdateMaxSize();
@@ -80,7 +180,9 @@ public partial class DialogueWindow : Window
     /// </summary>
     private void UpdateMaxSize()
     {
+        if (screenLayout is null) return;
         var max = DialogueWindowState.MaxSizeFor(screenLayout.WorkAreaFor(CurrentRect()));
+        if (IsResidentMode) max.Height = Math.Min(560, max.Height);
         if (Math.Abs(MaxWidth - max.Width) < 0.5 && Math.Abs(MaxHeight - max.Height) < 0.5)
         {
             return;
@@ -122,8 +224,9 @@ public partial class DialogueWindow : Window
         Left = target.X;
         Top = target.Y;
         Width = target.Width;
-        Height = target.Height;
+        Height = IsResidentMode ? ResidentHeight() : target.Height;
         Show();
+        ClampDialogueOnScreen();
         Activate();
         InputTextBox.Focus();
         if (lastDefaultSessionId is not null)
@@ -204,6 +307,11 @@ public partial class DialogueWindow : Window
                 ApprovalCard.Visibility = Visibility.Collapsed;
                 break;
         }
+        if (IsResidentMode)
+        {
+            Height = ResidentHeight();
+            if (IsVisible) ClampDialogueOnScreen();
+        }
     }
 
     /// <summary>Pet bubble state, shown in the dialogue status line when no conversation is active (同源联动).</summary>
@@ -234,7 +342,7 @@ public partial class DialogueWindow : Window
     public void SaveState()
     {
         if (restoringState) return;
-        stateStore.Save(new DialogueWindowState(Left, Top, ActualWidth, ActualHeight));
+        stateStore.Save(new DialogueWindowState(Left, Top, ActualWidth, IsResidentMode ? regularHeight : ActualHeight));
         hasSavedLayout = true;
     }
 
@@ -305,6 +413,12 @@ public partial class DialogueWindow : Window
 
     private void InputTextBox_KeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && conversationState.HasActiveTurn)
+        {
+            SendButton_Click(sender, e);
+            e.Handled = true;
+            return;
+        }
         switch (ComposerInputActionFor(e.Key, Keyboard.Modifiers))
         {
             case ComposerInputAction.Send:
@@ -358,6 +472,60 @@ public partial class DialogueWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
         AddAttachments(dialog.FileNames);
+    }
+
+    private void InputTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        try
+        {
+            if (!e.SourceDataObject.GetDataPresent(DataFormats.Bitmap)) return;
+            e.CancelCommand();
+            if (e.SourceDataObject.GetData(DataFormats.Bitmap) is BitmapSource bitmap)
+                AddClipboardImage(bitmap);
+            else
+                SetTemporaryStatus("无法读取截图，请重新复制");
+        }
+        catch
+        {
+            e.CancelCommand();
+            SetTemporaryStatus("剪贴板暂不可用，请重试");
+        }
+    }
+
+    internal void AddClipboardImage(BitmapSource bitmap)
+    {
+        if (pendingAttachments.Count >= MaxPendingAttachments)
+        {
+            SetTemporaryStatus($"最多 {MaxPendingAttachments} 个附件");
+            return;
+        }
+        try
+        {
+            // Bound raw image work before encoding. Screenshots stay entirely in memory.
+            if ((long)bitmap.PixelWidth * bitmap.PixelHeight > 32_000_000)
+            {
+                SetTemporaryStatus("截图尺寸过大，请裁剪后粘贴");
+                return;
+            }
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+            if (stream.Length == 0 || stream.Length > MaxImageBytes)
+            {
+                SetTemporaryStatus("截图超过 2 MB，请裁剪后粘贴");
+                return;
+            }
+            pendingAttachments.Add(new PendingAttachment
+            {
+                Name = "截图.png", MediaType = "image/png", Base64 = Convert.ToBase64String(stream.ToArray()),
+            });
+            RefreshPendingAttachments();
+        }
+        catch
+        {
+            SetTemporaryStatus("无法读取截图，请重新复制");
+        }
     }
 
     private void AddAttachments(IEnumerable<string> paths)
@@ -562,6 +730,11 @@ public partial class DialogueWindow : Window
     private void SyncMessages()
     {
         var source = conversationState.Messages;
+        if (IsResidentMode)
+        {
+            var latest = source.LastOrDefault(message => message.Role == "assistant");
+            source = latest is null ? [] : [latest];
+        }
         var index = 0;
         while (index < source.Length)
         {
@@ -631,7 +804,7 @@ public partial class DialogueWindow : Window
 
         var point = e.GetPosition(this);
         var edge = WindowResizeMath.HitTest(point, new Rect(0, 0, ActualWidth, ActualHeight));
-        if (edge != ResizeEdge.None)
+        if (!IsResidentMode && edge != ResizeEdge.None)
         {
             inSystemDrag = true;
             try
@@ -686,6 +859,11 @@ public partial class DialogueWindow : Window
 
     private void UpdateHoverCursor(MouseEventArgs e)
     {
+        if (IsResidentMode)
+        {
+            Cursor = Cursors.Arrow;
+            return;
+        }
         if (IsInteractiveTarget(e.OriginalSource as DependencyObject))
         {
             Cursor = Cursors.Arrow;

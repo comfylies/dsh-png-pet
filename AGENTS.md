@@ -14,10 +14,10 @@ DSH Host / Web profile
           └─ C# WPF Helper（pet-helper/，唯一可见 UI）
               ├─ 透明 PNG 桌宠、动画、状态气泡、托盘
               ├─ 对话窗口、目标选择卡、随机聊聊邀约
-              └─ 仅保存窗口布局；不保存对话内容
+              └─ 保存窗口布局及用户导入的纯展示人物资源/选择；不保存对话内容
 ```
 
-当前源码版本为 `dsh-png-pet@0.2.3`，JSON Lines 协议为 **v15**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
+当前源码版本为 `dsh-png-pet@0.2.11`，JSON Lines 协议为 **v17**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
 
 ## 绝不能突破的边界
 
@@ -27,6 +27,7 @@ DSH Host / Web profile
 - 对话输入、回复、预览和按需读取的最近历史仅可短暂存在于本地 JSON Lines/内存和 UI 中；不得写入文件、设置或日志，也不得发送到项目自身网络。
 - 不展示 reasoning；历史只投影用户文本、助手可见文本，以及经限长处理的图片/工具占位。
 - Helper 不联网、不读取 DSH 数据文件、不承担 Agent 逻辑。模型和工具调用一律由 DSH 提供的能力执行。
+- 人物素材导入是本地文件读取的明确例外：仅可读取用户主动选择的 PNG/GIF/角色清单及受控人物库。来源路径只短暂存在 Helper 内存；不得进入 DSH、JSON Lines、日志或保存记录。人物库仅保存规范化 PNG、白名单动画元数据、自定义人物名称及随机选择 ID。
 - 网页、DSH 事件与 Helper 输入都视为不可信。协议字段须严格白名单、校验版本/类型/长度；未知输入安全失败，不影响 DSH Host。
 
 `docs/security-debt.md` 记录两项已接受但必须保留边界的兼容性债务：本地 Web 设置页直接处理会话 ID/标题，以及部分 DSH profile 不暴露第三方设置命名空间。不要用自建 Remote 或 HTTP 端点绕过它们。
@@ -37,7 +38,8 @@ DSH Host / Web profile
 
 - Helper 生命周期与有序关闭；透明置顶窗口、拖动、位置恢复、缩放、隐藏/托盘恢复、右键菜单与状态气泡。
 - 真实 DSH Session/Agent 事件适配、状态归约和多 Session 优先级；状态为 `waiting > error > working > thinking > success > idle`，默认不让子 Agent 抢占。
-- 目录式 v3 PNG Clip 清单、完整 Clip 播放、状态转换、减少动态效果回退。
+- 目录式 v4 PNG Clip 清单、完整 Clip 播放、状态转换、减少动态效果回退。
+- 外置人物库：右键「人物形象」导入 GIF/PNG 或多状态角色目录，后台规范化为外置 PNG 帧，即时切换并恢复选择。素材位于 `%LOCALAPPDATA%/DshPngPet/Characters`，不打进插件或 EXE；详情见 `docs/外置人物使用说明.md`。
 - DSH Web 设置页及会话对话：目标会话、流式回复、历史按需加载、停止、Markdown 完成态渲染、图片/文件附件和错误/中断收尾。
 - 目标选择卡：工作区 → 会话、未分组会话、现有空白会话复用、创建会话、从选定目录注册工作区。
 - 显式选择工作区、显式开启后才显示的随机聊聊邀约；点击后才创建隔离会话，可独立允许 DSH 配置的网页工具。
@@ -55,7 +57,7 @@ DSH Host / Web profile
 | 目标 | 入口文件 |
 | --- | --- |
 | 插件装配、Helper 启动、DSH service 注入 | `src/index.ts` |
-| JSON Lines 类型、v11 校验与安全上限 | `src/protocol.ts` |
+| JSON Lines 类型、v17 校验与安全上限 | `src/protocol.ts` |
 | Helper 子进程启动/握手/发送/停止 | `src/helper-process.ts` |
 | DSH 事件 → 安全事实 → 桌宠状态 | `src/dsh-event-adapter.ts`、`src/companion-reducer.ts`、`src/companion-bridge.ts` |
 | 会话输入、流式回复、取消与历史投影 | `src/dialogue-controller.ts`、`src/dialogue-history.ts` |
@@ -82,6 +84,7 @@ DSH Host / Web profile
 - 根清单：`pet-helper/Assets/pet-animations.json`；每个状态目录的 `animation.json` 声明 Clip。
 - 帧目录格式：`pet-helper/Assets/Animations/<状态键>/<片段键>/`。缺失状态必须回退 `idle`。
 - 所有帧必须是透明 PNG、同一画布大小、脚底基线一致。每个 v3 Clip 必须声明首帧头顶的归一化 `statusAnchor`。
+- 上述透明素材要求适用于项目内置形象。用户导入素材可带背景，保留原样；同一角色画布必须一致，导入器补齐方形画布并等比缩小至最长边 512。外置格式独立版本化，不放宽内置清单及通信协议的校验。
 - 主形象必须同时更新 `pet-helper/Assets/placeholder-a.png` 与 `assets/placeholder-a.png`，确认 SHA-256 相同且保留 alpha。
 - 视频帧先运行 `scripts/remove-backgrounds.ps1`，只写到独立输出目录，绝不覆盖原图；二进制资源替换需用户明确授权。
 

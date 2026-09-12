@@ -10,13 +10,18 @@ public sealed class PetClipPlayback
     public event EventHandler? Completed;
 
     public string Frame => CurrentClip.Frames[frameIndex];
-    public int FrameDurationMs => CurrentClip.FrameDurationMs;
-    public bool IsAnimating => !reducedMotion && CurrentClip.Frames.Length > 1 &&
-        (CurrentClip.Playback == PetClipPlaybackMode.Loop || !completed);
+    public int FrameDurationMs => CurrentClip.FrameDurationsMs.IsDefaultOrEmpty
+        ? CurrentClip.FrameDurationMs : CurrentClip.FrameDurationsMs[frameIndex];
+    public bool IsAnimating => !reducedMotion && (CurrentClip.Playback == PetClipPlaybackMode.Once
+        ? !completed : CurrentClip.Frames.Length > 1);
 
     public void Start(ResolvedClip nextClip, bool reducedMotion, bool restart = false)
     {
         ArgumentNullException.ThrowIfNull(nextClip);
+        if (nextClip.Frames.IsDefaultOrEmpty || (!nextClip.FrameDurationsMs.IsDefault &&
+            (nextClip.FrameDurationsMs.Length != nextClip.Frames.Length ||
+             nextClip.FrameDurationsMs.Any(duration => duration is < 16 or > 10000))))
+            throw new ArgumentException("Invalid clip timing.");
         var identityChanged = restart || clip is null || !string.Equals(clip.Id, nextClip.Id, StringComparison.Ordinal);
         if (identityChanged)
         {
@@ -31,11 +36,6 @@ public sealed class PetClipPlayback
         }
         this.reducedMotion = reducedMotion;
 
-        if (!this.reducedMotion && CurrentClip.Playback == PetClipPlaybackMode.Once &&
-            CurrentClip.Frames.Length == 1 && !completed)
-        {
-            Complete();
-        }
     }
 
     public void Advance()
@@ -48,11 +48,11 @@ public sealed class PetClipPlayback
             return;
         }
 
-        frameIndex++;
         if (frameIndex == CurrentClip.Frames.Length - 1)
         {
             Complete();
         }
+        else frameIndex++;
     }
 
     private ResolvedClip CurrentClip => clip ??
