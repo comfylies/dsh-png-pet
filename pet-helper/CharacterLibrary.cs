@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.IO;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -6,6 +7,55 @@ using System.Text.Unicode;
 using System.Windows.Media.Imaging;
 
 namespace PetHelper;
+
+/// <summary>
+/// One normalized action of an already imported character, staged outside the library until it is
+/// committed.  The staging directory is deleted unless the commit moved it into the library.
+/// </summary>
+internal sealed class CharacterActionDraft : IDisposable
+{
+    internal string CharacterId { get; }
+    internal string StateKey { get; }
+    internal bool AsPrimary { get; }
+    internal string Folder { get; }
+    internal StoredCharacterClip Clip { get; set; } = null!;
+    internal string DirectoryPath { get; }
+    internal bool Committed { get; set; }
+    private readonly string stagingRoot;
+
+    internal CharacterActionDraft(string characterId, string stateKey, bool asPrimary, string folder, string stagingRoot)
+    {
+        CharacterId = characterId;
+        StateKey = stateKey;
+        AsPrimary = asPrimary;
+        Folder = folder;
+        this.stagingRoot = CharacterFiles.CheckedPath(stagingRoot);
+        DirectoryPath = CharacterFiles.Child(this.stagingRoot, "build");
+    }
+
+    /// <summary>
+    /// Drops the staging tree, which a successful commit has already emptied by moving the build
+    /// directory into the library.  The wrapping folder goes too, so a committed action does not
+    /// leave one empty <c>action-*</c> folder per write behind in staging.
+    /// </summary>
+    internal void Cleanup()
+    {
+        try
+        {
+            CharacterFiles.DeleteTree(stagingRoot, "build");
+            // The staging root is an empty, already checked directory of ours at this point; removing
+            // it is the same bounded cleanup the draft above performs for a discarded character.
+            Directory.Delete(stagingRoot);
+        }
+        catch { /* Cleanup never logs source paths. */ }
+    }
+
+    public void Dispose()
+    {
+        if (Committed) return;
+        Cleanup();
+    }
+}
 
 internal sealed class CharacterDraft : IDisposable
 {
@@ -233,6 +283,227 @@ internal sealed class CharacterLibrary
         if (isExtra && action.Type == "gif" && action.DurationDeclared && references.Count == 1)
             delays[0] = action.FrameDurationMs;
         return new(references.ToArray(), delays.ToArray());
+    }
+
+    /// <summary>Adds one named one-shot extra to a state of an already imported character.</summary>
+    internal CharacterInfo AddExtra(string id, string file, string stateKey, string name, PetStatusAnchor anchor,
+        double baseline, CancellationToken cancellation)
+    {
+        using var draft = PrepareAction(id, file, stateKey, asPrimary: false, cancellation);
+        return CommitAction(draft, name, anchor, baseline);
+    }
+
+    /// <summary>Decodes one GIF or PNG into the staging directory, normalised to the character's existing canvas.</summary>
+    internal CharacterActionDraft PrepareAction(string id, string file, string stateKey, bool asPrimary,
+        CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        using var gate = Lock();
+        Id(id);
+        if (!CharacterManifest.Keys.ContainsKey(stateKey)) throw CharacterManifest.Invalid();
+        var document = Load(id).Document;
+        var existing = document.Actions.TryGetValue(stateKey, out var state) ? state : null;
+        if (!asPrimary && existing is not null && existing.Extras.Length >= CharacterManifest.MaximumExtrasPerState)
+            throw CharacterManifest.Invalid();
+        var directory = CharacterFiles.Child(LibraryPath, id);
+        var canvasSide = CanvasSide(directory, document);
+        var existingBytes = CharacterFiles.Size(root);
+        if (existingBytes >= LibraryLimit) throw CharacterManifest.Invalid();
+        var folder = asPrimary ? "primary" : $"extra-{existing?.Extras.Length ?? 0}";
+        var stagingRoot = CharacterFiles.Child(StagingPath, "action-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stagingRoot);
+        var draft = new CharacterActionDraft(id, stateKey, asPrimary, folder, stagingRoot);
+        Directory.CreateDirectory(draft.DirectoryPath);
+        long draftOutputBytes = 0;
+        try
+        {
+            // The source file is read exactly once and never resolved again by the importer, which
+            // would otherwise reopen a path the caller only lent us in memory.
+            var bytes = CharacterFiles.Read(file, 20 * 1024 * 1024);
+            var gif = GifFrameImporter.IsGif(bytes);
+            // A single static frame must carry its own display duration; 1500 ms is the dialog default.
+            var action = new CharacterAction(gif ? "gif" : "png", [file], gif ? 100 : 1500, DurationDeclared: !gif);
+            draft.Clip = WriteActionFrames(draft.DirectoryPath, stateKey, folder, action, _ => bytes, isExtra: !asPrimary,
+                new CharacterImportBudget(), canvasSide, cancellation, ref draftOutputBytes, existingBytes);
+            return draft;
+        }
+        catch { draft.Dispose(); throw; }
+    }
+
+    /// <summary>
+    /// Merges a prepared action into the stored document and publishes it.  A primary replaces that
+    /// state's primary, an extra is appended under the next free <c>extra-N</c> folder.
+    /// </summary>
+    internal CharacterInfo CommitAction(CharacterActionDraft draft, string? name, PetStatusAnchor anchor, double baseline)
+    {
+        using var gate = Lock();
+        if (draft.Committed || !anchor.IsWithinArtboard || !double.IsFinite(baseline) || baseline is < 0 or > 1)
+            throw CharacterManifest.Invalid();
+        var id = Id(draft.CharacterId);
+        var document = Load(id).Document;
+        var states = new Dictionary<string, StoredCharacterState>(document.Actions, StringComparer.Ordinal);
+        var current = states.TryGetValue(draft.StateKey, out var existing)
+            ? existing
+            : new StoredCharacterState(new StoredCharacterClip([], []), []);
+        StoredCharacterState updated;
+        if (draft.AsPrimary)
+        {
+            updated = new(draft.Clip, current.Extras);
+        }
+        else
+        {
+            var extraName = CharacterManifest.ValidateName(name ?? throw CharacterManifest.Invalid());
+            if (current.Extras.Any(extra => string.Equals(extra.Name, extraName, StringComparison.Ordinal)))
+                throw CharacterManifest.Invalid();
+            updated = new(current.Primary, [.. current.Extras, new(extraName, draft.Clip.Frames, draft.Clip.Durations)]);
+        }
+        states[draft.StateKey] = updated;
+        var next = document with
+        {
+            // Any write upgrades a version one library to the version two layout, which the commit
+            // below has to build frame by frame.
+            LibraryFormatVersion = 2,
+            Name = name is null ? document.Name : CharacterManifest.ValidateName(name),
+            StatusAnchor = anchor,
+            Baseline = baseline,
+            Actions = UpgradeDocument(states),
+        };
+        CommitDirectory(id, document, next, draft, new HashSet<string>(StringComparer.Ordinal));
+        draft.Committed = true;
+        return new(id, next.Name);
+    }
+
+    /// <summary>
+    /// Turns every primary clip of the document into its version two reference form.  A version one
+    /// manifest keeps its frames directly under the state folder, so those references have to gain
+    /// the <c>primary/</c> segment before the document can be validated and stored as version two.
+    /// Extras only exist from version two and are already canonical.
+    /// </summary>
+    private static Dictionary<string, StoredCharacterState> UpgradeDocument(Dictionary<string, StoredCharacterState> states)
+    {
+        var upgraded = new Dictionary<string, StoredCharacterState>(states.Count, StringComparer.Ordinal);
+        foreach (var (key, state) in states)
+        {
+            var frames = new string[state.Primary.Frames.Length];
+            for (var index = 0; index < frames.Length; index++)
+                frames[index] = $"frames/{key}/primary/{index:D4}.png";
+            upgraded[key] = state with { Primary = state.Primary with { Frames = frames } };
+        }
+        return upgraded;
+    }
+
+    /// <summary>
+    /// Rebuilds the character directory from the retired one plus the staged action.  The library
+    /// entry is absent only for the two directory moves, and any failure restores the previous one.
+    /// </summary>
+    private void CommitDirectory(string id, StoredCharacter previous, StoredCharacter next,
+        CharacterActionDraft draft, IReadOnlySet<string> droppedReferences)
+    {
+        var target = CharacterFiles.Child(LibraryPath, id);
+        var retired = CharacterFiles.Child(StagingPath, "retired-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.Move(target, retired);
+            MoveExistingFrames(retired, draft.DirectoryPath, previous, droppedReferences);
+            InstallDraftFrames(draft);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(next, JsonOptions);
+            CharacterAssetSource.ParseStored(Encoding.UTF8.GetString(bytes));
+            CharacterFiles.WriteNew(CharacterFiles.Child(draft.DirectoryPath, "character.json"), bytes);
+            Directory.Move(draft.DirectoryPath, target);
+        }
+        catch
+        {
+            if (!Directory.Exists(target) && Directory.Exists(retired)) Directory.Move(retired, target);
+            // The draft tree is deleted here as well, because a caller that pre-marked its draft as
+            // committed must not leave one behind in staging.
+            draft.Cleanup();
+            throw;
+        }
+        finally
+        {
+            if (Directory.Exists(retired)) CharacterFiles.DeleteTree(StagingPath, Path.GetFileName(retired));
+            // Both callers still hold the draft, but its staging root is spent now that the build
+            // directory lives in the library.
+            draft.Cleanup();
+        }
+    }
+
+    private static void MoveExistingFrames(string retired, string building, StoredCharacter previous,
+        IReadOnlySet<string> droppedReferences)
+    {
+        foreach (var (key, state) in previous.Actions)
+        {
+            MoveFrames(retired, building, state.Primary.Frames, key, droppedReferences);
+            for (var index = 0; index < state.Extras.Length; index++)
+                MoveFrames(retired, building, state.Extras[index].Frames, key, droppedReferences);
+        }
+    }
+
+    private static void MoveFrames(string retired, string building, string[] frames, string key,
+        IReadOnlySet<string> droppedReferences)
+    {
+        foreach (var reference in frames)
+        {
+            if (droppedReferences.Contains(reference)) continue;
+            // Version one keeps frames directly under the state folder; version two adds primary/.
+            var upgraded = UpgradeReference(reference, key);
+            var source = CharacterFiles.Child(retired, reference);
+            var destination = CharacterFiles.Child(building, upgraded);
+            if (!File.Exists(source)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Move(source, destination, overwrite: false);
+        }
+    }
+
+    private static string UpgradeReference(string reference, string key)
+    {
+        var prefix = $"frames/{key}/";
+        return reference.StartsWith(prefix, StringComparison.Ordinal) &&
+            !reference[prefix.Length..].Contains('/')
+            ? $"{prefix}primary/{reference[prefix.Length..]}"
+            : reference;
+    }
+
+    /// <summary>Renames the staged frames to the reference layout the parser accepts for that folder.</summary>
+    private static void InstallDraftFrames(CharacterActionDraft draft)
+    {
+        var expected = CharacterFiles.Child(draft.DirectoryPath, $"frames/{draft.StateKey}/{draft.Folder}");
+        Directory.CreateDirectory(expected);
+        var actual = draft.Clip.Frames;
+        for (var index = 0; index < actual.Length; index++)
+        {
+            var reference = $"frames/{draft.StateKey}/{draft.Folder}/{index:D4}.png";
+            if (reference == actual[index]) continue;
+            File.Move(CharacterFiles.Child(draft.DirectoryPath, actual[index]),
+                CharacterFiles.Child(draft.DirectoryPath, reference));
+        }
+        draft.Clip = draft.Clip with
+        {
+            Frames = Enumerable.Range(0, actual.Length)
+                .Select(index => $"frames/{draft.StateKey}/{draft.Folder}/{index:D4}.png").ToArray(),
+        };
+    }
+
+    /// <summary>Reads the canvas of the character's first stored frame, so a new action never resizes it.</summary>
+    private static int CanvasSide(string directory, StoredCharacter document)
+    {
+        foreach (var state in document.Actions.Values)
+        {
+            foreach (var reference in state.Primary.Frames.Concat(state.Extras.SelectMany(extra => extra.Frames)))
+                return ReadPngSide(CharacterFiles.Child(directory, reference));
+        }
+        return 512;
+    }
+
+    private static int ReadPngSide(string path)
+    {
+        var bytes = CharacterFiles.Read(path, 2 * 1024 * 1024);
+        if (bytes.Length < 33 || !bytes.AsSpan(0, 8).SequenceEqual(new byte[] {137,80,78,71,13,10,26,10}) ||
+            !bytes.AsSpan(12, 4).SequenceEqual("IHDR"u8)) throw CharacterManifest.Invalid();
+        var width = BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4));
+        var height = BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(20, 4));
+        if (width != height || width is < 1 or > 512) throw CharacterManifest.Invalid();
+        return width;
     }
 
     internal CharacterInfo Commit(CharacterDraft draft, string name, PetStatusAnchor anchor, double baseline)

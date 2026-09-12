@@ -53,8 +53,14 @@ public sealed class GifFrameImporterTests
         return pixels.AsSpan((y * bitmap.PixelWidth + x) * 4, 4).ToArray();
     }
 
-    internal static byte[] Gif(int disposal)
+    /// <summary>Reads the square side of a normalized PNG from its IHDR chunk.</summary>
+    internal static int PngSide(string path)
     {
+        var bytes = File.ReadAllBytes(path);
+        return System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4));
+    }
+
+    internal static byte[] Gif(int disposal)    {
         using var output = new MemoryStream();
         using var writer = new BinaryWriter(output, Encoding.ASCII, leaveOpen: true);
         writer.Write("GIF89a"u8); writer.Write((ushort)2); writer.Write((ushort)1);
