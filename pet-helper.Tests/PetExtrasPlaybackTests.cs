@@ -29,11 +29,7 @@ public sealed class PetExtrasPlaybackTests
     internal static PetStateAnimationCoordinator Create(Func<int, int>? nextExtraIndex = null)
     {
         var manifest = AnimationManifestTestData.ParseIdle(5, IdleState);
-        // The resolver is bound through an explicitly typed delegate: as a bare method group the
-        // compiler fails to pick the three-argument overload and reports parameter 1 instead.
-        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolver =
-            (key, isFrameAvailable) => manifest.ResolveProgram(key, isFrameAvailable);
-        return new PetStateAnimationCoordinator(resolver, (string _) => true, nextExtraIndex);
+        return new PetStateAnimationCoordinator(manifest, (string _) => true, nextExtraIndex);
     }
 
     [Fact]
@@ -113,7 +109,7 @@ public sealed class PetExtrasPlaybackTests
     private static PetStateAnimationCoordinator CreateWithWorking(Func<int, int>? nextExtraIndex = null)
     {
         var manifest = AnimationManifestTestData.Parse(5, IdleState, WorkingState);
-        return new PetStateAnimationCoordinator(manifest, _ => true);
+        return new PetStateAnimationCoordinator(manifest, _ => true, nextExtraIndex);
     }
 
     [Fact]
@@ -192,9 +188,7 @@ public sealed class PetExtrasPlaybackTests
               "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
             }
             """);
-        // Bound through an explicitly typed delegate; see the note on Create.
-        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolve = manifest.ResolveProgram;
-        var coordinator = new PetStateAnimationCoordinator(resolve, _ => true, _ => 0);
+        var coordinator = new PetStateAnimationCoordinator(manifest, _ => true, (int _) => 0);
 
         coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
         for (var tick = 0; tick < 100; tick++) coordinator.Advance();
@@ -206,8 +200,9 @@ public sealed class PetExtrasPlaybackTests
     [Fact]
     public void A_static_primary_keeps_a_one_second_heartbeat_so_extras_still_fire()
     {
-        // The extra holds 1000 ms, the largest duration the manifest parser accepts, so its reported
-        // interval stays distinguishable from the primary's 1000 ms heartbeat.
+        // The primary is a single static frame, so it never asks for a frame advance on its own; the
+        // 1000 ms heartbeat is the only thing that can measure the cooldown.  The extra runs two
+        // frames at 50 ms, so its reported interval is distinguishable from that heartbeat.
         var staticManifest = AnimationManifestTestData.ParseIdle(5, """
             {
               "clips": {
@@ -216,25 +211,29 @@ public sealed class PetExtrasPlaybackTests
                   "statusAnchor": { "x": 0.5, "y": 0.11 }
                 },
                 "stretch": {
-                  "frames": ["stretch/001.png"], "frameDurationMs": 1000, "playback": "once",
+                  "frames": ["stretch/001.png", "stretch/002.png"], "frameDurationMs": 50, "playback": "once",
                   "statusAnchor": { "x": 0.5, "y": 0.11 }
                 }
               },
               "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
             }
             """);
-        // Bound through an explicitly typed delegate; see the note on Create.
-        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolve = staticManifest.ResolveProgram;
-        var coordinator = new PetStateAnimationCoordinator(resolve, _ => true, _ => 0);
+        var coordinator = new PetStateAnimationCoordinator(staticManifest, _ => true, (int _) => 0);
 
         coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
         Assert.True(coordinator.IsAnimating);
         Assert.Equal(1000, coordinator.IntervalMs);
 
+        // Five heartbeats: 5 * 1000 ms reaches the 5000 ms cooldown and starts the extra.
         for (var tick = 0; tick < 5; tick++) coordinator.Advance();
 
         Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
-        Assert.Equal(1000, coordinator.IntervalMs);
+        Assert.Equal(50, coordinator.IntervalMs);
+
+        // The extra holds two 50 ms frames, so its second frame is shown on the next heartbeat.
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/002.png", coordinator.Frame);
+        Assert.Equal(50, coordinator.IntervalMs);
 
         coordinator.Advance();
         Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);

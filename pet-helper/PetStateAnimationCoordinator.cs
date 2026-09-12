@@ -33,6 +33,12 @@ public sealed class PetStateAnimationCoordinator
     public PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable)
         : this(manifest.ResolveProgram, isFrameAvailable, null) { }
 
+    // Mirrors the public constructor for callers that must supply a deterministic extra selector.  The
+    // overload exists so those callers pass a manifest instead of hand-binding the resolver delegate.
+    internal PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable,
+        Func<int, int>? nextExtraIndex)
+        : this(manifest.ResolveProgram, isFrameAvailable, nextExtraIndex) { }
+
     internal PetStateAnimationCoordinator(
         Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram,
         Func<string, bool> isFrameAvailable,
