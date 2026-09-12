@@ -258,6 +258,32 @@ public sealed class CharacterLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Keeps_the_gif_delays_of_a_multi_frame_gif_extra_over_a_declared_duration()
+    {
+        Directory.CreateDirectory(root);
+        // The multi-frame GIF and the primary must share one canvas, so both use the same fixture.
+        File.WriteAllBytes(Path.Combine(root, "idle.gif"), GifFrameImporterTests.Gif(1));
+        File.WriteAllBytes(Path.Combine(root, "stretch.gif"), GifFrameImporterTests.Gif(1));
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "actions":{"idle":{
+               "primary":{"type":"gif","file":"idle.gif"},
+               "extras":[{"name":"伸懒腰","type":"gif","file":"stretch.gif","frameDurationMs":1500}]}}}
+            """);
+        var library = new CharacterLibrary(Path.Combine(root, "output"));
+
+        using var draft = library.PrepareDirectory(root, CancellationToken.None);
+        var info = library.Commit(draft, "多动作", new(.5, .1), .95);
+        var program = library.Load(info.Id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+        // A multi-frame GIF carries its own timing, so the declared 1500 ms must not flatten the
+        // delays the GIF itself decodes to the way a png-sequence's declared duration would.
+        Assert.Single(program.Extras);
+        Assert.Equal(3, program.Extras[0].Frames.Length);
+        Assert.Equal(new[] { 40, 250, 100 }, program.Extras[0].FrameDurationsMs);
+    }
+
+    [Fact]
     public void Rejects_a_source_character_with_five_extras()
     {
         Directory.CreateDirectory(root);

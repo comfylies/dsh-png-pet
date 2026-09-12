@@ -195,13 +195,10 @@ internal sealed class CharacterLibrary
         var delays = new List<int>();
         var written = outputBytes;
         var folderPath = $"frames/{key}/{folder}";
-        // A one-frame extra must declare its own display duration instead of flashing past at the
-        // importer's 100 ms default, so a lone frame of a declared-duration extra takes that declared
-        // duration.  A source that actually yields several frames must not silently lose its own
-        // timing: a multi-frame GIF extra keeps its per-frame delays, and declaring a duration
-        // alongside them is rejected (a multi-frame png-sequence can only declare one duration).
-        var declaredDurationApplies = isExtra && action.DurationDeclared;
-        var multiFrameDeclared = false;
+        // The declared duration means something different per action type, and the importer already
+        // applies the right one: a png-sequence declares the duration of every frame and the non-GIF
+        // branch stamps it on each of them, while a GIF carries its own per-frame delays.  Only the
+        // single-frame GIF case needs the post-processing below.
         Directory.CreateDirectory(CharacterFiles.Child(characterDirectory, folderPath));
         foreach (var file in action.Files)
         {
@@ -213,7 +210,6 @@ internal sealed class CharacterLibrary
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (references.Count >= 240) throw CharacterManifest.Invalid();
-                if (declaredDurationApplies && references.Count > 0) multiFrameDeclared = true;
                 var reference = $"{folderPath}/{references.Count:D4}.png";
                 var encoder = new PngBitmapEncoder();
                 encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -225,14 +221,17 @@ internal sealed class CharacterLibrary
                     throw CharacterManifest.Invalid();
                 CharacterFiles.WriteNew(CharacterFiles.Child(characterDirectory, reference), bytes);
                 references.Add(reference);
-                delays.Add(declaredDurationApplies && !multiFrameDeclared ? action.FrameDurationMs : delay);
+                delays.Add(delay);
             });
         }
         outputBytes = written;
-        // Deferred to here so the decoded frames are still written before the staged character is
-        // discarded, exactly like every other invalid-import failure path.
-        if (multiFrameDeclared) throw CharacterManifest.Invalid();
         if (isExtra && references.Count == 1 && !action.DurationDeclared) throw CharacterManifest.Invalid();
+        // A GIF's own per-frame delays win, so a multi-frame GIF keeps them even when the author
+        // declared a duration.  A GIF that decodes to exactly one frame has no timing of its own to
+        // keep: it would flash past at the importer's 100 ms default, so its declared duration wins.
+        // Only an extra can declare a duration for a gif action, and a png-sequence never reaches here.
+        if (isExtra && action.Type == "gif" && action.DurationDeclared && references.Count == 1)
+            delays[0] = action.FrameDurationMs;
         return new(references.ToArray(), delays.ToArray());
     }
 
