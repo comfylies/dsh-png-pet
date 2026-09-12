@@ -198,6 +198,42 @@ public sealed class PetExtrasPlaybackTests
     }
 
     [Fact]
+    public void A_one_shot_single_frame_primary_never_takes_the_static_heartbeat()
+    {
+        // The primary is a single frame with "playback": "once", so it is not a loop.  It finishes on
+        // its own first tick and the implicit loop does not repeat: the heartbeat must not restart it,
+        // and no cooldown ever accumulates towards the extra.  The extra runs two 50 ms frames so that
+        // a still-running heartbeat could not be mistaken for it.
+        var onceManifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "pose": {
+                  "frames": ["pose/001.png"], "frameDurationMs": 1000, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "stretch": {
+                  "frames": ["stretch/001.png", "stretch/002.png"], "frameDurationMs": 50, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
+            }
+            """);
+        var coordinator = new PetStateAnimationCoordinator(onceManifest, _ => true, (int _) => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);
+        Assert.True(coordinator.IsAnimating);
+
+        // 100 ticks: with the static heartbeat that would be 100 * 1000 ms, twelve times the 5000 ms
+        // cooldown, yet the extra still never starts and the state stays on its single primary frame.
+        for (var tick = 0; tick < 100; tick++) coordinator.Advance();
+
+        Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);
+        Assert.False(coordinator.IsAnimating);
+    }
+
+    [Fact]
     public void A_static_primary_keeps_a_one_second_heartbeat_so_extras_still_fire()
     {
         // The primary is a single static frame, so it never asks for a frame advance on its own; the

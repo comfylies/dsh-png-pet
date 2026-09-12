@@ -8,7 +8,10 @@ namespace PetHelper;
 public sealed class PetStateAnimationCoordinator
 {
     // A single-frame primary loop produces no frame advance of its own, so the coordinator keeps
-    // reporting a timer interval to measure the extras cooldown against.
+    // reporting a timer interval to measure the extras cooldown against.  The cooldown is therefore
+    // approximate for those primaries: the tick is a fixed one second no matter what frame duration
+    // the single frame declares.  One second keeps a 5000 ms minimum cooldown at least five ticks
+    // long and stays coarse enough not to wake the UI thread needlessly for a still image.
     private const int StaticPrimaryHeartbeatMs = 1000;
 
     private readonly Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram;
@@ -33,8 +36,9 @@ public sealed class PetStateAnimationCoordinator
     public PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable)
         : this(manifest.ResolveProgram, isFrameAvailable, null) { }
 
-    // Mirrors the public constructor for callers that must supply a deterministic extra selector.  The
-    // overload exists so those callers pass a manifest instead of hand-binding the resolver delegate.
+    // Exists for deterministic tests: production always uses the public two-argument constructor and
+    // its random selector.  Mirrors that constructor so test callers pass a manifest rather than
+    // hand-binding the resolver delegate.
     internal PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable,
         Func<int, int>? nextExtraIndex)
         : this(manifest.ResolveProgram, isFrameAvailable, nextExtraIndex) { }
@@ -61,11 +65,15 @@ public sealed class PetStateAnimationCoordinator
     public bool IsAnimating => !reducedMotion && !finished &&
         (clipCompleted || clipPlayback.IsAnimating || StaticPrimaryNeedsHeartbeat);
 
+    // Only a looping single-frame primary needs the heartbeat.  A single-frame one-shot primary
+    // completes on its own first tick, so a heartbeat would keep restarting it, report animation
+    // forever, and fire Completed on every tick without ever reaching the cooldown accumulation.
     private bool StaticPrimaryNeedsHeartbeat => currentExtra is null &&
         phase == AnimationPhase.Looping &&
         currentProgram is { } program &&
         !program.Extras.IsEmpty &&
-        program.Loop[0].Frames.Length == 1;
+        program.Loop[0].Frames.Length == 1 &&
+        program.Loop[0].Playback == PetClipPlaybackMode.Loop;
 
     public void Apply(PetAnimationKey nextRequested, bool reducedMotion)
     {
@@ -143,7 +151,7 @@ public sealed class PetStateAnimationCoordinator
         if (currentExtra is null && phase == AnimationPhase.Looping)
         {
             extraElapsedMs += elapsedMs;
-            if (!reducedMotion && CurrentProgram.Extras.Length > 0 && extraElapsedMs >= CurrentProgram.ExtrasCooldownMs)
+            if (!reducedMotion && !CurrentProgram.Extras.IsEmpty && extraElapsedMs >= CurrentProgram.ExtrasCooldownMs)
                 StartExtra();
         }
     }
