@@ -170,9 +170,13 @@ internal sealed record CharacterManifest(string Name, PetStatusAnchor StatusAnch
         var type = Text(element.GetProperty("type"));
         if (type is "gif" or "png")
         {
-            var expected = isExtra && element.TryGetProperty("frameDurationMs", out _)
-                ? new[] { "type", "file", "frameDurationMs" }
-                : new[] { "type", "file" };
+            // An extra is declared inline with its own display name, so its action object carries
+            // exactly one more member than the same action declared as a primary.
+            string[] expected = isExtra
+                ? element.TryGetProperty("frameDurationMs", out _)
+                    ? ["name", "type", "file", "frameDurationMs"]
+                    : ["name", "type", "file"]
+                : ["type", "file"];
             Fields(element, expected);
             var files = new[] { AssetReference(Text(element.GetProperty("file")), "." + type) };
             if (!isExtra || !element.TryGetProperty("frameDurationMs", out var durationElement))
@@ -182,7 +186,8 @@ internal sealed record CharacterManifest(string Name, PetStatusAnchor StatusAnch
         }
         if (type == "png-sequence")
         {
-            Fields(element, "type", "frames", "frameDurationMs");
+            string[] expected = isExtra ? ["name", "type", "frames", "frameDurationMs"] : ["type", "frames", "frameDurationMs"];
+            Fields(element, expected);
             var frames = element.GetProperty("frames");
             if (frames.ValueKind != JsonValueKind.Array || frames.GetArrayLength() is < 1 or > 240) throw Invalid();
             var files = frames.EnumerateArray().Select(frame => AssetReference(Text(frame), ".png")).ToArray();

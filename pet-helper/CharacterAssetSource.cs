@@ -33,10 +33,15 @@ internal sealed class CharacterAssetSource
         foreach (var (key, value) in document.Actions)
         {
             var animationKey = CharacterManifest.Keys[key];
-            var primary = ToClip(animationKey, $"{id}-{key}-primary", value.Primary, document.StatusAnchor);
+            var primary = ToClip(animationKey, $"{id}-{key}-primary", value.Primary, document.StatusAnchor,
+                PetClipPlaybackMode.Loop);
+            // An extra is interleaved into the primary playback, so it must be one-shot: the
+            // coordinator returns to the primary when the clip completes, and a looping clip
+            // never completes (a single-frame loop is not even animating).
             var extras = value.Extras
                 .Select((extra, index) => ToClip(animationKey, $"{id}-{key}-extra-{index}",
-                    new StoredCharacterClip(extra.Frames, extra.Durations), document.StatusAnchor) with { Label = extra.Name })
+                    new StoredCharacterClip(extra.Frames, extra.Durations), document.StatusAnchor,
+                    PetClipPlaybackMode.Once) with { Label = extra.Name })
                 .ToImmutableArray();
             programs.Add(animationKey, new(animationKey, [], [primary], [], false)
             {
@@ -46,8 +51,9 @@ internal sealed class CharacterAssetSource
         }
     }
 
-    private static ResolvedClip ToClip(PetAnimationKey key, string id, StoredCharacterClip clip, PetStatusAnchor anchor) =>
-        new(key, id, clip.Frames.ToImmutableArray(), clip.Durations[0], PetClipPlaybackMode.Loop, anchor)
+    private static ResolvedClip ToClip(PetAnimationKey key, string id, StoredCharacterClip clip, PetStatusAnchor anchor,
+        PetClipPlaybackMode playback) =>
+        new(key, id, clip.Frames.ToImmutableArray(), clip.Durations[0], playback, anchor)
         {
             FrameDurationsMs = clip.Durations.ToImmutableArray(),
         };
@@ -115,7 +121,7 @@ internal sealed class CharacterAssetSource
                 CharacterManifest.Fields(extraElement, "name", "frames", "durations");
                 var name = CharacterManifest.ValidateName(CharacterManifest.Text(extraElement.GetProperty("name")));
                 if (!names.Add(name)) throw CharacterManifest.Invalid();
-                var clip = ParseStoredClip(extraElement, $"frames/{entry.Name}/extra-{index}/", ref total);
+                var clip = ParseStoredClip(extraElement, $"frames/{entry.Name}/extra-{index}/", ref total, isExtra: true);
                 extras.Add(new(name, clip.Frames, clip.Durations));
             }
             actions.Add(entry.Name, new(primary, extras.ToArray()));
@@ -126,9 +132,13 @@ internal sealed class CharacterAssetSource
             cooldownMs, actions);
     }
 
-    private static StoredCharacterClip ParseStoredClip(JsonElement element, string expectedPrefix, ref int total)
+    private static StoredCharacterClip ParseStoredClip(JsonElement element, string expectedPrefix, ref int total,
+        bool isExtra = false)
     {
-        CharacterManifest.Fields(element, "frames", "durations");
+        // A stored extra keeps its display name in the same object as its clip, so its accepted
+        // field set has exactly one more member than a stored primary.
+        string[] expected = isExtra ? ["name", "frames", "durations"] : ["frames", "durations"];
+        CharacterManifest.Fields(element, expected);
         var frameElements = element.GetProperty("frames");
         var delayElements = element.GetProperty("durations");
         if (frameElements.ValueKind != JsonValueKind.Array || delayElements.ValueKind != JsonValueKind.Array ||

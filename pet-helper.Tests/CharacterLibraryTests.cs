@@ -169,6 +169,52 @@ public sealed class CharacterLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Imports_extras_as_one_shot_clips_that_return_to_the_looping_primary()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "idle.gif"), TinyGif());
+        File.WriteAllBytes(Path.Combine(root, "stretch-a.png"), TinyPng());
+        File.WriteAllBytes(Path.Combine(root, "stretch-b.png"), TinyPng());
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "extrasCooldownMs":5000,
+             "actions":{"idle":{
+               "primary":{"type":"gif","file":"idle.gif"},
+               "extras":[{"name":"伸懒腰","type":"png-sequence","frames":["stretch-a.png","stretch-b.png"],"frameDurationMs":100}]}}}
+            """);
+        var library = new CharacterLibrary(Path.Combine(root, "output"));
+
+        using (var draft = library.PrepareDirectory(root, CancellationToken.None))
+        {
+            var info = library.Commit(draft, "多动作", new(.5, .1), .95);
+            var source = library.Load(info.Id);
+            var program = source.ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+            Assert.Equal(PetClipPlaybackMode.Loop, program.Loop[0].Playback);
+            Assert.Equal(PetClipPlaybackMode.Once, program.Extras[0].Playback);
+            Assert.Equal(new[] { "frames/idle/extra-0/0000.png", "frames/idle/extra-0/0001.png" }, program.Extras[0].Frames);
+            Assert.Equal(new[] { 100, 100 }, program.Extras[0].FrameDurationsMs);
+
+            // The coordinator plays an extra until the clip completes and then restarts the primary,
+            // which a looping extra never does: a multi-frame loop animates forever and a single-frame
+            // one is not even animating.  The primary is a single static frame, so the five seconds of
+            // cooldown are measured by the one second heartbeat.
+            var coordinator = new PetStateAnimationCoordinator(source.ResolveProgram, _ => true, _ => 0);
+            coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+            Assert.Equal("frames/idle/primary/0000.png", coordinator.Frame);
+
+            for (var tick = 0; tick < 5; tick++) coordinator.Advance();
+            Assert.Equal("frames/idle/extra-0/0000.png", coordinator.Frame);
+
+            coordinator.Advance();
+            Assert.Equal("frames/idle/extra-0/0001.png", coordinator.Frame);
+
+            coordinator.Advance();
+            Assert.Equal("frames/idle/primary/0000.png", coordinator.Frame);
+        }
+    }
+
+    [Fact]
     public void Rejects_a_single_frame_png_extra_without_a_declared_duration()
     {
         Directory.CreateDirectory(root);

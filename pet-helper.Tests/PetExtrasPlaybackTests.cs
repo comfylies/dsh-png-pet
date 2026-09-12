@@ -203,12 +203,13 @@ public sealed class PetExtrasPlaybackTests
         // The primary is a single frame with "playback": "once", so it is not a loop.  It finishes on
         // its own first tick and the implicit loop does not repeat: the heartbeat must not restart it,
         // and no cooldown ever accumulates towards the extra.  The extra runs two 50 ms frames so that
-        // a still-running heartbeat could not be mistaken for it.
+        // a still-running heartbeat could not be mistaken for it, and the primary declares 40 ms so
+        // that the one second heartbeat is distinguishable from the clip's own frame duration.
         var onceManifest = AnimationManifestTestData.ParseIdle(5, """
             {
               "clips": {
                 "pose": {
-                  "frames": ["pose/001.png"], "frameDurationMs": 1000, "playback": "once",
+                  "frames": ["pose/001.png"], "frameDurationMs": 40, "playback": "once",
                   "statusAnchor": { "x": 0.5, "y": 0.11 }
                 },
                 "stretch": {
@@ -220,17 +221,26 @@ public sealed class PetExtrasPlaybackTests
             }
             """);
         var coordinator = new PetStateAnimationCoordinator(onceManifest, _ => true, (int _) => 0);
+        var completions = 0;
+        coordinator.Completed += (_, _) => completions++;
 
         coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
         Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);
         Assert.True(coordinator.IsAnimating);
+        // The heartbeat would report its own one second tick instead of the declared 40 ms, so the
+        // timer would wait a second for the single frame's only advance.
+        Assert.Equal(40, coordinator.IntervalMs);
 
-        // 100 ticks: with the static heartbeat that would be 100 * 1000 ms, twelve times the 5000 ms
+        // 100 ticks: with the static heartbeat that would be 100 * 1000 ms, twenty times the 5000 ms
         // cooldown, yet the extra still never starts and the state stays on its single primary frame.
         for (var tick = 0; tick < 100; tick++) coordinator.Advance();
 
         Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);
         Assert.False(coordinator.IsAnimating);
+        Assert.Equal(40, coordinator.IntervalMs);
+        // The single frame completes exactly once and the state then stays put: a heartbeat that kept
+        // restarting the clip would re-fire Completed on every one of those ticks.
+        Assert.Equal(1, completions);
     }
 
     [Fact]

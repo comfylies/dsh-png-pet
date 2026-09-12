@@ -37,7 +37,7 @@ public sealed class CharacterPlayerTests
                 var first = image.Source;
                 player.AdvanceFrame();
                 Assert.NotSame(first, image.Source);
-                File.Delete(Path.Combine(root, "library-root", "library", info.Id, "frames", "idle", "0002.png"));
+                File.Delete(Path.Combine(root, "library-root", "library", info.Id, "frames", "idle", "primary", "0002.png"));
                 player.AdvanceFrame();
                 Assert.True(player.HasFailed);
                 Assert.False(player.IsTimerRunning);

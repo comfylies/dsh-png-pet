@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Windows.Media.Imaging;
 
 namespace PetHelper;
@@ -31,7 +33,15 @@ internal sealed class CharacterDraft : IDisposable
 internal sealed class CharacterLibrary
 {
     private const long LibraryLimit = 1024L * 1024 * 1024;
-    internal static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    // The stored character manifest is a local, human-inspectable file that keeps the user's
+    // character and action names verbatim, as the library design shows them.  Only non-ASCII text
+    // is left unescaped: HTML-sensitive and control characters stay escaped, and this document is
+    // never sent over the JSON Lines protocol or displayed as markup.
+    internal static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+    };
     private readonly string root;
     private string LibraryPath => CharacterFiles.Child(root, "library");
     private string StagingPath => CharacterFiles.Child(root, "staging");
@@ -123,7 +133,9 @@ internal sealed class CharacterLibrary
         var gif = GifFrameImporter.IsGif(bytes);
         var manifest = new CharacterManifest("新人物", new(0.5, 0.12), 0.95, CharacterManifest.DefaultExtrasCooldownMs,
             new() { ["idle"] = new(new(gif ? "gif" : "png", ["image"], 100, DurationDeclared: false), []) });
-        return Prepare(manifest, cancellation);
+        // The synthetic manifest's "image" reference is a placeholder: the source file was already
+        // read, so every reference resolves to those same bytes.
+        return Prepare(manifest, _ => bytes, cancellation);
     }
 
     internal CharacterDraft PrepareDirectory(string directory, CancellationToken cancellation)
@@ -131,10 +143,13 @@ internal sealed class CharacterLibrary
         cancellation.ThrowIfCancellationRequested();
         var manifest = CharacterManifest.Parse(Encoding.UTF8.GetString(
             CharacterFiles.Read(CharacterFiles.Child(directory, "character.json"), 65536)));
-        return Prepare(manifest, cancellation);
+        // Manifest references are relative to the directory the user picked, never to the process
+        // working directory; AssetReference has already rejected absolute and escaping values.
+        return Prepare(manifest, reference => CharacterFiles.Read(CharacterFiles.Child(directory, reference), 20 * 1024 * 1024),
+            cancellation);
     }
 
-    private CharacterDraft Prepare(CharacterManifest manifest, CancellationToken cancellation)
+    private CharacterDraft Prepare(CharacterManifest manifest, Func<string, byte[]> readAsset, CancellationToken cancellation)
     {
         using var gate = Lock();
         Directory.CreateDirectory(LibraryPath);
@@ -150,13 +165,13 @@ internal sealed class CharacterLibrary
             long outputBytes = 0;
             foreach (var (key, state) in manifest.Actions)
             {
-                var primary = WriteActionFrames(draft.DirectoryPath, key, "primary", state.Primary, isExtra: false,
-                    budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
+                var primary = WriteActionFrames(draft.DirectoryPath, key, "primary", state.Primary, readAsset,
+                    isExtra: false, budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
                 var extras = new List<StoredCharacterExtra>();
                 for (var index = 0; index < state.Extras.Length; index++)
                 {
                     var clip = WriteActionFrames(draft.DirectoryPath, key, $"extra-{index}", state.Extras[index].Action,
-                        isExtra: true, budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
+                        readAsset, isExtra: true, budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
                     extras.Add(new(state.Extras[index].Name, clip.Frames, clip.Durations));
                 }
                 actions.Add(key, new(primary, extras.ToArray()));
@@ -173,7 +188,7 @@ internal sealed class CharacterLibrary
     }
 
     private static StoredCharacterClip WriteActionFrames(string characterDirectory, string key, string folder,
-        CharacterAction action, bool isExtra, CharacterImportBudget budget, int? canvasSide,
+        CharacterAction action, Func<string, byte[]> readAsset, bool isExtra, CharacterImportBudget budget, int? canvasSide,
         CancellationToken cancellation, ref long outputBytes, long existingBytes)
     {
         var references = new List<string>();
@@ -184,7 +199,9 @@ internal sealed class CharacterLibrary
         foreach (var file in action.Files)
         {
             cancellation.ThrowIfCancellationRequested();
-            GifFrameImporter.Decode(CharacterFiles.Read(file, 20 * 1024 * 1024), action.Type == "gif", action.FrameDurationMs,
+            // The importer never resolves source paths itself: the caller supplies the mapping from a
+            // manifest asset reference to bytes (the chosen directory, or an already read image).
+            GifFrameImporter.Decode(readAsset(file), action.Type == "gif", action.FrameDurationMs,
                 budget, cancellation, canvasSide, (bitmap, delay) =>
             {
                 cancellation.ThrowIfCancellationRequested();
