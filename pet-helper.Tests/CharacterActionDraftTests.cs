@@ -155,5 +155,77 @@ public sealed class CharacterActionDraftTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(root, "output", "staging")));
     }
 
+    [Fact]
+    public void Recovers_a_character_stranded_in_staging_by_an_interrupted_commit()
+    {
+        var (library, id) = CreateCharacter();
+        File.WriteAllBytes(Path.Combine(root, "stretch.png"), CharacterLibraryTests.TinyPng());
+        library.AddExtra(id, Path.Combine(root, "stretch.png"), "idle", "伸懒腰", new(.5, .1), .95, CancellationToken.None);
+        var staging = Path.Combine(root, "output", "staging");
+        // The state a hard kill between the two directory moves of a commit leaves behind: the
+        // library entry is gone and every byte of the character sits in a retired staging tree.
+        Directory.Move(CharacterDirectory(id), Path.Combine(staging, $"retired-{id}-interrupted"));
+
+        // While a commit still holds the library lock it owns staging, so a read that runs into one
+        // reports the character as missing instead of taking the tree away from the live commit.
+        using (new FileStream(Path.Combine(root, "output", "library.lock"), FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Empty(library.List());
+        }
+
+        var restored = Assert.Single(library.List());
+        Assert.Equal(id, restored.Id);
+        var program = library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+        Assert.Equal("伸懒腰", program.Extras[0].Label);
+        Assert.True(File.Exists(Path.Combine(CharacterDirectory(id), "character.json")));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
+    }
+
+    [Fact]
+    public void Never_adopts_a_stranded_copy_over_an_existing_character()
+    {
+        var (library, id) = CreateCharacter();
+        var directory = CharacterDirectory(id);
+        var before = Snapshot(directory);
+        var stranded = Path.Combine(root, "output", "staging", $"retired-{id}-older");
+        Directory.CreateDirectory(stranded);
+        File.WriteAllText(Path.Combine(stranded, "character.json"),
+            """{"libraryFormatVersion":1,"name":"旧副本","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,"actions":{"idle":{"frames":["frames/idle/0000.png"],"durations":[100]}}}""");
+
+        Assert.Equal("维维美", Assert.Single(library.List()).Name);
+        Assert.Equal("维维美", library.Load(id).Document.Name);
+
+        var after = Snapshot(directory);
+        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+        foreach (var (path, bytes) in before) Assert.Equal(bytes, after[path]);
+        // A reader never deletes library bytes: the copy stays where the crash left it.
+        Assert.True(Directory.Exists(stranded));
+    }
+
+    [Fact]
+    public void Rejects_an_action_draft_whose_extra_folder_became_stale()
+    {
+        var (library, id) = CreateCharacter();
+        File.WriteAllBytes(Path.Combine(root, "a.png"), CharacterLibraryTests.TinyPng());
+        // Two drafts prepared from the same document both claim the next free extra folder.
+        using var first = library.PrepareAction(id, Path.Combine(root, "a.png"), "idle", asPrimary: false, CancellationToken.None);
+        var stale = library.PrepareAction(id, Path.Combine(root, "a.png"), "idle", asPrimary: false, CancellationToken.None);
+        library.CommitAction(first, "第一个", new(.5, .1), .95);
+        var before = Snapshot(CharacterDirectory(id));
+
+        Assert.Throws<FormatException>(() => library.CommitAction(stale, "第二个", new(.5, .1), .95));
+
+        // Refused before any directory move: the stored character is byte for byte as it was.
+        var after = Snapshot(CharacterDirectory(id));
+        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+        foreach (var (path, bytes) in before) Assert.Equal(bytes, after[path]);
+        var program = library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+        Assert.Equal("第一个", Assert.Single(program.Extras).Label);
+        // The refused draft still owns its staging tree until the caller releases it.
+        stale.Dispose();
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(root, "output", "staging")));
+    }
+
     public void Dispose() { if (Directory.Exists(root)) Directory.Delete(root, true); }
 }

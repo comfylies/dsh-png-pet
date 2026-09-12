@@ -99,11 +99,20 @@ internal sealed class CharacterLibrary
         "DshPngPet", "Characters")) { }
     internal CharacterLibrary(string root) { this.root = Path.GetFullPath(root); }
 
-    private FileStream Lock()
+    private FileStream OpenLock()
     {
         CharacterFiles.CheckedPath(root);
         Directory.CreateDirectory(root);
         return CharacterFiles.Open(CharacterFiles.Child(root, "library.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+
+    private FileStream Lock() => OpenLock();
+
+    /// <summary>Takes the library lock without waiting, or reports that another writer holds it.</summary>
+    private FileStream? TryLock()
+    {
+        try { return OpenLock(); }
+        catch { return null; }
     }
 
     private static string Id(string value)
@@ -113,9 +122,57 @@ internal sealed class CharacterLibrary
         return value;
     }
 
+    /// <summary>
+    /// Puts back a character a hard kill stranded in staging.  A commit renames the library entry out
+    /// of the way and only then renames the rebuilt one in, so an interrupted commit leaves the
+    /// character missing from the library with every byte still inside
+    /// <c>staging/retired-&lt;id&gt;-&lt;guid&gt;</c>.  Every read of the library recovers first, so the
+    /// orphaned state is never what the user sees.  A commit owns staging while it holds the library
+    /// lock, and an id the library still has is never replaced by a copy that was left behind.
+    /// </summary>
+    private void RecoverStranded()
+    {
+        try
+        {
+            if (!Directory.Exists(StagingPath)) return;
+            var stranded = Directory.EnumerateDirectories(StagingPath, "retired-*")
+                .Select(path => (Path: path, Id: RetiredId(Path.GetFileName(path))))
+                .Where(candidate => candidate.Id is not null &&
+                    !Directory.Exists(CharacterFiles.Child(LibraryPath, candidate.Id!)))
+                .OrderBy(candidate => candidate.Path, StringComparer.Ordinal)
+                .ToArray();
+            if (stranded.Length == 0) return;
+            // A live commit holds the lock from before the first move to after the second one, so a
+            // lock that cannot be taken means the retired tree belongs to a running commit, not to a
+            // crash, and must be left alone.
+            using var gate = TryLock();
+            if (gate is null) return;
+            Directory.CreateDirectory(LibraryPath);
+            foreach (var candidate in stranded)
+            {
+                var target = CharacterFiles.Child(LibraryPath, candidate.Id!);
+                if (Directory.Exists(target)) continue;
+                try { Directory.Move(candidate.Path, target); }
+                catch { /* Another reader adopted it first, or staging is not ours to move. */ }
+            }
+        }
+        catch { /* Recovery is best effort: a read never fails because it could not run. */ }
+    }
+
+    /// <summary>The character id a retired staging directory was named for, or null for anything else.</summary>
+    private static string? RetiredId(string name)
+    {
+        const string prefix = "retired-";
+        if (name.Length < prefix.Length + 34 || !name.StartsWith(prefix, StringComparison.Ordinal) ||
+            name[prefix.Length + 32] != '-') return null;
+        try { return Id(name.Substring(prefix.Length, 32)); }
+        catch { return null; }
+    }
+
     internal IReadOnlyList<CharacterInfo> List()
     {
         var result = new List<CharacterInfo>();
+        RecoverStranded();
         if (!Directory.Exists(LibraryPath)) return result;
         foreach (var path in Directory.EnumerateDirectories(LibraryPath).Take(51))
         {
@@ -132,6 +189,9 @@ internal sealed class CharacterLibrary
 
     internal CharacterAssetSource Load(string id)
     {
+        // The library is read before it is looked at: a character an interrupted commit stranded in
+        // staging is restored here, which is also what lets the stored selection resolve again.
+        RecoverStranded();
         var directory = CharacterFiles.Child(LibraryPath, Id(id));
         var document = CharacterAssetSource.ParseStored(Encoding.UTF8.GetString(
             CharacterFiles.Read(CharacterFiles.Child(directory, "character.json"), 65536)));
@@ -345,6 +405,16 @@ internal sealed class CharacterLibrary
         var current = states.TryGetValue(draft.StateKey, out var existing)
             ? existing
             : new StoredCharacterState(new StoredCharacterClip([], []), []);
+        // The draft fixed the folder it built its frames in when it was prepared, and this is the
+        // folder the committed document will reference.  Re-derive it here so two drafts prepared
+        // before either commit cannot both claim extra-N, and refuse before any directory move:
+        // staged frames in a folder the document does not name would collide with the frames of the
+        // extra that owns that folder, or be stored where the parser rejects them.
+        if (!string.Equals(draft.Folder, draft.AsPrimary ? "primary" : $"extra-{current.Extras.Length}",
+                StringComparison.Ordinal)) throw CharacterManifest.Invalid();
+        // An extra is interleaved into its primary and needs one to return to; a state without a
+        // primary cannot store an extra at all, so refuse instead of failing after the first move.
+        if (!draft.AsPrimary && current.Primary.Frames.Length == 0) throw CharacterManifest.Invalid();
         StoredCharacterState updated;
         if (draft.AsPrimary)
         {
@@ -462,7 +532,9 @@ internal sealed class CharacterLibrary
         IReadOnlyDictionary<string, string> relocatedReferences)
     {
         var target = CharacterFiles.Child(LibraryPath, id);
-        var retired = CharacterFiles.Child(StagingPath, "retired-" + Guid.NewGuid().ToString("N"));
+        // The retired name carries the character id, so a kill between the two moves below leaves a
+        // tree that RecoverStranded can put back under the id the library looks for.
+        var retired = CharacterFiles.Child(StagingPath, $"retired-{id}-{Guid.NewGuid():N}");
         try
         {
             Directory.Move(target, retired);
