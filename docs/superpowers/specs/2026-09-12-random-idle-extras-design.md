@@ -52,15 +52,15 @@ pet-helper/Assets/Animations/idle/
     "stretch": { "frames": ["stretch/001.png", "…"], "frameDurationMs": 100,
                  "playback": "once", "statusAnchor": { "x": 0.5, "y": 0.11 }, "label": "伸懒腰" }
   },
-  "program": { "loop": ["breathe"] },
   "extras": { "clips": ["stretch"], "cooldownMs": 30000 }
 }
 ```
 
 规则：
 
-- **主动作 = `program.loop`**。没有 `program` 的旧式状态仍是"全部片段按顺序轮播"，语义不变。
-- `extras.clips` 中的片段必须 `"playback": "once"`；同一个片段不得同时出现在 `program`（`enter`/`loop`/`transitions`）与 `extras` 中。
+- **主动作 = 该状态解析出的循环程序**：状态声明了 `program` 就用它；没有 `program` 时，隐式循环清单 = **全部片段减去 `extras.clips`**（保持声明顺序）。上例的隐式清单就是 `[breathe]`。
+- 现有 v4 校验不变：状态一旦声明 `program`，其 `enter`/`loop`/`transitions` 里的片段仍必须是 `"playback": "once"`（因此 `breathe` 这种 `loop` 片段只能走隐式清单，不能写进 `program.loop`）。
+- `extras.clips` 中的片段必须 `"playback": "once"`；同一个片段不得同时出现在 `program`（`enter`/`loop`/`transitions`）与 `extras` 中；减去 extras 后主动作清单不得为空。
 - `label` 可选，1–12 字符，不得含控制字符；缺省时 UI 显示片段 id。迁移到 v5 时给现有片段补中文 label（呼吸、思考、搬运、打字、完成、举牌等待、举牌、收牌）。
 - `cooldownMs` 可选，默认 30000，取值 5000–600000。
 - 每个状态最多 4 个附加动作；片段帧数沿用现有上限（单片段 ≤240 帧、整清单 ≤1024 帧）。
@@ -186,7 +186,7 @@ pet-helper/Assets/Animations/idle/
 
 | 位置 | 改动 |
 | --- | --- |
-| `pet-helper/PetAnimationManifest.cs` | 解析 `formatVersion: 5`：片段新增可选 `label`，状态清单新增 `extras`；`ResolvedStateProgram` 增加 `Extras` 与 `ExtrasCooldownMs`；提供"某状态可用动作目录"（主动作 / 附加动作 + 显示名）供预览使用。 |
+| `pet-helper/PetAnimationManifest.cs` | 解析 `formatVersion: 5`：片段新增可选 `label`，状态清单新增 `extras`；没有 `program` 时隐式循环清单改为"全部片段减去 `extras.clips`"；`ResolvedStateProgram` 增加 `Extras` 与 `ExtrasCooldownMs`；提供"某状态可用动作目录"（主动作 / 附加动作 + 显示名）供预览使用。 |
 | `pet-helper/PetStateAnimationCoordinator.cs` | 新增附加动作阶段：冷却累加、注入式随机选择、播完回主动作、重复状态不打断、单帧心跳；新增"预览指定动作"入口。 |
 | `pet-helper/PetAnimationPlayer.cs` | 暴露动作目录与"预览指定动作"给窗口；心跳间隔沿用 coordinator 报告的间隔，不新增计时器。 |
 | `pet-helper/CharacterManifest.cs` | 来源清单接受 1 与 2；v2 支持 `primary` + `extras` + `name` + `extrasCooldownMs`，强制单帧附加动作声明时长。 |
@@ -209,7 +209,7 @@ pet-helper/Assets/Animations/idle/
 
 C# 单元测试（`dotnet test pet-helper.Tests\PetHelper.Tests.csproj --no-restore`）：
 
-- v5 清单解析：接受 `extras` / `label`；未知字段、非 `once` 的附加片段、同时出现在 `program` 与 `extras` 的片段、重复片段、超 4 个附加动作、`cooldownMs` 越界、非法 label 均被拒绝；v1–v4 回归不变；无 `extras` 的 v5 状态与 v4 行为等价。
+- v5 清单解析：接受 `extras` / `label`；未知字段、非 `once` 的附加片段、同时出现在 `program` 与 `extras` 的片段、重复片段、超 4 个附加动作、`cooldownMs` 越界、非法 label、减去 extras 后主动作清单为空均被拒绝；有 `extras` 且无 `program` 时隐式循环清单正确排除附加片段；显式 `program.loop` 里的非 `once` 片段照旧被拒绝；v1–v4 回归不变；无 `extras` 的 v5 状态与 v4 行为等价。
 - 冷却与随机（注入确定性随机源并逐帧推进）：未满 `cooldownMs` 不插播；满了插播一次且完整播放；播完回到主动作并重新计时；允许连续抽中同一个附加动作；单帧附加动作按其 `frameDurationMs` 展示。
 - 打断规则：同一状态的重复 `Apply` 不打断附加动作、不清零冷却；状态切换放弃附加动作；减少动态效果下不插播；拖动暂停期间冷却不推进；单帧主动作 + 有附加动作时心跳维持计时。
 - 外置人物：v1 库读作 primary-only；v2 库解析（含 `name`、`extrasCooldownMs`）；v1→v2 就地升级后目录结构与清单正确，失败路径不改变原人物；单帧附加动作缺 `frameDurationMs` 被拒；同状态重名被拒。
