@@ -13,7 +13,8 @@
       ],
       "frameDurationMs": 125,
       "playback": "loop",
-      "statusAnchor": { "x": 0.5, "y": 0.11 }
+      "statusAnchor": { "x": 0.5, "y": 0.11 },
+      "label": "呼吸"
     }
   }
 }

@@ -11,7 +11,8 @@
       ],
       "frameDurationMs": 83,
       "playback": "once",
-      "statusAnchor": { "x": 0.5, "y": 0.11 }
+      "statusAnchor": { "x": 0.5, "y": 0.11 },
+      "label": "举牌"
     },
     "hold-card": {
       "frames": [
@@ -27,7 +28,8 @@
       ],
       "frameDurationMs": 83,
       "playback": "once",
-      "statusAnchor": { "x": 0.5, "y": 0.11 }
+      "statusAnchor": { "x": 0.5, "y": 0.11 },
+      "label": "等待"
     },
     "withdraw-card": {
       "frames": [
@@ -39,7 +41,8 @@
       ],
       "frameDurationMs": 83,
       "playback": "once",
-      "statusAnchor": { "x": 0.5, "y": 0.11 }
+      "statusAnchor": { "x": 0.5, "y": 0.11 },
+      "label": "收牌"
     }
   },
   "program": {
