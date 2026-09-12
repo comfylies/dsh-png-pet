@@ -19,7 +19,26 @@ public sealed class PetAnimationExtrasManifestTests
               "statusAnchor": { "x": 0.5, "y": 0.11 }, "label": "伸懒腰"
             }
           },
-          "extras": { "clips": ["stretch"], "cooldownMs": 30000 }
+          "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
+        }
+        """;
+
+    /// <summary>The same extras block on a label-free body, so only "extras" can fail a version gate.</summary>
+    private const string IdleWithExtrasWithoutLabels = """
+        {
+          "clips": {
+            "breathe": {
+              "frames": ["breathe/001.png", "breathe/002.png"],
+              "frameDurationMs": 125, "playback": "loop",
+              "statusAnchor": { "x": 0.5, "y": 0.11 }
+            },
+            "stretch": {
+              "frames": ["stretch/001.png", "stretch/002.png"],
+              "frameDurationMs": 100, "playback": "once",
+              "statusAnchor": { "x": 0.5, "y": 0.11 }
+            }
+          },
+          "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
         }
         """;
 
@@ -32,8 +51,33 @@ public sealed class PetAnimationExtrasManifestTests
 
         Assert.Equal(new[] { "idle-breathe" }, program.Loop.Select(clip => clip.Id));
         Assert.Equal(new[] { "idle-stretch" }, program.Extras.Select(clip => clip.Id));
-        Assert.Equal(30000, program.ExtrasCooldownMs);
+        Assert.Equal(5000, program.ExtrasCooldownMs);
         Assert.Equal("伸懒腰", program.Extras[0].Label);
+    }
+
+    [Fact]
+    public void Extras_accept_a_cooldown_of_the_upper_bound()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"], "frameDurationMs": 125, "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "stretch": {
+                  "frames": ["stretch/001.png"], "frameDurationMs": 100, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "extras": { "clips": ["stretch"], "cooldownMs": 600000 }
+            }
+            """);
+
+        var program = manifest.ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+        Assert.Equal(600000, program.ExtrasCooldownMs);
+        Assert.Equal(new[] { "idle-stretch" }, program.Extras.Select(clip => clip.Id));
     }
 
     [Fact]
@@ -58,6 +102,49 @@ public sealed class PetAnimationExtrasManifestTests
     }
 
     [Fact]
+    public void Extras_resolve_in_declaration_order()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"], "frameDurationMs": 125, "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "stretch": {
+                  "frames": ["stretch/001.png"], "frameDurationMs": 100, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "yawn": {
+                  "frames": ["yawn/001.png"], "frameDurationMs": 100, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "extras": { "clips": ["yawn", "stretch"] }
+            }
+            """);
+
+        var program = manifest.ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+        // The extras list order wins over the clip declaration order.
+        Assert.Equal(new[] { "idle-yawn", "idle-stretch" }, program.Extras.Select(clip => clip.Id));
+        Assert.Equal(new[] { "idle-breathe" }, program.Loop.Select(clip => clip.Id));
+    }
+
+    [Fact]
+    public void A_state_without_clips_inherits_the_fallback_extras_and_cooldown()
+    {
+        // "working" declares no clips of its own and falls back to "idle".
+        var manifest = AnimationManifestTestData.ParseIdle(5, IdleWithExtras);
+
+        var program = manifest.ResolveProgram(PetAnimationKey.Working, _ => true);
+
+        Assert.Equal(PetAnimationKey.Idle, program.EffectiveKey);
+        Assert.Equal(new[] { "idle-stretch" }, program.Extras.Select(clip => clip.Id));
+        Assert.Equal(5000, program.ExtrasCooldownMs);
+    }
+
+    [Fact]
     public void Extras_without_available_frames_are_dropped()
     {
         var manifest = AnimationManifestTestData.ParseIdle(5, IdleWithExtras);
@@ -73,6 +160,8 @@ public sealed class PetAnimationExtrasManifestTests
     [Theory]
     // A clip cannot be both the primary loop and an extra.
     [InlineData("\"program\": { \"enter\": [], \"loop\": [\"stretch\"] }, \"extras\": { \"clips\": [\"stretch\"] }")]
+    // A clip cannot be both a transition and an extra.
+    [InlineData("\"transitions\": [{ \"to\": [\"thinking\"], \"clips\": [\"stretch\"] }], \"extras\": { \"clips\": [\"stretch\"] }")]
     // Extras must be declared as one-shot clips.
     [InlineData("\"extras\": { \"clips\": [\"breathe\"] }")]
     // Duplicate extras are rejected.
@@ -146,6 +235,13 @@ public sealed class PetAnimationExtrasManifestTests
     [Fact]
     public void Version_four_rejects_extras()
     {
-        Assert.Throws<FormatException>(() => AnimationManifestTestData.ParseIdle(4, IdleWithExtras));
+        // The identical label-free body parses under version five, so the failure below is
+        // attributable to the extras field rather than to a version five clip label.
+        var versionFive = AnimationManifestTestData.ParseIdle(5, IdleWithExtrasWithoutLabels);
+        Assert.Equal(
+            new[] { "idle-stretch" },
+            versionFive.ResolveProgram(PetAnimationKey.Idle, _ => true).Extras.Select(clip => clip.Id));
+
+        Assert.Throws<FormatException>(() => AnimationManifestTestData.ParseIdle(4, IdleWithExtrasWithoutLabels));
     }
 }
