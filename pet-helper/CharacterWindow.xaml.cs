@@ -12,10 +12,12 @@ public partial class CharacterWindow : Window
     private readonly CharacterLibrary library;
     private readonly Func<string?, Task<bool>> useCharacter;
     private readonly Func<string?> currentId;
+    private readonly Func<string, string, bool> confirm;
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? importing;
     private CharacterDraft? draft;
     private CharacterActionDraft? actionDraft;
+    private bool actionReplacesPrimary;
     private CharacterAssetSource? previewSource;
     private string? previewCharacterId;
     private string? actionSourcePath;
@@ -26,7 +28,7 @@ public partial class CharacterWindow : Window
     private int previewGeneration;
 
     private sealed record Entry(string? Id, string Label, ImageSource? Thumbnail);
-    // One entry per state key of the stored format; the two selectors share these choices.
+    // One entry per state key of the stored format; the two selectors label them differently.
     private static readonly (string Key, PetAnimationKey AnimationKey, string Name)[] States =
     [
         ("idle", PetAnimationKey.Idle, "待机"), ("thinking", PetAnimationKey.Thinking, "思考"),
@@ -36,6 +38,14 @@ public partial class CharacterWindow : Window
         ("error", PetAnimationKey.Error, "错误"), ("disconnected", PetAnimationKey.Disconnected, "未连接"),
     ];
     private sealed record StateChoice(string KeyName, PetAnimationKey Key, string Name) { public override string ToString() => Name; }
+    /// <summary>
+    /// A state choice of the add-action selector, which spells out what the character already stores
+    /// there, e.g. 「待机（主动作 + 1 附加）」.  The plain state name always stays in the text.
+    /// </summary>
+    private sealed record ActionStateChoice(string KeyName, PetAnimationKey Key, string Name, string Label)
+    {
+        public override string ToString() => Label;
+    }
     /// <summary>One previewable action of the selected state, labelled with the role it plays there.</summary>
     private sealed record ActionChoice(PetActionChoice Choice, int Index)
     {
@@ -43,14 +53,21 @@ public partial class CharacterWindow : Window
             Choice.IsExtra ? $"{Choice.Label} · 附加" : $"{Choice.Label} · 主动作";
     }
 
-    internal CharacterWindow(CharacterLibrary library, Func<string?, Task<bool>> useCharacter, Func<string?> currentId)
+    internal CharacterWindow(CharacterLibrary library, Func<string?, Task<bool>> useCharacter, Func<string?> currentId,
+        Func<string, string, bool>? confirm = null)
     {
         InitializeComponent();
         this.library = library; this.useCharacter = useCharacter; this.currentId = currentId;
+        // Removing or replacing stored material drops it for good, so every such step asks first.
+        // The question itself is injectable, which keeps the answer out of a modal dialog in tests.
+        this.confirm = confirm ?? ((text, caption) => MessageBox.Show(this, text, caption,
+            MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
         var states = States.Select(state => new StateChoice(state.Key, state.AnimationKey, state.Name)).ToArray();
         PreviewState.ItemsSource = states;
         PreviewState.SelectedIndex = 0;
-        ActionState.ItemsSource = states;
+        // The add-action selector starts from the plain names and gains its counts with a character.
+        ActionState.ItemsSource = States
+            .Select(state => new ActionStateChoice(state.Key, state.AnimationKey, state.Name, state.Name)).ToArray();
         ActionState.SelectedIndex = 0;
         Loaded += async (_, _) =>
         {
@@ -65,11 +82,22 @@ public partial class CharacterWindow : Window
             closed = true; previewGeneration++; lifetime.Cancel(); importing?.Cancel();
             preview?.Stop(); PreviewImage.Source = null;
             // Staging is only released while nothing is being written into it.
-            if (!busy) { draft?.Dispose(); draft = null; actionDraft?.Dispose(); actionDraft = null; }
+            if (!busy) { draft?.Dispose(); draft = null; DiscardActionDraft(); }
         };
     }
 
     internal void ShowNotice(string text) => Notice.Text = text;
+
+    /// <summary>
+    /// Releases the staged action together with the facts a save reads from it, so a draft and the
+    /// role it was staged with never disagree.
+    /// </summary>
+    private void DiscardActionDraft()
+    {
+        actionDraft?.Dispose();
+        actionDraft = null;
+        actionReplacesPrimary = false;
+    }
 
     /// <summary>
     /// Adding an action needs a stored character to add it to: not the built-in one, which the window
@@ -132,7 +160,7 @@ public partial class CharacterWindow : Window
         draft?.Dispose(); draft = null;
         // A prepared action belongs to the character it was prepared for, so selecting another one
         // leaves the action mode.
-        actionDraft?.Dispose(); actionDraft = null;
+        DiscardActionDraft();
         actionSourcePath = null;
         ImportSettings.Visibility = Visibility.Collapsed;
         ActionSettings.Visibility = Visibility.Collapsed;
@@ -168,6 +196,9 @@ public partial class CharacterWindow : Window
         AnchorY.Value = source?.Document.StatusAnchor.Y ?? 0.05;
         Baseline.Value = source?.Document.Baseline ?? 0.976;
         UpdateMarkers();
+        // The add-action panel describes the character that is shown: its state names carry the counts
+        // of that character, and its roles and extras follow the state the selector holds.
+        RefreshActionOptions();
         RebuildActionChoices();
     }
 
@@ -231,7 +262,7 @@ public partial class CharacterWindow : Window
             preview?.Stop();
             draft?.Dispose(); draft = next;
             // The import owns the preview now, so a prepared action is released with its panel.
-            actionDraft?.Dispose(); actionDraft = null;
+            DiscardActionDraft();
             actionSourcePath = null;
             ActionSettings.Visibility = Visibility.Collapsed;
             ShowPreview(draft.Source);
@@ -263,8 +294,7 @@ public partial class CharacterWindow : Window
             return;
         }
         actionSourcePath = null;
-        actionDraft?.Dispose();
-        actionDraft = null;
+        DiscardActionDraft();
         // The two modes write the same preview, so start the action flow from a clean slate.
         draft?.Dispose();
         draft = null;
@@ -277,15 +307,32 @@ public partial class CharacterWindow : Window
 
     private void ActionSettings_Changed(object sender, SelectionChangedEventArgs e) => RefreshActionOptions();
 
-    /// <summary>Lists the roles the selected state still accepts and the extras it already stores.</summary>
+    /// <summary>
+    /// Names what the selected character stores in every state, and lists the roles the chosen state
+    /// still accepts plus the extras it already stores.
+    /// </summary>
     private void RefreshActionOptions()
     {
         // Assigning the selectors below raises SelectionChanged again, which must not re-enter here.
-        if (refreshingActionOptions || previewSource is null || ActionState.SelectedItem is not StateChoice state) return;
+        if (refreshingActionOptions || ActionState.SelectedItem is not ActionStateChoice state) return;
         refreshingActionOptions = true;
         try
         {
-            var document = previewSource.Document;
+            // The state selector names what each state currently has, so its labels follow the
+            // character the panel works on rather than staying at whatever was shown before.
+            var document = previewSource?.Document;
+            var labels = States.Select(entry => DescribeState(entry.Name, entry.Key, document)).ToArray();
+            if (!labels.SequenceEqual(ActionState.Items.Cast<ActionStateChoice>().Select(choice => choice.Label)))
+            {
+                ActionState.ItemsSource = States
+                    .Select((entry, index) => new ActionStateChoice(entry.Key, entry.AnimationKey, entry.Name, labels[index]))
+                    .ToArray();
+                // Rebuilding the list drops the selection, so the state the user chose is put back.
+                ActionState.SelectedItem = ActionState.Items.Cast<ActionStateChoice>()
+                    .FirstOrDefault(choice => choice.KeyName == state.KeyName);
+            }
+            // The built-in character stores no states, so there are no roles or extras to describe.
+            if (document is null) return;
             var hasState = document.Actions.TryGetValue(state.KeyName, out var stored);
             var primaryFrames = hasState ? stored!.Primary.Frames.Length : 0;
             var extraCount = hasState ? stored!.Extras.Length : 0;
@@ -306,6 +353,48 @@ public partial class CharacterWindow : Window
         finally { refreshingActionOptions = false; }
     }
 
+    /// <summary>
+    /// Spells out what a state already stores, e.g. 「待机（主动作 + 1 附加）」 or 「思考（无主动作）」;
+    /// the plain state name always stays in the text.  Without a stored character there is nothing to
+    /// count, so the name stays plain.
+    /// </summary>
+    private static string DescribeState(string name, string key, StoredCharacter? document)
+    {
+        if (document is null) return name;
+        var hasState = document.Actions.TryGetValue(key, out var state);
+        var description = hasState && state!.Primary.Frames.Length > 0 ? "主动作" : "无主动作";
+        var extras = hasState ? state!.Extras.Length : 0;
+        if (extras > 0) description += $" + {extras} 附加";
+        return $"{name}（{description}）";
+    }
+
+    /// <summary>The Chinese name of a state key, which is what the user reads in a confirmation.</summary>
+    private static string StateName(string key) =>
+        States.FirstOrDefault(state => state.Key == key).Name ?? "该状态";
+
+    /// <summary>
+    /// True when the picked material is a GIF that decodes to a single frame within the importer's
+    /// canvas limits.  One frame carries no display duration of its own and this flow declares none
+    /// for GIFs, so such material can never become an extra; the window names that reason instead of
+    /// letting the library report it as unreadable material.  The chosen path is only borrowed here.
+    /// </summary>
+    private static bool IsUnstorableSingleFrameGif(string path)
+    {
+        try
+        {
+            var bytes = CharacterFiles.Read(path, 20 * 1024 * 1024);
+            if (!GifFrameImporter.IsGif(bytes) || bytes.Length < 10) return false;
+            // The logical screen size is judged before frames are counted, as the importer does.
+            var width = bytes[6] | bytes[7] << 8;
+            var height = bytes[8] | bytes[9] << 8;
+            if (width is < 1 or > 2048 || height is < 1 or > 2048) return false;
+            using var input = new MemoryStream(bytes, writable: false);
+            var decoder = new GifBitmapDecoder(input, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.None);
+            return decoder.Frames.Count == 1;
+        }
+        catch { return false; }
+    }
+
     private async void PickActionSource_Click(object sender, RoutedEventArgs e)
     {
         if (busy || previewSource is null || previewCharacterId is null) return;
@@ -315,15 +404,22 @@ public partial class CharacterWindow : Window
             Title = "选择动作素材", CheckFileExists = true,
         };
         if (dialog.ShowDialog(this) != true) return;
-        actionSourcePath = dialog.FileName;
+        await ChooseActionSource(dialog.FileName);
+    }
+
+    /// <summary>Stages the material the user picked for the state and role the panel shows.</summary>
+    internal async Task ChooseActionSource(string path)
+    {
+        actionSourcePath = path;
         await PrepareActionDraft();
     }
 
     /// <summary>Decodes the chosen material into staging and previews it against the stored character.</summary>
     private async Task PrepareActionDraft()
     {
-        if (busy || previewCharacterId is null || actionSourcePath is null || ActionState.SelectedItem is not StateChoice state) return;
-        var asPrimary = (ActionRole.SelectedItem as string) is "主动作" or "替换主动作";
+        if (busy || previewCharacterId is null || actionSourcePath is null || ActionState.SelectedItem is not ActionStateChoice state) return;
+        var role = ActionRole.SelectedItem as string;
+        var asPrimary = role is "主动作" or "替换主动作";
         // The role and the name are read before the busy state disables the panel that holds them,
         // which would otherwise make ActionName.IsEnabled report false.
         var previewName = ActionName.IsEnabled && ActionName.Text.Trim().Length > 0 ? ActionName.Text : "预览";
@@ -335,13 +431,28 @@ public partial class CharacterWindow : Window
         CharacterActionDraft? next = null;
         try
         {
-            next = await Task.Run(() => library.PrepareAction(previewCharacterId, actionSourcePath, state.KeyName, asPrimary, importing.Token), importing.Token);
+            next = await Task.Run(() =>
+            {
+                // A single static GIF cannot become an extra and this flow declares no duration for
+                // GIFs, so it is refused here with its own reason rather than staged and reported as
+                // unreadable material once the library rejects it.
+                if (!asPrimary && IsUnstorableSingleFrameGif(actionSourcePath)) return null;
+                return library.PrepareAction(previewCharacterId, actionSourcePath, state.KeyName, asPrimary, importing.Token);
+            }, importing.Token);
+            if (next is null)
+            {
+                if (!closed) ShowNotice("单个静态 GIF 没有自身时长，不能作为附加动作：请改用多帧 GIF，或改用 PNG 素材。");
+                return;
+            }
             if (closed || importing.IsCancellationRequested) { next.Dispose(); return; }
             // The staged source is built before the draft is published, so a rejected name or an
             // unreadable library cannot leave the window holding a draft that was already released.
             var stagedSource = library.PreviewStagedAction(next, previewName);
-            actionDraft?.Dispose();
+            DiscardActionDraft();
             actionDraft = next;
+            // Only the role selector that offered 替换主动作 can stage a replacement, and the draft
+            // keeps that fact: the selector can move before the user saves.
+            actionReplacesPrimary = role == "替换主动作";
             preview?.Stop();
             PreviewImage.Source = null;
             previewSource = stagedSource;
@@ -349,7 +460,8 @@ public partial class CharacterWindow : Window
             preview = new PetAnimationPlayer(PreviewImage, previewSource, preview: true);
             // Both selectors move to the state the action is being added to, so the dropdown lists the
             // new action and selecting it plays it.
-            PreviewState.SelectedItem = state;
+            PreviewState.SelectedItem = PreviewState.Items.Cast<StateChoice>()
+                .FirstOrDefault(choice => choice.KeyName == state.KeyName);
             RebuildActionChoices();
             // The staged action is the first catalog entry for a primary and the last one for an extra.
             var staged = asPrimary ? 0 : PreviewAction.Items.Count - 1;
@@ -362,23 +474,22 @@ public partial class CharacterWindow : Window
         finally
         {
             importing.Dispose(); importing = null;
-            if (closed) { actionDraft?.Dispose(); actionDraft = null; }
+            if (closed) DiscardActionDraft();
             if (!closed) { CancelImportButton.Visibility = Visibility.Collapsed; SetBusy(false); }
         }
     }
 
     private async void RemoveAction_Click(object sender, RoutedEventArgs e)
     {
-        if (busy || previewCharacterId is null || ActionState.SelectedItem is not StateChoice state) return;
+        if (busy || previewCharacterId is null || ActionState.SelectedItem is not ActionStateChoice state) return;
         if (ActionExtras.SelectedItem is not string name) return;
-        if (MessageBox.Show(this, $"移除附加动作「{name}」？", "移除动作",
-            MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (!confirm($"移除附加动作「{name}」？", "移除动作")) return;
         SetBusy(true);
         try
         {
             // Removing renumbers the folders, so a prepared action and the preview of it are both
             // stale as soon as the removal is written.
-            actionDraft?.Dispose(); actionDraft = null;
+            DiscardActionDraft();
             preview?.Stop(); PreviewImage.Source = null;
             await Task.Run(() => library.RemoveExtra(previewCharacterId, state.KeyName, name), lifetime.Token);
             SetBusy(false);
@@ -392,18 +503,19 @@ public partial class CharacterWindow : Window
     /// <summary>
     /// Shows the stored character again after its directory was rebuilt.  The running pet is rebuilt
     /// from it as well, even when this window is already closed: the commit moved the frames the live
-    /// player reads, and a player that loses them falls back to the default character.
+    /// player reads, and a player that loses them falls back to the default character.  The result is
+    /// reported so a caller can say whether the running pet really took the rebuilt character.
     /// </summary>
-    private async Task ReloadCharacter(string id)
+    private async Task<bool> ReloadCharacter(string id)
     {
         var source = await Task.Run(() => library.Load(id));
         if (!closed)
         {
+            // ShowPreview also refreshes the add-action panel for the reloaded character.
             ShowPreview(source);
             PreviewTitle.Text = source.Document.Name;
-            RefreshActionOptions();
         }
-        await useCharacter(id);
+        return await useCharacter(id);
     }
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
@@ -411,6 +523,17 @@ public partial class CharacterWindow : Window
         if (busy) return;
         // The action role is read before the busy state disables the panel that holds the selectors.
         var extraName = actionDraft is not null && ActionName.IsEnabled ? ActionName.Text : null;
+        // The draft, not the role selector that can move after the material was staged, decides
+        // whether this save stores an extra - and an extra is stored under the name in the box.
+        if (actionDraft is { AsPrimary: false } && ActionName.Text.Trim().Length == 0)
+        {
+            ShowNotice("附加动作必须有名称：请填写 1–40 个字符的名称后再保存。");
+            return;
+        }
+        // Replacing a primary drops that state's stored frames for good, so it is confirmed first.
+        if (actionDraft is { AsPrimary: true } && actionReplacesPrimary &&
+            !confirm($"替换「{StateName(actionDraft.StateKey)}」的主动作？该状态原来的主动作帧会被丢弃，无法恢复。", "替换主动作"))
+            return;
         var actionAnchor = new PetStatusAnchor(AnchorX.Value, AnchorY.Value);
         var actionBaseline = Baseline.Value;
         SetBusy(true);
@@ -423,14 +546,17 @@ public partial class CharacterWindow : Window
                 // Stop the preview and release its staged frames before the commit moves them.
                 preview?.Stop(); PreviewImage.Source = null;
                 var info = await Task.Run(() => library.CommitAction(pending, extraName, actionAnchor, actionBaseline));
-                actionDraft = null;
+                DiscardActionDraft();
                 pending.Dispose();
                 ImportSettings.Visibility = Visibility.Collapsed;
                 ActionSettings.Visibility = Visibility.Collapsed;
                 ApplyButton.Content = "使用此人物";
                 SetBusy(false);
-                await ReloadCharacter(info.Id);
-                ShowNotice("动作已保存，运行中的桌宠已重新加载这个人物。");
+                // The action is stored by now, so a running pet that cannot take the rebuilt frames
+                // is reported as its own outcome instead of as a successful reload.
+                ShowNotice(await ReloadCharacter(info.Id)
+                    ? "动作已保存，运行中的桌宠已重新加载这个人物。"
+                    : "动作已保存到人物库；运行中的桌宠无法重新加载，请重新选择这个人物。");
                 return;
             }
             if (draft is not null)
@@ -457,7 +583,7 @@ public partial class CharacterWindow : Window
         finally
         {
             if (!closed) SetBusy(false);
-            else { draft?.Dispose(); draft = null; actionDraft?.Dispose(); actionDraft = null; }
+            else { draft?.Dispose(); draft = null; DiscardActionDraft(); }
         }
     }
 
@@ -481,8 +607,7 @@ public partial class CharacterWindow : Window
     private async void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (busy || draft is not null || Characters.SelectedItem is not Entry { Id: not null } entry) return;
-        if (MessageBox.Show(this, "移除这个人物的本机导入副本？原始素材文件会保留。", "移除人物",
-            MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (!confirm("移除这个人物的本机导入副本？原始素材文件会保留。", "移除人物")) return;
         SetBusy(true);
         try
         {

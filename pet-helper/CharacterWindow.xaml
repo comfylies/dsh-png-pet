@@ -75,7 +75,7 @@
           </StackPanel>
           <StackPanel x:Name="ActionSettings" Visibility="Collapsed">
             <TextBlock Text="目标状态" Margin="0,4,0,5"/>
-            <ComboBox x:Name="ActionState" Width="180" HorizontalAlignment="Left" SelectionChanged="ActionSettings_Changed"/>
+            <ComboBox x:Name="ActionState" Width="300" HorizontalAlignment="Left" SelectionChanged="ActionSettings_Changed"/>
             <TextBlock Text="动作角色" Margin="0,10,0,5"/>
             <ComboBox x:Name="ActionRole" Width="180" HorizontalAlignment="Left" SelectionChanged="ActionSettings_Changed"/>
             <TextBlock Text="动作名称（附加动作必填）" Margin="0,10,0,5"/>
