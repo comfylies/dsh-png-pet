@@ -67,6 +67,8 @@
           <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
             <TextBlock Text="预览状态" VerticalAlignment="Center" Margin="0,0,10,0"/>
             <ComboBox x:Name="PreviewState" Width="120" SelectionChanged="PreviewState_Changed"/>
+            <TextBlock Text="预览动作" VerticalAlignment="Center" Margin="14,0,10,0"/>
+            <ComboBox x:Name="PreviewAction" Width="160" SelectionChanged="PreviewAction_Changed"/>
             <CheckBox x:Name="StaticPreview" Content="静态预览" Margin="14,0,0,0" VerticalAlignment="Center"
                       Checked="PreviewMotion_Changed" Unchecked="PreviewMotion_Changed"/>
           </StackPanel>

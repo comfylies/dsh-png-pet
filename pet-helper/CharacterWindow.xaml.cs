@@ -22,6 +22,12 @@ public partial class CharacterWindow : Window
 
     private sealed record Entry(string? Id, string Label, ImageSource? Thumbnail);
     private sealed record StateChoice(PetAnimationKey Key, string Name) { public override string ToString() => Name; }
+    /// <summary>One previewable action of the selected state, labelled with the role it plays there.</summary>
+    private sealed record ActionChoice(PetActionChoice Choice, int Index)
+    {
+        public override string ToString() =>
+            Choice.IsExtra ? $"{Choice.Label} · 附加" : $"{Choice.Label} · 主动作";
+    }
 
     internal CharacterWindow(CharacterLibrary library, Func<string?, Task<bool>> useCharacter, Func<string?> currentId)
     {
@@ -131,17 +137,31 @@ public partial class CharacterWindow : Window
         AnchorY.Value = source?.Document.StatusAnchor.Y ?? 0.05;
         Baseline.Value = source?.Document.Baseline ?? 0.976;
         UpdateMarkers();
-        ApplyPreviewState();
+        RebuildActionChoices();
     }
 
-    private void ApplyPreviewState()
+    /// <summary>Lists the actions of the selected state; the primary comes first, extras follow.</summary>
+    private void RebuildActionChoices()
     {
-        if (PreviewState?.SelectedItem is StateChoice state)
-            preview?.Apply(state.Key, StaticPreview.IsChecked == true);
+        if (closed || PreviewState?.SelectedItem is not StateChoice state || preview is null) return;
+        var catalog = preview.ActionCatalog(state.Key);
+        PreviewAction.ItemsSource = catalog.Select((choice, index) => new ActionChoice(choice, index)).ToArray();
+        // A state with a single action has nothing to choose between, so the dropdown stays inert.
+        PreviewAction.IsEnabled = catalog.Count > 1;
+        PreviewAction.SelectedIndex = catalog.Count > 0 ? 0 : -1;
+        ApplyPreviewAction();
     }
 
-    private void PreviewState_Changed(object sender, SelectionChangedEventArgs e) => ApplyPreviewState();
-    private void PreviewMotion_Changed(object sender, RoutedEventArgs e) => ApplyPreviewState();
+    private void ApplyPreviewAction()
+    {
+        if (closed || preview is null || PreviewState?.SelectedItem is not StateChoice state) return;
+        if (PreviewAction.SelectedItem is not ActionChoice choice) return;
+        preview.PreviewAction(state.Key, choice.Index, StaticPreview.IsChecked == true);
+    }
+
+    private void PreviewState_Changed(object sender, SelectionChangedEventArgs e) => RebuildActionChoices();
+    private void PreviewAction_Changed(object sender, SelectionChangedEventArgs e) => ApplyPreviewAction();
+    private void PreviewMotion_Changed(object sender, RoutedEventArgs e) => ApplyPreviewAction();
     private void Anchor_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => UpdateMarkers();
     private void UpdateMarkers()
     {
