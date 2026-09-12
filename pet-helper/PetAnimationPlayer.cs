@@ -18,6 +18,7 @@ public sealed class PetAnimationPlayer
 
     private WpfImage image;
     private readonly CharacterAssetSource? characterSource;
+    private readonly PetAnimationManifest? manifest;
     private readonly Func<ImageSource?> staticPlaceholderLoader;
     private PetStateAnimationCoordinator? playback;
     private readonly DispatcherTimer timer;
@@ -66,9 +67,10 @@ public sealed class PetAnimationPlayer
 
         try
         {
-            playback = characterSource is null
-                ? new PetStateAnimationCoordinator(LoadManifest(manifestStreamReader, manifestReaderFactory), IsFrameAvailable)
-                : new PetStateAnimationCoordinator(characterSource.ResolveProgram, IsFrameAvailable);
+            manifest = characterSource is null ? LoadManifest(manifestStreamReader, manifestReaderFactory) : null;
+            playback = manifest is not null
+                ? new PetStateAnimationCoordinator(manifest, IsFrameAvailable)
+                : new PetStateAnimationCoordinator(characterSource!.ResolveProgram, IsFrameAvailable);
             playback.Completed += Playback_Completed;
         }
         catch (InvalidOperationException)
@@ -116,6 +118,38 @@ public sealed class PetAnimationPlayer
         {
             ActivateStaticFallback();
         }
+    }
+
+    /// <summary>Lists the previewable actions of a state; the live pet keeps using Apply.</summary>
+    internal IReadOnlyList<PetActionChoice> ActionCatalog(PetAnimationKey key)
+    {
+        try
+        {
+            if (characterSource is not null) return characterSource.ResolveActions(key, IsFrameAvailable);
+            return manifest is null ? [] : manifest.ResolveActions(key, IsFrameAvailable);
+        }
+        catch { return []; }
+    }
+
+    /// <summary>Plays one catalogued action on repeat for the character window preview.</summary>
+    internal void PreviewAction(PetAnimationKey key, int index, bool reducedMotion)
+    {
+        if (playback is null) return;
+        var catalog = ActionCatalog(key);
+        if (index < 0 || index >= catalog.Count) return;
+        try
+        {
+            playback.Preview(catalog[index].Clip, reducedMotion);
+            UpdateImage();
+            if (playback.IsAnimating)
+            {
+                timer.Interval = TimeSpan.FromMilliseconds(playback.IntervalMs);
+                timer.Start();
+                return;
+            }
+            timer.Stop();
+        }
+        catch { ActivateStaticFallback(); }
     }
 
     public void Stop()

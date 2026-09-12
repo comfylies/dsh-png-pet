@@ -160,6 +160,16 @@ public sealed class PetAnimationManifest
         throw new InvalidOperationException("No available pet animation clip could be resolved.");
     }
 
+    /// <summary>Lists the primary loop clips followed by the one-shot extras of the resolved state.</summary>
+    public ImmutableArray<PetActionChoice> ResolveActions(PetAnimationKey requested, Func<string, bool> isFrameAvailable)
+    {
+        var program = ResolveProgram(requested, isFrameAvailable);
+        return program.Loop
+            .Select(clip => new PetActionChoice(clip.Label ?? clip.Id, false, clip))
+            .Concat(program.Extras.Select(clip => new PetActionChoice(clip.Label ?? clip.Id, true, clip)))
+            .ToImmutableArray();
+    }
+
     private ImmutableArray<ResolvedClip> ResolveClips(
         PetAnimationKey key,
         ImmutableArray<string> clipIds,

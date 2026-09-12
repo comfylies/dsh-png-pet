@@ -23,6 +23,10 @@ public sealed class PetStateAnimationCoordinator
     private ResolvedTransition? transitionAfterEnter;
     private ResolvedClip? currentClip;
     private ResolvedClip? currentExtra;
+    // Set only by Preview and cleared by every live entry point, so preview mode cannot survive into
+    // live playback: a sticky flag would make a later live Apply restart its clip on every completion
+    // and never reach the extras branch again.
+    private ResolvedClip? previewClip;
     private PetAnimationKey requested;
     private AnimationPhase phase;
     private int clipIndex;
@@ -139,6 +143,13 @@ public sealed class PetStateAnimationCoordinator
         if (clipCompleted)
         {
             clipCompleted = false;
+            // Only a window preview restarts its own clip; live one-shot completion still belongs to
+            // the extras branch below, which the preview guard here never shadows.
+            if (previewClip is { } preview)
+            {
+                StartClip(preview);
+                return;
+            }
             if (currentExtra is not null)
             {
                 currentExtra = null;
@@ -148,12 +159,30 @@ public sealed class PetStateAnimationCoordinator
             MoveToNextClip();
             return;
         }
-        if (currentExtra is null && phase == AnimationPhase.Looping)
+        if (previewClip is null && currentExtra is null && phase == AnimationPhase.Looping)
         {
             extraElapsedMs += elapsedMs;
             if (!reducedMotion && !CurrentProgram.Extras.IsEmpty && extraElapsedMs >= CurrentProgram.ExtrasCooldownMs)
                 StartExtra();
         }
+    }
+
+    /// <summary>Plays one explicit clip on repeat for the character window preview.</summary>
+    internal void Preview(ResolvedClip clip, bool reducedMotion)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        previewClip = clip;
+        currentProgram = new ResolvedStateProgram(clip.Key, [], [clip], [], false);
+        currentTransition = null;
+        transitionAfterEnter = null;
+        requested = clip.Key;
+        this.reducedMotion = reducedMotion;
+        currentExtra = null;
+        extraElapsedMs = 0;
+        finished = false;
+        phase = AnimationPhase.Looping;
+        clipIndex = 0;
+        StartClip(clip);
     }
 
     private void StartExtra()
@@ -167,6 +196,7 @@ public sealed class PetStateAnimationCoordinator
 
     private void StartTarget(PetAnimationKey target, bool useEnter)
     {
+        previewClip = null;
         currentProgram = resolveProgram(target, isFrameAvailable);
         currentTransition = null;
         transitionAfterEnter = null;
@@ -186,6 +216,7 @@ public sealed class PetStateAnimationCoordinator
 
     private void StartLoop()
     {
+        previewClip = null;
         phase = AnimationPhase.Looping;
         currentExtra = null;
         extraElapsedMs = 0;
@@ -195,6 +226,7 @@ public sealed class PetStateAnimationCoordinator
 
     private void StartTransition(ResolvedTransition route)
     {
+        previewClip = null;
         currentTransition = route;
         transitionAfterEnter = null;
         currentExtra = null;

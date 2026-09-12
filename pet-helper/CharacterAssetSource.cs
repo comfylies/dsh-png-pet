@@ -66,6 +66,16 @@ internal sealed class CharacterAssetSource
         throw CharacterManifest.Invalid();
     }
 
+    /// <summary>Lists the imported primary followed by the named extras, which the character window previews.</summary>
+    internal ImmutableArray<PetActionChoice> ResolveActions(PetAnimationKey key, Func<string, bool> available)
+    {
+        var program = ResolveProgram(key, available);
+        return program.Loop
+            .Select(clip => new PetActionChoice("默认动作", false, clip))
+            .Concat(program.Extras.Select(clip => new PetActionChoice(clip.Label ?? "附加动作", true, clip)))
+            .ToImmutableArray();
+    }
+
     internal byte[] ReadFrame(string frame)
     {
         if (!references.Contains(frame)) throw CharacterManifest.Invalid();
