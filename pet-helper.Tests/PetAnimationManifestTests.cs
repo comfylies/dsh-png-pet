@@ -439,4 +439,63 @@ public sealed class PetAnimationManifestTests
             }
             """));
     }
+
+    [Fact]
+    public void Reads_a_version_five_clip_label()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png", "breathe/002.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "label": "呼吸"
+                }
+              }
+            }
+            """);
+
+        Assert.Equal("呼吸", manifest.Resolve(PetAnimationKey.Idle, _ => true).Label);
+    }
+
+    [Fact]
+    public void Version_four_still_rejects_a_clip_label()
+    {
+        Assert.Throws<FormatException>(() => AnimationManifestTestData.ParseIdle(4, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "label": "呼吸"
+                }
+              }
+            }
+            """));
+    }
+
+    [Theory]
+    [InlineData("\"\"")]
+    [InlineData("\"1234567890123\"")]
+    [InlineData("\"有\\u0007控制符\"")]
+    public void Rejects_an_invalid_version_five_label(string label)
+    {
+        Assert.Throws<FormatException>(() => AnimationManifestTestData.ParseIdle(5, $$"""
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "label": {{label}}
+                }
+              }
+            }
+            """));
+    }
 }

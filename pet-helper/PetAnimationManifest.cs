@@ -16,6 +16,9 @@ public sealed record ResolvedClip(
 {
     public ImmutableArray<int> FrameDurationsMs { get; init; }
 
+    /// <summary>Optional local display name from the manifest; never crosses the JSON Lines protocol.</summary>
+    public string? Label { get; init; }
+
     public ResolvedClip(
         PetAnimationKey key,
         string id,
@@ -98,7 +101,8 @@ public sealed class PetAnimationManifest
             {
                 2 => ParseVersionTwo(document.RootElement),
                 3 => ParseVersionThree(document.RootElement, actionManifestReader ?? throw InvalidManifest()),
-                4 => ParseVersionFour(document.RootElement, actionManifestReader ?? throw InvalidManifest()),
+                4 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 4, versionFive: false),
+                5 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 5, versionFive: true),
                 _ => throw InvalidManifest(),
             };
         }
@@ -156,7 +160,10 @@ public sealed class PetAnimationManifest
         clip.FrameDurationMs,
         clip.Playback,
         clip.StatusAnchor,
-        clip.RenderTransform);
+        clip.RenderTransform)
+    {
+        Label = clip.Label,
+    };
 
     private static PetAnimationManifest ParseVersionTwo(JsonElement root)
     {
@@ -243,9 +250,11 @@ public sealed class PetAnimationManifest
         return new PetAnimationManifest(actions.ToImmutable(), clips.ToImmutable());
     }
 
-    private static PetAnimationManifest ParseVersionFour(
+    private static PetAnimationManifest ParseStructuredManifest(
         JsonElement root,
-        Func<string, string> actionManifestReader)
+        Func<string, string> actionManifestReader,
+        int expectedVersion,
+        bool versionFive)
     {
         JsonElement actionsElement = default;
         var hasActions = false;
@@ -257,7 +266,7 @@ public sealed class PetAnimationManifest
             {
                 case "formatVersion":
                     if (field.Value.ValueKind != JsonValueKind.Number ||
-                        !field.Value.TryGetInt32(out var version) || version != 4) throw InvalidManifest();
+                        !field.Value.TryGetInt32(out var version) || version != expectedVersion) throw InvalidManifest();
                     break;
                 case "actions": actionsElement = field.Value; hasActions = true; break;
                 default: throw InvalidManifest();
@@ -280,7 +289,8 @@ public sealed class PetAnimationManifest
                 actionManifestReader,
                 clips,
                 allFrames,
-                ref totalFrames));
+                ref totalFrames,
+                versionFive));
         }
 
         if (actions.Count != KeysByName.Count) throw InvalidManifest();
@@ -294,7 +304,8 @@ public sealed class PetAnimationManifest
         Func<string, string> actionManifestReader,
         ImmutableDictionary<string, ClipDefinition>.Builder clips,
         HashSet<string> allFrames,
-        ref int totalFrames)
+        ref int totalFrames,
+        bool versionFive)
     {
         string? manifestPath = null;
         PetAnimationKey? fallback = null;
@@ -317,16 +328,17 @@ public sealed class PetAnimationManifest
         if (!string.Equals(manifestPath, expectedPath, StringComparison.Ordinal)) throw InvalidManifest();
         var childJson = actionManifestReader(expectedPath);
         if (childJson is null) throw InvalidManifest();
-        var state = ParseVersionFourStateManifest(actionName, childJson, clips, allFrames, ref totalFrames);
+        var state = ParseStructuredStateManifest(actionName, childJson, clips, allFrames, ref totalFrames, versionFive);
         return new ActionDefinition(state.ClipIds, fallback, state.Program, state.Transitions);
     }
 
-    private static StateManifestDefinition ParseVersionFourStateManifest(
+    private static StateManifestDefinition ParseStructuredStateManifest(
         string actionName,
         string json,
         ImmutableDictionary<string, ClipDefinition>.Builder clips,
         HashSet<string> allFrames,
-        ref int totalFrames)
+        ref int totalFrames,
+        bool versionFive)
     {
         try
         {
@@ -365,7 +377,8 @@ public sealed class PetAnimationManifest
                         clip.Value,
                         allFrames,
                         ref totalFrames,
-                        $"Animations/{actionName}/")))
+                        $"Animations/{actionName}/",
+                        versionFive)))
                 {
                     throw InvalidManifest();
                 }
@@ -652,12 +665,14 @@ public sealed class PetAnimationManifest
         JsonElement element,
         HashSet<string> allFrames,
         ref int totalFrames,
-        string? framePrefix = null)
+        string? framePrefix = null,
+        bool allowLabel = false)
     {
         ImmutableArray<string>? frames = null;
         int? frameDurationMs = null;
         PetClipPlaybackMode? playback = null;
         PetStatusAnchor? statusAnchor = null;
+        string? label = null;
         var renderTransform = PetRenderTransform.Identity;
         var seenFields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in element.EnumerateObject())
@@ -670,6 +685,7 @@ public sealed class PetAnimationManifest
                 case "playback": playback = ParsePlayback(field.Value); break;
                 case "statusAnchor": statusAnchor = ParseStatusAnchor(field.Value); break;
                 case "renderTransform": renderTransform = ParseRenderTransform(field.Value); break;
+                case "label" when allowLabel: label = ParseLabel(field.Value); break;
                 default: throw InvalidManifest();
             }
         }
@@ -678,7 +694,16 @@ public sealed class PetAnimationManifest
             frameDurationMs ?? throw InvalidManifest(),
             playback ?? throw InvalidManifest(),
             statusAnchor ?? throw InvalidManifest(),
-            renderTransform);
+            renderTransform,
+            label);
+    }
+
+    private static string ParseLabel(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.String) throw InvalidManifest();
+        var label = element.GetString()!;
+        if (label.Length is < 1 or > 12 || label.Any(char.IsControl)) throw InvalidManifest();
+        return label;
     }
 
     private static ImmutableArray<string> ParseFrames(
@@ -903,5 +928,6 @@ public sealed class PetAnimationManifest
         int FrameDurationMs,
         PetClipPlaybackMode Playback,
         PetStatusAnchor StatusAnchor,
-        PetRenderTransform RenderTransform);
+        PetRenderTransform RenderTransform,
+        string? Label = null);
 }
