@@ -101,8 +101,8 @@ public sealed class PetAnimationManifest
             {
                 2 => ParseVersionTwo(document.RootElement),
                 3 => ParseVersionThree(document.RootElement, actionManifestReader ?? throw InvalidManifest()),
-                4 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 4, versionFive: false),
-                5 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 5, versionFive: true),
+                4 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 4),
+                5 => ParseStructuredManifest(document.RootElement, actionManifestReader ?? throw InvalidManifest(), 5),
                 _ => throw InvalidManifest(),
             };
         }
@@ -253,9 +253,11 @@ public sealed class PetAnimationManifest
     private static PetAnimationManifest ParseStructuredManifest(
         JsonElement root,
         Func<string, string> actionManifestReader,
-        int expectedVersion,
-        bool versionFive)
+        int expectedVersion)
     {
+        // Version five is the only structured version with clip labels, so derive the feature flag
+        // from the single authoritative fact instead of accepting a second, conflicting parameter.
+        var versionFive = expectedVersion >= 5;
         JsonElement actionsElement = default;
         var hasActions = false;
         var seenRootFields = new HashSet<string>(StringComparer.Ordinal);
@@ -283,7 +285,7 @@ public sealed class PetAnimationManifest
         {
             if (!seenNames.Add(action.Name) || !KeysByName.TryGetValue(action.Name, out var key) ||
                 action.Value.ValueKind != JsonValueKind.Object) throw InvalidManifest();
-            actions.Add(key, ParseVersionFourAction(
+            actions.Add(key, ParseStructuredAction(
                 action.Name,
                 action.Value,
                 actionManifestReader,
@@ -298,7 +300,7 @@ public sealed class PetAnimationManifest
         return new PetAnimationManifest(actions.ToImmutable(), clips.ToImmutable());
     }
 
-    private static ActionDefinition ParseVersionFourAction(
+    private static ActionDefinition ParseStructuredAction(
         string actionName,
         JsonElement element,
         Func<string, string> actionManifestReader,

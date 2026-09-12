@@ -461,8 +461,63 @@ public sealed class PetAnimationManifestTests
     }
 
     [Fact]
+    public void Accepts_a_twelve_character_version_five_label()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 },
+                  "label": "123456789012"
+                }
+              }
+            }
+            """);
+
+        Assert.Equal("123456789012", manifest.Resolve(PetAnimationKey.Idle, _ => true).Label);
+    }
+
+    [Fact]
+    public void A_version_five_clip_without_a_label_resolves_without_one()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              }
+            }
+            """);
+
+        Assert.Null(manifest.Resolve(PetAnimationKey.Idle, _ => true).Label);
+    }
+
+    [Fact]
     public void Version_four_still_rejects_a_clip_label()
     {
+        // The identical clip body without "label" parses under version four, so the failure below
+        // is attributable to the label field itself rather than to the clip.
+        var unlabelled = AnimationManifestTestData.ParseIdle(4, """
+            {
+              "clips": {
+                "breathe": {
+                  "frames": ["breathe/001.png"],
+                  "frameDurationMs": 125,
+                  "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              }
+            }
+            """);
+        Assert.Null(unlabelled.Resolve(PetAnimationKey.Idle, _ => true).Label);
+
         Assert.Throws<FormatException>(() => AnimationManifestTestData.ParseIdle(4, """
             {
               "clips": {
@@ -481,6 +536,7 @@ public sealed class PetAnimationManifestTests
     [Theory]
     [InlineData("\"\"")]
     [InlineData("\"1234567890123\"")]
+    [InlineData("123")]
     [InlineData("\"有\\u0007控制符\"")]
     public void Rejects_an_invalid_version_five_label(string label)
     {
