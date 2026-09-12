@@ -368,9 +368,68 @@ internal sealed class CharacterLibrary
             Baseline = baseline,
             Actions = UpgradeDocument(states),
         };
-        CommitDirectory(id, document, next, draft, new HashSet<string>(StringComparer.Ordinal));
+        // A new primary replaces the frames of that state, so the retired ones are not moved over.
+        var dropped = draft.AsPrimary && current.Primary.Frames.Length > 0
+            ? current.Primary.Frames.ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        CommitDirectory(id, document, next, draft, dropped, new Dictionary<string, string>(StringComparer.Ordinal));
         draft.Committed = true;
         return new(id, next.Name);
+    }
+
+    /// <summary>Replaces one state's primary action, or supplies a primary for a state that had none.</summary>
+    internal CharacterInfo ReplacePrimary(string id, string file, string stateKey, PetStatusAnchor anchor,
+        double baseline, CancellationToken cancellation)
+    {
+        using var draft = PrepareAction(id, file, stateKey, asPrimary: true, cancellation);
+        return CommitAction(draft, null, anchor, baseline);
+    }
+
+    /// <summary>
+    /// Removes one named extra and renumbers the survivors, so the array index of every remaining
+    /// extra still equals the <c>extra-N</c> folder its frames live in.
+    /// </summary>
+    internal void RemoveExtra(string id, string stateKey, string name)
+    {
+        using var gate = Lock();
+        var checkedId = Id(id);
+        if (!CharacterManifest.Keys.ContainsKey(stateKey)) throw CharacterManifest.Invalid();
+        var document = Load(checkedId).Document;
+        if (!document.Actions.TryGetValue(stateKey, out var state) || state.Extras.Length == 0)
+            throw CharacterManifest.Invalid();
+        var index = Array.FindIndex(state.Extras, extra => string.Equals(extra.Name, name, StringComparison.Ordinal));
+        if (index < 0) throw CharacterManifest.Invalid();
+        var removed = state.Extras[index];
+        // Compacted order: element N of the result belongs in extra-N, wherever it lived before.
+        var remaining = state.Extras.Where((_, position) => position != index).ToArray();
+        var relocated = new Dictionary<string, string>(StringComparer.Ordinal);
+        var rebuilt = new List<StoredCharacterExtra>(remaining.Length);
+        for (var position = 0; position < remaining.Length; position++)
+        {
+            var extra = remaining[position];
+            var frames = new string[extra.Frames.Length];
+            for (var frame = 0; frame < extra.Frames.Length; frame++)
+            {
+                var target = $"frames/{stateKey}/extra-{position}/{frame:D4}.png";
+                relocated[extra.Frames[frame]] = target;
+                frames[frame] = target;
+            }
+            rebuilt.Add(new(extra.Name, frames, extra.Durations));
+        }
+        var states = new Dictionary<string, StoredCharacterState>(document.Actions, StringComparer.Ordinal)
+        {
+            [stateKey] = new(state.Primary, rebuilt.ToArray()),
+        };
+        var next = document with { Actions = states };
+        var dropped = removed.Frames.ToHashSet(StringComparer.Ordinal);
+        // There is no new clip to install: the draft only supplies the empty directory the rebuilt
+        // character is assembled in, and the commit finishes by moving it over the retired one.  Its
+        // own cleanup covers both outcomes, so Dispose below never has to delete a committed tree.
+        using var draft = new CharacterActionDraft(checkedId, stateKey, asPrimary: false, "unused",
+            CharacterFiles.Child(StagingPath, "action-" + Guid.NewGuid().ToString("N")));
+        draft.Clip = new StoredCharacterClip([], []);
+        CommitDirectory(checkedId, document, next, draft, dropped, relocated);
+        draft.Committed = true;
     }
 
     /// <summary>
@@ -393,18 +452,21 @@ internal sealed class CharacterLibrary
     }
 
     /// <summary>
-    /// Rebuilds the character directory from the retired one plus the staged action.  The library
-    /// entry is absent only for the two directory moves, and any failure restores the previous one.
+    /// Rebuilds the character directory from the retired one plus the staged action.  Frames in
+    /// <paramref name="droppedReferences"/> are left behind, frames listed in
+    /// <paramref name="relocatedReferences"/> move to their new reference.  The library entry is
+    /// absent only for the two directory moves, and any failure restores the previous one.
     /// </summary>
     private void CommitDirectory(string id, StoredCharacter previous, StoredCharacter next,
-        CharacterActionDraft draft, IReadOnlySet<string> droppedReferences)
+        CharacterActionDraft draft, IReadOnlySet<string> droppedReferences,
+        IReadOnlyDictionary<string, string> relocatedReferences)
     {
         var target = CharacterFiles.Child(LibraryPath, id);
         var retired = CharacterFiles.Child(StagingPath, "retired-" + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.Move(target, retired);
-            MoveExistingFrames(retired, draft.DirectoryPath, previous, droppedReferences);
+            MoveExistingFrames(retired, draft.DirectoryPath, previous, droppedReferences, relocatedReferences);
             InstallDraftFrames(draft);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(next, JsonOptions);
             CharacterAssetSource.ParseStored(Encoding.UTF8.GetString(bytes));
@@ -429,24 +491,27 @@ internal sealed class CharacterLibrary
     }
 
     private static void MoveExistingFrames(string retired, string building, StoredCharacter previous,
-        IReadOnlySet<string> droppedReferences)
+        IReadOnlySet<string> droppedReferences, IReadOnlyDictionary<string, string> relocatedReferences)
     {
         foreach (var (key, state) in previous.Actions)
         {
-            MoveFrames(retired, building, state.Primary.Frames, key, droppedReferences);
+            MoveFrames(retired, building, state.Primary.Frames, key, droppedReferences, relocatedReferences);
             for (var index = 0; index < state.Extras.Length; index++)
-                MoveFrames(retired, building, state.Extras[index].Frames, key, droppedReferences);
+                MoveFrames(retired, building, state.Extras[index].Frames, key, droppedReferences, relocatedReferences);
         }
     }
 
     private static void MoveFrames(string retired, string building, string[] frames, string key,
-        IReadOnlySet<string> droppedReferences)
+        IReadOnlySet<string> droppedReferences, IReadOnlyDictionary<string, string> relocatedReferences)
     {
         foreach (var reference in frames)
         {
             if (droppedReferences.Contains(reference)) continue;
-            // Version one keeps frames directly under the state folder; version two adds primary/.
-            var upgraded = UpgradeReference(reference, key);
+            // Renumbering wins over the version one upgrade: a relocated reference already names its
+            // final folder, while an untouched version one reference gains the primary/ segment.
+            var upgraded = relocatedReferences.TryGetValue(reference, out var relocated)
+                ? relocated
+                : UpgradeReference(reference, key);
             var source = CharacterFiles.Child(retired, reference);
             var destination = CharacterFiles.Child(building, upgraded);
             if (!File.Exists(source)) continue;

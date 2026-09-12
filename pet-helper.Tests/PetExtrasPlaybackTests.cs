@@ -115,8 +115,8 @@ public sealed class PetExtrasPlaybackTests
         coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
         Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
 
-        // Ten 100 ms primary ticks reach the 5000 ms cooldown and start the extra.
-        for (var tick = 0; tick < 10; tick++) coordinator.Advance();
+        // Fifty 100 ms primary ticks reach the 5000 ms cooldown and start the extra.
+        for (var tick = 0; tick < 50; tick++) coordinator.Advance();
         Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
 
         // The extra is one-shot: it completes, the primary restarts and the cooldown accrues again.

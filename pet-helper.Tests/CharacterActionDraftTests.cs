@@ -104,5 +104,56 @@ public sealed class CharacterActionDraftTests : IDisposable
             Path.Combine(CharacterDirectory(id), program.Loop[0].Frames[0])));
     }
 
+    [Fact]
+    public void Replacing_the_primary_action_swaps_the_frames_of_that_state()
+    {
+        var (library, id) = CreateCharacter();
+        var replacement = Path.Combine(root, "replacement.gif");
+        File.WriteAllBytes(replacement, GifFrameImporterTests.Gif(1));
+
+        library.ReplacePrimary(id, replacement, "idle", new(.5, .1), .95, CancellationToken.None);
+
+        var program = library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+        Assert.Equal(new[] { 40, 250, 100 }, program.Loop[0].FrameDurationsMs);
+        Assert.Empty(program.Extras);
+        var primaryFolder = Path.Combine(CharacterDirectory(id), "frames", "idle", "primary");
+        Assert.Equal(3, Directory.EnumerateFiles(primaryFolder, "*.png").Count());
+    }
+
+    [Fact]
+    public void Removing_an_extra_renumbers_the_remaining_ones()
+    {
+        var (library, id) = CreateCharacter();
+        File.WriteAllBytes(Path.Combine(root, "a.png"), CharacterLibraryTests.TinyPng());
+        library.AddExtra(id, Path.Combine(root, "a.png"), "idle", "第一个", new(.5, .1), .95, CancellationToken.None);
+        library.AddExtra(id, Path.Combine(root, "a.png"), "idle", "第二个", new(.5, .1), .95, CancellationToken.None);
+        Assert.Equal(2, library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true).Extras.Length);
+
+        library.RemoveExtra(id, "idle", "第一个");
+
+        var program = library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+        Assert.Single(program.Extras);
+        Assert.Equal("第二个", program.Extras[0].Label);
+        Assert.StartsWith("frames/idle/extra-0/", program.Extras[0].Frames[0], StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(CharacterDirectory(id), "frames", "idle", "extra-0", "0000.png")));
+        Assert.False(Directory.Exists(Path.Combine(CharacterDirectory(id), "frames", "idle", "extra-1")));
+    }
+
+    [Fact]
+    public void Removing_an_unknown_extra_is_rejected()
+    {
+        var (library, id) = CreateCharacter();
+        var directory = CharacterDirectory(id);
+        var before = Snapshot(directory);
+
+        Assert.Throws<FormatException>(() => library.RemoveExtra(id, "idle", "不存在"));
+
+        // A rejected removal still has to leave the stored character byte for byte as it was.
+        var after = Snapshot(directory);
+        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+        foreach (var (path, bytes) in before) Assert.Equal(bytes, after[path]);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(root, "output", "staging")));
+    }
+
     public void Dispose() { if (Directory.Exists(root)) Directory.Delete(root, true); }
 }
