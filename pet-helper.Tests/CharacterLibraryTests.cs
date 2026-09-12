@@ -232,6 +232,90 @@ public sealed class CharacterLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Keeps_the_declared_duration_of_a_single_frame_gif_extra()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "idle.gif"), TinyGif());
+        File.WriteAllBytes(Path.Combine(root, "stretch.gif"), TinyGif());
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "actions":{"idle":{
+               "primary":{"type":"gif","file":"idle.gif"},
+               "extras":[{"name":"伸懒腰","type":"gif","file":"stretch.gif","frameDurationMs":1500}]}}}
+            """);
+        var library = new CharacterLibrary(Path.Combine(root, "output"));
+
+        using var draft = library.PrepareDirectory(root, CancellationToken.None);
+        var info = library.Commit(draft, "多动作", new(.5, .1), .95);
+        var program = library.Load(info.Id).ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+        // The single frame of the extra is a GIF frame whose own delay is the importer's 100 ms
+        // default; the declared 1500 ms must win, or the extra would flash past.
+        Assert.Single(program.Extras);
+        Assert.Single(program.Extras[0].Frames);
+        Assert.Equal(1500, program.Extras[0].FrameDurationsMs[0]);
+        Assert.Equal(1500, program.Extras[0].FrameDurationMs);
+    }
+
+    [Fact]
+    public void Rejects_a_source_character_with_five_extras()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "idle.gif"), TinyGif());
+        File.WriteAllBytes(Path.Combine(root, "stretch.png"), TinyPng());
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "actions":{"idle":{
+               "primary":{"type":"gif","file":"idle.gif"},
+               "extras":[{"name":"动作一","type":"png","file":"stretch.png","frameDurationMs":1500},
+                         {"name":"动作二","type":"png","file":"stretch.png","frameDurationMs":1500},
+                         {"name":"动作三","type":"png","file":"stretch.png","frameDurationMs":1500},
+                         {"name":"动作四","type":"png","file":"stretch.png","frameDurationMs":1500},
+                         {"name":"动作五","type":"png","file":"stretch.png","frameDurationMs":1500}]}}}
+            """);
+        var library = new CharacterLibrary(Path.Combine(root, "output"));
+
+        Assert.Throws<FormatException>(() => library.PrepareDirectory(root, CancellationToken.None));
+        Assert.Empty(library.List());
+    }
+
+    [Fact]
+    public void Rejects_a_tampered_extra_frame_reference()
+    {
+        Directory.CreateDirectory(root);
+        var input = Path.Combine(root, "input.gif"); File.WriteAllBytes(input, TinyGif());
+        File.WriteAllBytes(Path.Combine(root, "stretch.png"), TinyPng());
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "actions":{"idle":{
+               "primary":{"type":"gif","file":"input.gif"},
+               "extras":[{"name":"伸懒腰","type":"png","file":"stretch.png","frameDurationMs":1500}]}}}
+            """);
+        var location = Path.Combine(root, "output");
+        var library = new CharacterLibrary(location);
+        var info = library.Commit(library.PrepareDirectory(root, CancellationToken.None), "多动作", new(.5, .1), .95);
+        var manifest = Path.Combine(location, "library", info.Id, "character.json");
+        File.WriteAllText(manifest, File.ReadAllText(manifest)
+            .Replace("frames/idle/extra-0/0000.png", "frames/idle/extra-1/0000.png"));
+
+        Assert.Throws<FormatException>(() => library.Load(info.Id));
+    }
+
+    [Fact]
+    public void Rejects_an_unknown_library_format_version()
+    {
+        Directory.CreateDirectory(root);
+        var input = Path.Combine(root, "input.gif"); File.WriteAllBytes(input, TinyGif());
+        var location = Path.Combine(root, "output");
+        var library = new CharacterLibrary(location);
+        var info = library.Commit(library.PrepareImage(input, CancellationToken.None), "test", new(.5, .1), .95);
+        var manifest = Path.Combine(location, "library", info.Id, "character.json");
+        File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("libraryFormatVersion\":2", "libraryFormatVersion\":3"));
+
+        Assert.Throws<FormatException>(() => library.Load(info.Id));
+    }
+
+    [Fact]
     public void Rejects_duplicate_extra_names_in_one_state()
     {
         Directory.CreateDirectory(root);
