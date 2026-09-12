@@ -127,7 +127,7 @@ pet-helper/Assets/Animations/idle/
         { "name": "伸懒腰", "type": "png-sequence", "frames": ["stretch/001.png", "stretch/002.png"], "frameDurationMs": 200 }
       ]
     },
-    "thinking": { "type": "png", "file": "thinking.png", "frameDurationMs": 1000 }
+    "thinking": { "type": "png", "file": "thinking.png" }
   }
 }
 ```
