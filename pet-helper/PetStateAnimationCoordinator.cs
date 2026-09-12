@@ -7,16 +7,23 @@ namespace PetHelper;
 /// </summary>
 public sealed class PetStateAnimationCoordinator
 {
+    // A single-frame primary loop produces no frame advance of its own, so the coordinator keeps
+    // reporting a timer interval to measure the extras cooldown against.
+    private const int StaticPrimaryHeartbeatMs = 1000;
+
     private readonly Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram;
     private readonly Func<string, bool> isFrameAvailable;
+    private readonly Func<int, int> nextExtraIndex;
     private readonly PetClipPlayback clipPlayback = new();
     private ResolvedStateProgram? currentProgram;
     private ResolvedTransition? currentTransition;
     private ResolvedTransition? transitionAfterEnter;
     private ResolvedClip? currentClip;
+    private ResolvedClip? currentExtra;
     private PetAnimationKey requested;
     private AnimationPhase phase;
     private int clipIndex;
+    private int extraElapsedMs;
     private bool reducedMotion;
     private bool clipCompleted;
     private bool finished;
@@ -24,14 +31,16 @@ public sealed class PetStateAnimationCoordinator
     public event EventHandler? Completed;
 
     public PetStateAnimationCoordinator(PetAnimationManifest manifest, Func<string, bool> isFrameAvailable)
-        : this(manifest.ResolveProgram, isFrameAvailable) { }
+        : this(manifest.ResolveProgram, isFrameAvailable, null) { }
 
     internal PetStateAnimationCoordinator(
         Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram,
-        Func<string, bool> isFrameAvailable)
+        Func<string, bool> isFrameAvailable,
+        Func<int, int>? nextExtraIndex = null)
     {
         this.resolveProgram = resolveProgram;
         this.isFrameAvailable = isFrameAvailable ?? throw new ArgumentNullException(nameof(isFrameAvailable));
+        this.nextExtraIndex = nextExtraIndex ?? (count => Random.Shared.Next(count));
         clipPlayback.Completed += (_, _) =>
         {
             clipCompleted = true;
@@ -40,10 +49,17 @@ public sealed class PetStateAnimationCoordinator
     }
 
     public string Frame => clipPlayback.Frame;
-    public int IntervalMs => clipPlayback.FrameDurationMs;
+    public int IntervalMs => StaticPrimaryNeedsHeartbeat ? StaticPrimaryHeartbeatMs : clipPlayback.FrameDurationMs;
     public PetStatusAnchor StatusAnchor => currentClip?.StatusAnchor ?? PetStatusAnchor.Default;
     public PetRenderTransform RenderTransform => currentClip?.RenderTransform ?? PetRenderTransform.Identity;
-    public bool IsAnimating => !reducedMotion && !finished && (clipCompleted || clipPlayback.IsAnimating);
+    public bool IsAnimating => !reducedMotion && !finished &&
+        (clipCompleted || clipPlayback.IsAnimating || StaticPrimaryNeedsHeartbeat);
+
+    private bool StaticPrimaryNeedsHeartbeat => currentExtra is null &&
+        phase == AnimationPhase.Looping &&
+        currentProgram is { } program &&
+        !program.Extras.IsEmpty &&
+        program.Loop[0].Frames.Length == 1;
 
     public void Apply(PetAnimationKey nextRequested, bool reducedMotion)
     {
@@ -104,13 +120,35 @@ public sealed class PetStateAnimationCoordinator
     public void Advance()
     {
         if (!IsAnimating) return;
+        var elapsedMs = IntervalMs;
         clipPlayback.Advance();
         if (clipCompleted)
         {
             clipCompleted = false;
+            if (currentExtra is not null)
+            {
+                currentExtra = null;
+                StartLoop();
+                return;
+            }
             MoveToNextClip();
             return;
         }
+        if (currentExtra is null && phase == AnimationPhase.Looping)
+        {
+            extraElapsedMs += elapsedMs;
+            if (!reducedMotion && CurrentProgram.Extras.Length > 0 && extraElapsedMs >= CurrentProgram.ExtrasCooldownMs)
+                StartExtra();
+        }
+    }
+
+    private void StartExtra()
+    {
+        var extras = CurrentProgram.Extras;
+        currentExtra = extras[nextExtraIndex(extras.Length)];
+        phase = AnimationPhase.Looping;
+        clipIndex = 0;
+        StartClip(currentExtra);
     }
 
     private void StartTarget(PetAnimationKey target, bool useEnter)
@@ -118,6 +156,8 @@ public sealed class PetStateAnimationCoordinator
         currentProgram = resolveProgram(target, isFrameAvailable);
         currentTransition = null;
         transitionAfterEnter = null;
+        currentExtra = null;
+        extraElapsedMs = 0;
         requested = target;
         if (!useEnter || reducedMotion || currentProgram.Enter.IsEmpty)
         {
@@ -133,6 +173,8 @@ public sealed class PetStateAnimationCoordinator
     private void StartLoop()
     {
         phase = AnimationPhase.Looping;
+        currentExtra = null;
+        extraElapsedMs = 0;
         clipIndex = 0;
         StartClip(CurrentProgram.Loop[clipIndex]);
     }
@@ -141,6 +183,8 @@ public sealed class PetStateAnimationCoordinator
     {
         currentTransition = route;
         transitionAfterEnter = null;
+        currentExtra = null;
+        extraElapsedMs = 0;
         phase = AnimationPhase.Transitioning;
         clipIndex = 0;
         StartClip(route.Clips[clipIndex]);
