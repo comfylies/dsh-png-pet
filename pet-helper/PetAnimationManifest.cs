@@ -150,7 +150,7 @@ public sealed class PetAnimationManifest
                     .ToImmutableArray();
                 return new ResolvedStateProgram(current, enter, loop, transitions, program.LoopRepeats)
                 {
-                    Extras = ResolveClips(current, action.Extras, isFrameAvailable),
+                    Extras = ResolveClips(current, action.Extras ?? ImmutableArray<string>.Empty, isFrameAvailable),
                     ExtrasCooldownMs = action.ExtrasCooldownMs,
                 };
             }
@@ -163,12 +163,10 @@ public sealed class PetAnimationManifest
     private ImmutableArray<ResolvedClip> ResolveClips(
         PetAnimationKey key,
         ImmutableArray<string> clipIds,
-        Func<string, bool> isFrameAvailable) => clipIds.IsDefaultOrEmpty
-        ? ImmutableArray<ResolvedClip>.Empty
-        : clipIds
-            .Where(clipId => clips[clipId].Frames.All(isFrameAvailable))
-            .Select(clipId => ToResolvedClip(key, clipId, clips[clipId]))
-            .ToImmutableArray();
+        Func<string, bool> isFrameAvailable) => clipIds
+        .Where(clipId => clips[clipId].Frames.All(isFrameAvailable))
+        .Select(clipId => ToResolvedClip(key, clipId, clips[clipId]))
+        .ToImmutableArray();
 
     private static ResolvedClip ToResolvedClip(PetAnimationKey key, string id, ClipDefinition clip) => new(
         key,
@@ -427,6 +425,8 @@ public sealed class PetAnimationManifest
             }
             // Without an explicit program the implicit loop list is every declared clip minus the
             // extras, in declaration order, so one-shot extras stay out of the rotation.
+            // hasExtras only means the field was present; ParseExtras rejects an empty clip list, so
+            // "the field was present" and "extras were declared" cannot diverge today.
             var loopIds = extras.IsEmpty
                 ? clipIds.ToImmutable()
                 : clipIds.Where(id => !extras.Contains(id, StringComparer.Ordinal)).ToImmutableArray();
@@ -1008,7 +1008,7 @@ public sealed class PetAnimationManifest
         PetAnimationKey? Fallback,
         ProgramDefinition? Program = null,
         ImmutableArray<TransitionDefinition>? Transitions = null,
-        ImmutableArray<string> Extras = default,
+        ImmutableArray<string>? Extras = null,
         int ExtrasCooldownMs = DefaultExtrasCooldownMs);
     private sealed record ProgramDefinition(
         ImmutableArray<string> Enter,
