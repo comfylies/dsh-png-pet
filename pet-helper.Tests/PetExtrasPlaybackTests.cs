@@ -29,11 +29,11 @@ public sealed class PetExtrasPlaybackTests
     internal static PetStateAnimationCoordinator Create(Func<int, int>? nextExtraIndex = null)
     {
         var manifest = AnimationManifestTestData.ParseIdle(5, IdleState);
-        // Bound through an explicitly typed delegate: a bare method group here makes the compiler
-        // pick the manifest-only overload and report the three-argument call as unbindable.
+        // The resolver is bound through an explicitly typed delegate: as a bare method group the
+        // compiler fails to pick the three-argument overload and reports parameter 1 instead.
         Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolver =
             (key, isFrameAvailable) => manifest.ResolveProgram(key, isFrameAvailable);
-        return new PetStateAnimationCoordinator(resolver, _ => true, nextExtraIndex);
+        return new PetStateAnimationCoordinator(resolver, (string _) => true, nextExtraIndex);
     }
 
     [Fact]
@@ -97,5 +97,147 @@ public sealed class PetExtrasPlaybackTests
             coordinator.Advance();
             Assert.StartsWith("Animations/idle/breathe/", coordinator.Frame, StringComparison.Ordinal);
         }
+    }
+
+    private const string WorkingState = """
+        {
+          "clips": {
+            "haul": {
+              "frames": ["haul/001.png", "haul/002.png"], "frameDurationMs": 100, "playback": "loop",
+              "statusAnchor": { "x": 0.5, "y": 0.11 }
+            }
+          }
+        }
+        """;
+
+    private static PetStateAnimationCoordinator CreateWithWorking(Func<int, int>? nextExtraIndex = null)
+    {
+        var manifest = AnimationManifestTestData.Parse(5, IdleState, WorkingState);
+        return new PetStateAnimationCoordinator(manifest, _ => true);
+    }
+
+    [Fact]
+    public void Repeated_messages_for_the_same_state_do_not_interrupt_an_extra_or_reset_the_cooldown()
+    {
+        var coordinator = Create(_ => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        for (var tick = 0; tick < 50; tick++) coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+
+        coordinator.Advance();
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+
+        // The cooldown restarted when the extra returned, so the next extra needs another 50 ticks.
+        for (var tick = 0; tick < 49; tick++) coordinator.Advance();
+        Assert.StartsWith("Animations/idle/breathe/", coordinator.Frame, StringComparison.Ordinal);
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+    }
+
+    [Fact]
+    public void A_real_state_change_abandons_the_extra_and_restarts_the_cooldown()
+    {
+        var coordinator = CreateWithWorking(_ => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        for (var tick = 0; tick < 50; tick++) coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+
+        coordinator.Apply(PetAnimationKey.Working, reducedMotion: false);
+        Assert.Equal("Animations/working/haul/001.png", coordinator.Frame);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+        for (var tick = 0; tick < 49; tick++) coordinator.Advance();
+        Assert.StartsWith("Animations/idle/breathe/", coordinator.Frame, StringComparison.Ordinal);
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+    }
+
+    [Fact]
+    public void Reduced_motion_never_plays_an_extra()
+    {
+        var coordinator = Create(_ => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: true);
+        Assert.False(coordinator.IsAnimating);
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+
+        for (var tick = 0; tick < 500; tick++) coordinator.Advance();
+
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+        Assert.False(coordinator.IsAnimating);
+    }
+
+    [Fact]
+    public void A_one_shot_state_never_reaches_an_extra()
+    {
+        var manifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "complete": {
+                  "frames": ["complete/001.png", "complete/002.png"], "frameDurationMs": 100, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "stretch": {
+                  "frames": ["stretch/001.png"], "frameDurationMs": 1000, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
+            }
+            """);
+        // Bound through an explicitly typed delegate; see the note on Create.
+        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolve = manifest.ResolveProgram;
+        var coordinator = new PetStateAnimationCoordinator(resolve, _ => true, _ => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        for (var tick = 0; tick < 100; tick++) coordinator.Advance();
+
+        Assert.Equal("Animations/idle/complete/002.png", coordinator.Frame);
+        Assert.False(coordinator.IsAnimating);
+    }
+
+    [Fact]
+    public void A_static_primary_keeps_a_one_second_heartbeat_so_extras_still_fire()
+    {
+        // The extra holds 1000 ms, the largest duration the manifest parser accepts, so its reported
+        // interval stays distinguishable from the primary's 1000 ms heartbeat.
+        var staticManifest = AnimationManifestTestData.ParseIdle(5, """
+            {
+              "clips": {
+                "pose": {
+                  "frames": ["pose/001.png"], "frameDurationMs": 100, "playback": "loop",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                },
+                "stretch": {
+                  "frames": ["stretch/001.png"], "frameDurationMs": 1000, "playback": "once",
+                  "statusAnchor": { "x": 0.5, "y": 0.11 }
+                }
+              },
+              "extras": { "clips": ["stretch"], "cooldownMs": 5000 }
+            }
+            """);
+        // Bound through an explicitly typed delegate; see the note on Create.
+        Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolve = staticManifest.ResolveProgram;
+        var coordinator = new PetStateAnimationCoordinator(resolve, _ => true, _ => 0);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        Assert.True(coordinator.IsAnimating);
+        Assert.Equal(1000, coordinator.IntervalMs);
+
+        for (var tick = 0; tick < 5; tick++) coordinator.Advance();
+
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+        Assert.Equal(1000, coordinator.IntervalMs);
+
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/pose/001.png", coordinator.Frame);
+        Assert.Equal(1000, coordinator.IntervalMs);
     }
 }

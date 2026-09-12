@@ -22,8 +22,16 @@ internal static class AnimationManifestTestData
         }
         """;
 
+    /// <summary>Parses the ten-action root with custom idle and working state manifests.</summary>
+    internal static PetAnimationManifest Parse(int version, string idleStateJson, string workingStateJson) =>
+        PetAnimationManifest.Parse(Root(version), path => path switch
+        {
+            "Animations/idle/animation.json" => idleStateJson,
+            "Animations/working/animation.json" => workingStateJson,
+            _ => "{ \"clips\": {} }",
+        });
+
     /// <summary>Parses the ten-action root with a custom idle state manifest; every other state is empty.</summary>
     internal static PetAnimationManifest ParseIdle(int version, string idleStateJson) =>
-        PetAnimationManifest.Parse(Root(version),
-            path => path == "Animations/idle/animation.json" ? idleStateJson : "{ \"clips\": {} }");
+        Parse(version, idleStateJson, "{ \"clips\": {} }");
 }
