@@ -433,7 +433,9 @@ internal sealed class CharacterLibrary
             // Any write upgrades a version one library to the version two layout, which the commit
             // below has to build frame by frame.
             LibraryFormatVersion = 2,
-            Name = name is null ? document.Name : CharacterManifest.ValidateName(name),
+            // `name` is the display name of an added extra, never the character's: adding an action
+            // must not rename the character it is added to.
+            Name = document.Name,
             StatusAnchor = anchor,
             Baseline = baseline,
             Actions = UpgradeDocument(states),
@@ -445,6 +447,36 @@ internal sealed class CharacterLibrary
         CommitDirectory(id, document, next, draft, dropped, new Dictionary<string, string>(StringComparer.Ordinal));
         draft.Committed = true;
         return new(id, next.Name);
+    }
+
+    /// <summary>
+    /// Builds the source the character window previews a staged action with: the stored document with
+    /// the draft's action merged in, read from the draft's staging tree plus the character directory.
+    /// Nothing is written, so previewing a draft the user never saves leaves the character untouched.
+    /// </summary>
+    internal CharacterAssetSource PreviewStagedAction(CharacterActionDraft draft, string previewName)
+    {
+        var id = Id(draft.CharacterId);
+        var document = Load(id).Document;
+        var states = new Dictionary<string, StoredCharacterState>(document.Actions, StringComparer.Ordinal);
+        var existing = states.TryGetValue(draft.StateKey, out var state) ? state : null;
+        if (draft.AsPrimary)
+        {
+            // A primary for a state the character does not define yet becomes the whole state.
+            states[draft.StateKey] = new(draft.Clip, existing?.Extras ?? []);
+        }
+        else
+        {
+            // The staged extra is appended exactly where a commit would append it, so the preview
+            // shows the same order and folder the stored character will have.
+            if (existing is null) throw CharacterManifest.Invalid();
+            states[draft.StateKey] = new(existing.Primary,
+                [.. existing.Extras, new(CharacterManifest.ValidateName(previewName), draft.Clip.Frames, draft.Clip.Durations)]);
+        }
+        return new CharacterAssetSource(id, CharacterFiles.Child(LibraryPath, id),
+            // The merged document is the version two shape: the staged frames already live in their
+            // primary / extra-N folder.
+            document with { LibraryFormatVersion = 2, Actions = states }, draft.DirectoryPath);
     }
 
     /// <summary>Replaces one state's primary action, or supplies a primary for a state that had none.</summary>

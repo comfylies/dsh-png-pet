@@ -19,13 +19,21 @@ internal sealed class CharacterAssetSource
     internal string Id { get; }
     internal StoredCharacter Document { get; }
     private readonly string directory;
+    private readonly string? stagedDirectory;
     private readonly HashSet<string> references;
     private readonly Dictionary<PetAnimationKey, ResolvedStateProgram> programs = [];
 
-    internal CharacterAssetSource(string id, string directory, StoredCharacter document)
+    /// <summary>
+    /// Reads the frames of a stored character.  <paramref name="stagedDirectory"/> is an optional
+    /// staging tree whose frames win over the character's own: the character window previews an
+    /// action there before it is committed, while every frame that action does not replace still
+    /// comes from the character directory.
+    /// </summary>
+    internal CharacterAssetSource(string id, string directory, StoredCharacter document, string? stagedDirectory = null)
     {
         Id = id;
         this.directory = CharacterFiles.CheckedPath(directory);
+        this.stagedDirectory = stagedDirectory is null ? null : CharacterFiles.CheckedPath(stagedDirectory);
         Document = document;
         references = document.Actions.Values
             .SelectMany(state => state.Primary.Frames.Concat(state.Extras.SelectMany(extra => extra.Frames)))
@@ -76,14 +84,24 @@ internal sealed class CharacterAssetSource
     internal byte[] ReadFrame(string frame)
     {
         if (!references.Contains(frame)) throw CharacterManifest.Invalid();
-        return CharacterFiles.Read(CharacterFiles.Child(directory, frame), 2 * 1024 * 1024);
+        return CharacterFiles.Read(FramePath(frame), 2 * 1024 * 1024);
     }
 
     internal bool HasFrame(string frame)
     {
         if (!references.Contains(frame)) return false;
-        var path = CharacterFiles.Child(directory, frame);
-        return File.Exists(path);
+        return File.Exists(FramePath(frame));
+    }
+
+    /// <summary>A staged frame wins, so an uncommitted preview never shows the frames it replaces.</summary>
+    private string FramePath(string frame)
+    {
+        if (stagedDirectory is not null)
+        {
+            var staged = CharacterFiles.Child(stagedDirectory, frame);
+            if (File.Exists(staged)) return staged;
+        }
+        return CharacterFiles.Child(directory, frame);
     }
 
     internal static StoredCharacter ParseStored(string json)

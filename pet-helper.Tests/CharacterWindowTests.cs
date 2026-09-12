@@ -110,4 +110,77 @@ public sealed class CharacterWindowTests
         thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();
         if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
     }
+
+    [Fact]
+    public void Adding_an_action_is_refused_for_the_built_in_character()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            CharacterWindow? window = null;
+            try
+            {
+                window = new CharacterWindow(new CharacterLibrary(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+                    _ => Task.FromResult(true), () => null);
+                window.ShowPreview(null);
+                window.ShowNotice(string.Empty);
+
+                ((Button)window.FindName("AddActionButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Contains("内置人物不支持添加动作", ((TextBlock)window.FindName("Notice")).Text, StringComparison.Ordinal);
+                Assert.Equal(Visibility.Collapsed, ((StackPanel)window.FindName("ActionSettings")).Visibility);
+            }
+            catch (Exception exception) { failure = exception; }
+            finally { window?.Close(); }
+        });
+        thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
+    public void Adding_an_action_lists_the_states_and_roles_of_an_imported_character()
+    {
+        Exception? failure = null;
+        var root = Path.Combine(Path.GetTempPath(), "dsh-character-window-action-" + Guid.NewGuid().ToString("N"));
+        var thread = new Thread(() =>
+        {
+            CharacterWindow? window = null;
+            try
+            {
+                Directory.CreateDirectory(root);
+                File.WriteAllBytes(Path.Combine(root, "idle.gif"), CharacterLibraryTests.TinyGif());
+                File.WriteAllBytes(Path.Combine(root, "stretch.png"), CharacterLibraryTests.TinyPng());
+                File.WriteAllText(Path.Combine(root, "character.json"), """
+                    {"characterFormatVersion":2,"name":"多动作","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+                     "actions":{"idle":{
+                       "primary":{"type":"gif","file":"idle.gif"},
+                       "extras":[{"name":"伸懒腰","type":"png","file":"stretch.png","frameDurationMs":1500}]}}}
+                    """);
+                var library = new CharacterLibrary(Path.Combine(root, "library-root"));
+                using var draft = library.PrepareDirectory(root, CancellationToken.None);
+                var info = library.Commit(draft, "多动作", new(.5, .1), .95);
+                window = new CharacterWindow(library, _ => Task.FromResult(true), () => info.Id);
+                // ShowPreview also records the previewed character id, which AddAction_Click reads.
+                window.ShowPreview(library.Load(info.Id));
+
+                ((Button)window.FindName("AddActionButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(Visibility.Visible, ((StackPanel)window.FindName("ActionSettings")).Visibility);
+                Assert.Equal(10, ((ComboBox)window.FindName("ActionState")).Items.Count);
+                var roles = ((ComboBox)window.FindName("ActionRole")).Items.Cast<string>().ToArray();
+                Assert.Contains("替换主动作", roles);
+                Assert.Contains("附加动作", roles);
+                var extras = ((ListBox)window.FindName("ActionExtras")).Items.Cast<string>().ToArray();
+                Assert.Equal(new[] { "伸懒腰" }, extras);
+            }
+            catch (Exception exception) { failure = exception; }
+            finally
+            {
+                window?.Close();
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA); thread.Start(); thread.Join();
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
 }

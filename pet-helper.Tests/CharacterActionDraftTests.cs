@@ -204,6 +204,20 @@ public sealed class CharacterActionDraftTests : IDisposable
     }
 
     [Fact]
+    public void Adding_an_extra_never_renames_the_character()
+    {
+        var (library, id) = CreateCharacter();
+        File.WriteAllBytes(Path.Combine(root, "stretch.png"), CharacterLibraryTests.TinyPng());
+
+        library.AddExtra(id, Path.Combine(root, "stretch.png"), "idle", "伸懒腰", new(.5, .1), .95, CancellationToken.None);
+
+        // The name of an added action belongs to the action, not to the character it was added to.
+        Assert.Equal("维维美", library.Load(id).Document.Name);
+        Assert.Equal("维维美", Assert.Single(library.List()).Name);
+        Assert.Equal("伸懒腰", library.Load(id).ResolveProgram(PetAnimationKey.Idle, _ => true).Extras[0].Label);
+    }
+
+    [Fact]
     public void Rejects_an_action_draft_whose_extra_folder_became_stale()
     {
         var (library, id) = CreateCharacter();
