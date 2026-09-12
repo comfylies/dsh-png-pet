@@ -70,10 +70,7 @@ internal sealed class CharacterAssetSource
     internal ImmutableArray<PetActionChoice> ResolveActions(PetAnimationKey key, Func<string, bool> available)
     {
         var program = ResolveProgram(key, available);
-        return program.Loop
-            .Select(clip => new PetActionChoice("默认动作", false, clip))
-            .Concat(program.Extras.Select(clip => new PetActionChoice(clip.Label ?? "附加动作", true, clip)))
-            .ToImmutableArray();
+        return PetActionCatalog.Build(program, "默认动作", "附加动作");
     }
 
     internal byte[] ReadFrame(string frame)

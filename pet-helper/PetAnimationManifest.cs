@@ -161,13 +161,11 @@ public sealed class PetAnimationManifest
     }
 
     /// <summary>Lists the primary loop clips followed by the one-shot extras of the resolved state.</summary>
-    public ImmutableArray<PetActionChoice> ResolveActions(PetAnimationKey requested, Func<string, bool> isFrameAvailable)
+    internal ImmutableArray<PetActionChoice> ResolveActions(PetAnimationKey requested, Func<string, bool> isFrameAvailable)
     {
         var program = ResolveProgram(requested, isFrameAvailable);
-        return program.Loop
-            .Select(clip => new PetActionChoice(clip.Label ?? clip.Id, false, clip))
-            .Concat(program.Extras.Select(clip => new PetActionChoice(clip.Label ?? clip.Id, true, clip)))
-            .ToImmutableArray();
+        // Labels only, null keeps the manifest policy of falling back to the stable clip id.
+        return PetActionCatalog.Build(program, primaryLabel: null, extraLabel: null);
     }
 
     private ImmutableArray<ResolvedClip> ResolveClips(

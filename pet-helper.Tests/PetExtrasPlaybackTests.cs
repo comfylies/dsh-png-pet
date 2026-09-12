@@ -95,6 +95,42 @@ public sealed class PetExtrasPlaybackTests
         }
     }
 
+    [Fact]
+    public void A_live_state_change_after_a_preview_returns_to_live_playback_and_still_reaches_an_extra()
+    {
+        // The character window previews one catalogue clip on repeat.  A live Apply that arrives
+        // afterwards must leave preview mode for good: a sticky preview flag would make every later
+        // loop completion restart that preview clip, so the cooldown would never accumulate and the
+        // extras branch would never be reached again.
+        var coordinator = CreateWithWorking(_ => 0);
+        var previewed = AnimationManifestTestData.Parse(5, IdleState, WorkingState)
+            .ResolveProgram(PetAnimationKey.Idle, _ => true).Extras[0];
+        coordinator.Preview(previewed, reducedMotion: false);
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+
+        // A real state change is the live entry point that has to clear preview mode.
+        coordinator.Apply(PetAnimationKey.Working, reducedMotion: false);
+        Assert.Equal("Animations/working/haul/001.png", coordinator.Frame);
+
+        coordinator.Apply(PetAnimationKey.Idle, reducedMotion: false);
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+
+        // Ten 100 ms primary ticks reach the 5000 ms cooldown and start the extra.
+        for (var tick = 0; tick < 10; tick++) coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+
+        // The extra is one-shot: it completes, the primary restarts and the cooldown accrues again.
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/002.png", coordinator.Frame);
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/breathe/001.png", coordinator.Frame);
+
+        for (var tick = 0; tick < 49; tick++) coordinator.Advance();
+        Assert.StartsWith("Animations/idle/breathe/", coordinator.Frame, StringComparison.Ordinal);
+        coordinator.Advance();
+        Assert.Equal("Animations/idle/stretch/001.png", coordinator.Frame);
+    }
+
     private const string WorkingState = """
         {
           "clips": {
