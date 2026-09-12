@@ -32,7 +32,11 @@ internal static class GifFrameImporter
         (bytes.AsSpan(0, 6).SequenceEqual("GIF87a"u8) || bytes.AsSpan(0, 6).SequenceEqual("GIF89a"u8));
 
     internal static void Decode(byte[] bytes, bool gif, int pngDelay, CharacterImportBudget budget,
-        CancellationToken cancellation, Action<BitmapSource, int> accept)
+        CancellationToken cancellation, Action<BitmapSource, int> accept) =>
+        Decode(bytes, gif, pngDelay, budget, cancellation, canvasSide: null, accept);
+
+    internal static void Decode(byte[] bytes, bool gif, int pngDelay, CharacterImportBudget budget,
+        CancellationToken cancellation, int? canvasSide, Action<BitmapSource, int> accept)
     {
         cancellation.ThrowIfCancellationRequested();
         if (gif)
@@ -61,7 +65,7 @@ internal static class GifFrameImporter
                     if (pixels[from + 3] == 0) continue;
                     Buffer.BlockCopy(pixels, from, canvas, ((y + info.Top) * layout.Width + x + info.Left) * 4, 4);
                 }
-                accept(Normalize(canvas, layout.Width, layout.Height), info.Delay);
+                accept(Normalize(canvas, layout.Width, layout.Height, canvasSide), info.Delay);
                 if (info.Disposal == 2)
                     Fill(canvas, layout.Width, info.Left, info.Top, info.Width, info.Height,
                         info.Transparent ? new byte[4] : layout.Background);
@@ -83,17 +87,20 @@ internal static class GifFrameImporter
             var pixels = new byte[width * height * 4];
             rgba.CopyPixels(pixels, width * 4, 0);
             cancellation.ThrowIfCancellationRequested();
-            accept(Normalize(pixels, width, height), pngDelay);
+            accept(Normalize(pixels, width, height, canvasSide), pngDelay);
         }
     }
 
-    private static BitmapSource Normalize(byte[] pixels, int width, int height)
+    // Without a requested canvas side the normalized side is min(longest edge, 512) and the image is
+    // never enlarged, which is the historical behaviour every existing caller still gets.
+    private static BitmapSource Normalize(byte[] pixels, int width, int height, int? canvasSide)
     {
-        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
         var side = Math.Max(width, height);
-        var factor = Math.Min(1d, 512d / side);
+        var outputSide = canvasSide ?? Math.Min(side, 512);
+        if (outputSide is < 1 or > 512) throw CharacterManifest.Invalid();
+        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+        var factor = Math.Min(1d, outputSide / (double)side);
         BitmapSource scaled = factor < 1 ? new TransformedBitmap(source, new ScaleTransform(factor, factor)) : source;
-        var outputSide = Math.Min(side, 512);
         var target = new byte[outputSide * outputSide * 4];
         var small = new byte[scaled.PixelWidth * scaled.PixelHeight * 4];
         scaled.CopyPixels(small, scaled.PixelWidth * 4, 0);

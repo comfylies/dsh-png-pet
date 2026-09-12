@@ -1,14 +1,19 @@
+using System.Collections.Immutable;
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace PetHelper;
 
-internal sealed record CharacterAction(string Type, string[] Files, int FrameDurationMs);
+internal sealed record CharacterAction(string Type, string[] Files, int FrameDurationMs, bool DurationDeclared);
+internal sealed record CharacterExtra(string Name, CharacterAction Action);
+internal sealed record CharacterStateActions(CharacterAction Primary, ImmutableArray<CharacterExtra> Extras);
 
 internal sealed record CharacterManifest(string Name, PetStatusAnchor StatusAnchor, double Baseline,
-    Dictionary<string, CharacterAction> Actions)
+    int ExtrasCooldownMs, Dictionary<string, CharacterStateActions> Actions)
 {
+    internal const int DefaultExtrasCooldownMs = 30000;
+    internal const int MaximumExtrasPerState = 4;
     internal static readonly Dictionary<string, PetAnimationKey> Keys = new(StringComparer.Ordinal)
     {
         ["idle"] = PetAnimationKey.Idle, ["thinking"] = PetAnimationKey.Thinking,
@@ -106,36 +111,83 @@ internal sealed record CharacterManifest(string Name, PetStatusAnchor StatusAnch
     {
         using var document = ReadJson(json);
         var root = document.RootElement;
-        Fields(root, "characterFormatVersion", "name", "statusAnchor", "baseline", "actions");
-        Integer(root.GetProperty("characterFormatVersion"), 1, 1);
-        var actions = new Dictionary<string, CharacterAction>(StringComparer.Ordinal);
+        if (root.ValueKind != JsonValueKind.Object) throw Invalid();
+        if (!root.TryGetProperty("characterFormatVersion", out var versionElement)) throw Invalid();
+        var version = Integer(versionElement, 1, 2);
+        var required = new[] { "characterFormatVersion", "name", "statusAnchor", "baseline", "actions" };
+        var allowed = version == 2
+            ? required.Append("extrasCooldownMs").ToHashSet(StringComparer.Ordinal)
+            : required.ToHashSet(StringComparer.Ordinal);
+        var seen = root.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+        if (!seen.IsSubsetOf(allowed) || required.Any(name => !seen.Contains(name))) throw Invalid();
+        var cooldownMs = version == 2 && root.TryGetProperty("extrasCooldownMs", out var cooldownElement)
+            ? Integer(cooldownElement, 5000, 600000)
+            : DefaultExtrasCooldownMs;
+
+        var actions = new Dictionary<string, CharacterStateActions>(StringComparer.Ordinal);
         var value = root.GetProperty("actions");
         if (value.ValueKind != JsonValueKind.Object) throw Invalid();
         foreach (var entry in value.EnumerateObject())
         {
-            if (!Keys.ContainsKey(entry.Name) || entry.Value.ValueKind != JsonValueKind.Object ||
-                !entry.Value.TryGetProperty("type", out var typeElement)) throw Invalid();
-            var type = Text(typeElement);
-            string[] files;
-            var interval = 100;
-            if (type is "gif" or "png")
+            if (!Keys.ContainsKey(entry.Name) || entry.Value.ValueKind != JsonValueKind.Object) throw Invalid();
+            var hasType = entry.Value.TryGetProperty("type", out _);
+            var hasPrimary = entry.Value.TryGetProperty("primary", out _);
+            if (hasType == hasPrimary) throw Invalid();
+            if (!hasPrimary)
             {
-                Fields(entry.Value, "type", "file");
-                files = [AssetReference(Text(entry.Value.GetProperty("file")), "." + type)];
+                actions.Add(entry.Name, new(ParseAction(entry.Value, isExtra: false), []));
+                continue;
             }
-            else if (type == "png-sequence")
+
+            var fields = entry.Value.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+            if (!fields.SetEquals(new[] { "primary", "extras" })) throw Invalid();
+            var primary = ParseAction(entry.Value.GetProperty("primary"), isExtra: false);
+            var extrasElement = entry.Value.GetProperty("extras");
+            if (extrasElement.ValueKind != JsonValueKind.Array ||
+                extrasElement.GetArrayLength() is < 1 or > MaximumExtrasPerState) throw Invalid();
+            var extras = ImmutableArray.CreateBuilder<CharacterExtra>();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var extraElement in extrasElement.EnumerateArray())
             {
-                Fields(entry.Value, "type", "frames", "frameDurationMs");
-                var frames = entry.Value.GetProperty("frames");
-                if (frames.ValueKind != JsonValueKind.Array || frames.GetArrayLength() is < 1 or > 240) throw Invalid();
-                files = frames.EnumerateArray().Select(f => AssetReference(Text(f), ".png")).ToArray();
-                interval = Integer(entry.Value.GetProperty("frameDurationMs"), 16, 1000);
+                if (extraElement.ValueKind != JsonValueKind.Object) throw Invalid();
+                var extraFields = extraElement.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+                if (!extraFields.SetEquals(new[] { "name", "type", "file", "frameDurationMs" }) &&
+                    !extraFields.SetEquals(new[] { "name", "type", "file" }) &&
+                    !extraFields.SetEquals(new[] { "name", "type", "frames", "frameDurationMs" })) throw Invalid();
+                var name = ValidateName(Text(extraElement.GetProperty("name")));
+                if (!names.Add(name)) throw Invalid();
+                extras.Add(new(name, ParseAction(extraElement, isExtra: true)));
             }
-            else throw Invalid();
-            actions.Add(entry.Name, new(type, files, interval));
+            actions.Add(entry.Name, new(primary, extras.ToImmutable()));
         }
         if (!actions.ContainsKey("idle")) throw Invalid();
         return new(ValidateName(Text(root.GetProperty("name"))), Anchor(root.GetProperty("statusAnchor")),
-            Unit(root.GetProperty("baseline")), actions);
+            Unit(root.GetProperty("baseline")), cooldownMs, actions);
+    }
+
+    private static CharacterAction ParseAction(JsonElement element, bool isExtra)
+    {
+        var type = Text(element.GetProperty("type"));
+        if (type is "gif" or "png")
+        {
+            var expected = isExtra && element.TryGetProperty("frameDurationMs", out _)
+                ? new[] { "type", "file", "frameDurationMs" }
+                : new[] { "type", "file" };
+            Fields(element, expected);
+            var files = new[] { AssetReference(Text(element.GetProperty("file")), "." + type) };
+            if (!isExtra || !element.TryGetProperty("frameDurationMs", out var durationElement))
+                return new(type, files, 100, DurationDeclared: false);
+            var declared = Integer(durationElement, 16, 10000);
+            return new(type, files, declared, DurationDeclared: true);
+        }
+        if (type == "png-sequence")
+        {
+            Fields(element, "type", "frames", "frameDurationMs");
+            var frames = element.GetProperty("frames");
+            if (frames.ValueKind != JsonValueKind.Array || frames.GetArrayLength() is < 1 or > 240) throw Invalid();
+            var files = frames.EnumerateArray().Select(frame => AssetReference(Text(frame), ".png")).ToArray();
+            return new(type, files, Integer(element.GetProperty("frameDurationMs"), 16, 1000), DurationDeclared: true);
+        }
+        throw Invalid();
     }
 }

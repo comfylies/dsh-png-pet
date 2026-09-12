@@ -121,9 +121,9 @@ internal sealed class CharacterLibrary
         cancellation.ThrowIfCancellationRequested();
         var bytes = CharacterFiles.Read(file, 20 * 1024 * 1024);
         var gif = GifFrameImporter.IsGif(bytes);
-        var manifest = new CharacterManifest("新人物", new(0.5, 0.12), 0.95,
-            new() { ["idle"] = new(gif ? "gif" : "png", ["image"], 100) });
-        return Prepare(manifest, _ => bytes, cancellation);
+        var manifest = new CharacterManifest("新人物", new(0.5, 0.12), 0.95, CharacterManifest.DefaultExtrasCooldownMs,
+            new() { ["idle"] = new(new(gif ? "gif" : "png", ["image"], 100, DurationDeclared: false), []) });
+        return Prepare(manifest, cancellation);
     }
 
     internal CharacterDraft PrepareDirectory(string directory, CancellationToken cancellation)
@@ -131,10 +131,10 @@ internal sealed class CharacterLibrary
         cancellation.ThrowIfCancellationRequested();
         var manifest = CharacterManifest.Parse(Encoding.UTF8.GetString(
             CharacterFiles.Read(CharacterFiles.Child(directory, "character.json"), 65536)));
-        return Prepare(manifest, file => CharacterFiles.Read(CharacterFiles.Child(directory, file), 20 * 1024 * 1024), cancellation);
+        return Prepare(manifest, cancellation);
     }
 
-    private CharacterDraft Prepare(CharacterManifest manifest, Func<string, byte[]> read, CancellationToken cancellation)
+    private CharacterDraft Prepare(CharacterManifest manifest, CancellationToken cancellation)
     {
         using var gate = Lock();
         Directory.CreateDirectory(LibraryPath);
@@ -146,43 +146,68 @@ internal sealed class CharacterLibrary
         try
         {
             var budget = new CharacterImportBudget();
-            var actions = new Dictionary<string, StoredCharacterClip>(StringComparer.Ordinal);
+            var actions = new Dictionary<string, StoredCharacterState>(StringComparer.Ordinal);
             long outputBytes = 0;
-            foreach (var (key, action) in manifest.Actions)
+            foreach (var (key, state) in manifest.Actions)
             {
-                var references = new List<string>(); var delays = new List<int>();
-                Directory.CreateDirectory(CharacterFiles.Child(draft.DirectoryPath, "frames/" + key));
-                foreach (var file in action.Files)
+                var primary = WriteActionFrames(draft.DirectoryPath, key, "primary", state.Primary, isExtra: false,
+                    budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
+                var extras = new List<StoredCharacterExtra>();
+                for (var index = 0; index < state.Extras.Length; index++)
                 {
-                    cancellation.ThrowIfCancellationRequested();
-                    GifFrameImporter.Decode(read(file), action.Type == "gif", action.FrameDurationMs, budget, cancellation, (bitmap, delay) =>
-                    {
-                        cancellation.ThrowIfCancellationRequested();
-                        if (references.Count >= 240) throw CharacterManifest.Invalid();
-                        var reference = $"frames/{key}/{references.Count:D4}.png";
-                        var encoder = new PngBitmapEncoder();
-                        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                        using var memory = new MemoryStream();
-                        encoder.Save(memory);
-                        var bytes = memory.ToArray();
-                        outputBytes += bytes.Length;
-                        if (outputBytes > 256L * 1024 * 1024 || existingBytes + outputBytes + 65536 > LibraryLimit)
-                            throw CharacterManifest.Invalid();
-                        CharacterFiles.WriteNew(CharacterFiles.Child(draft.DirectoryPath, reference), bytes);
-                        references.Add(reference); delays.Add(delay);
-                    });
+                    var clip = WriteActionFrames(draft.DirectoryPath, key, $"extra-{index}", state.Extras[index].Action,
+                        isExtra: true, budget, canvasSide: null, cancellation, ref outputBytes, existingBytes);
+                    extras.Add(new(state.Extras[index].Name, clip.Frames, clip.Durations));
                 }
-                actions.Add(key, new(references.ToArray(), delays.ToArray()));
+                actions.Add(key, new(primary, extras.ToArray()));
             }
             var side = Math.Max(budget.Width, budget.Height);
             var anchor = new PetStatusAnchor((side - budget.Width) / (2d * side) + manifest.StatusAnchor.X * budget.Width / side,
                 (side - budget.Height + manifest.StatusAnchor.Y * budget.Height) / side);
             var baseline = (side - budget.Height + manifest.Baseline * budget.Height) / side;
-            draft.Document = new(1, manifest.Name, anchor, baseline, actions);
+            draft.Document = new(2, manifest.Name, anchor, baseline, manifest.ExtrasCooldownMs, actions);
             cancellation.ThrowIfCancellationRequested();
             return draft;
         }
         catch { draft.Dispose(); throw; }
+    }
+
+    private static StoredCharacterClip WriteActionFrames(string characterDirectory, string key, string folder,
+        CharacterAction action, bool isExtra, CharacterImportBudget budget, int? canvasSide,
+        CancellationToken cancellation, ref long outputBytes, long existingBytes)
+    {
+        var references = new List<string>();
+        var delays = new List<int>();
+        var written = outputBytes;
+        var folderPath = $"frames/{key}/{folder}";
+        Directory.CreateDirectory(CharacterFiles.Child(characterDirectory, folderPath));
+        foreach (var file in action.Files)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            GifFrameImporter.Decode(CharacterFiles.Read(file, 20 * 1024 * 1024), action.Type == "gif", action.FrameDurationMs,
+                budget, cancellation, canvasSide, (bitmap, delay) =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (references.Count >= 240) throw CharacterManifest.Invalid();
+                var reference = $"{folderPath}/{references.Count:D4}.png";
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var memory = new MemoryStream();
+                encoder.Save(memory);
+                var bytes = memory.ToArray();
+                written += bytes.Length;
+                if (written > 256L * 1024 * 1024 || existingBytes + written + 65536 > LibraryLimit)
+                    throw CharacterManifest.Invalid();
+                CharacterFiles.WriteNew(CharacterFiles.Child(characterDirectory, reference), bytes);
+                references.Add(reference);
+                delays.Add(delay);
+            });
+        }
+        outputBytes = written;
+        // A one-frame extra would flash past at the importer's 100 ms default, so it must declare its
+        // own display duration; GIF extras that decode to a single frame are rejected here as well.
+        if (isExtra && references.Count == 1 && !action.DurationDeclared) throw CharacterManifest.Invalid();
+        return new(references.ToArray(), delays.ToArray());
     }
 
     internal CharacterInfo Commit(CharacterDraft draft, string name, PetStatusAnchor anchor, double baseline)
@@ -191,11 +216,7 @@ internal sealed class CharacterLibrary
         if (draft.Committed || draft.DirectoryPath != CharacterFiles.Child(StagingPath, Id(draft.Id)) ||
             !anchor.IsWithinArtboard || !double.IsFinite(baseline) || baseline is < 0 or > 1) throw CharacterManifest.Invalid();
         var document = draft.Document with { Name = CharacterManifest.ValidateName(name), StatusAnchor = anchor, Baseline = baseline };
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new {
-            document.LibraryFormatVersion, document.Name,
-            StatusAnchor = new { document.StatusAnchor.X, document.StatusAnchor.Y },
-            document.Baseline, document.Actions
-        }, JsonOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
         CharacterAssetSource.ParseStored(Encoding.UTF8.GetString(bytes));
         if (Directory.EnumerateDirectories(LibraryPath).Take(50).Count() >= 50 || CharacterFiles.Size(root) + bytes.Length > LibraryLimit)
             throw CharacterManifest.Invalid();
