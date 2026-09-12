@@ -316,6 +316,54 @@ public sealed class CharacterLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Reads_a_version_one_library_as_a_primary_only_character()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "input.gif"), TinyGif());
+        var location = Path.Combine(root, "output");
+        var library = new CharacterLibrary(location);
+        using (var draft = library.PrepareImage(file: Path.Combine(root, "input.gif"), CancellationToken.None))
+        {
+            library.Commit(draft, "旧库", new(.5, .1), .95);
+        }
+
+        // Rewrite the freshly imported character as a version one library to emulate an installed v0.2.11 entry.
+        var id = library.List()[0].Id;
+        var directory = Path.Combine(location, "library", id);
+        Directory.CreateDirectory(Path.Combine(directory, "frames", "idle"));
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(directory, "frames", "idle", "primary")))
+            File.Move(file, Path.Combine(directory, "frames", "idle", Path.GetFileName(file)));
+        Directory.Delete(Path.Combine(directory, "frames", "idle", "primary"));
+        File.WriteAllText(Path.Combine(directory, "character.json"),
+            """{"libraryFormatVersion":1,"name":"旧库","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,"actions":{"idle":{"frames":["frames/idle/0000.png"],"durations":[100]}}}""");
+
+        var source = library.Load(id);
+        var program = source.ResolveProgram(PetAnimationKey.Idle, _ => true);
+
+        Assert.Single(program.Loop);
+        Assert.Empty(program.Extras);
+        Assert.Equal(30000, program.ExtrasCooldownMs);
+        Assert.Equal("frames/idle/0000.png", program.Loop[0].Frames[0]);
+    }
+
+    [Fact]
+    public void Still_imports_a_version_one_source_directory()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllBytes(Path.Combine(root, "idle.gif"), TinyGif());
+        File.WriteAllText(Path.Combine(root, "character.json"), """
+            {"characterFormatVersion":1,"name":"旧来源","statusAnchor":{"x":0.5,"y":0.1},"baseline":0.95,
+             "actions":{"idle":{"type":"gif","file":"idle.gif"}}}
+            """);
+        var library = new CharacterLibrary(Path.Combine(root, "output"));
+
+        using var draft = library.PrepareDirectory(root, CancellationToken.None);
+        var info = library.Commit(draft, "旧来源", new(.5, .1), .95);
+
+        Assert.Single(library.Load(info.Id).ResolveProgram(PetAnimationKey.Idle, _ => true).Loop);
+    }
+
+    [Fact]
     public void Rejects_duplicate_extra_names_in_one_state()
     {
         Directory.CreateDirectory(root);
