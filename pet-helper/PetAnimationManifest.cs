@@ -43,10 +43,21 @@ public sealed record ResolvedStateProgram(
     ImmutableArray<ResolvedClip> Enter,
     ImmutableArray<ResolvedClip> Loop,
     ImmutableArray<ResolvedTransition> Transitions,
-    bool LoopRepeats);
+    bool LoopRepeats)
+{
+    /// <summary>One-shot clips that may be played after the state has looped for its cooldown.</summary>
+    public ImmutableArray<ResolvedClip> Extras { get; init; } = ImmutableArray<ResolvedClip>.Empty;
+
+    /// <summary>Milliseconds of primary playback before an extra may be played.</summary>
+    public int ExtrasCooldownMs { get; init; } = PetAnimationManifest.DefaultExtrasCooldownMs;
+}
 
 public sealed class PetAnimationManifest
 {
+    internal const int DefaultExtrasCooldownMs = 30000;
+    private const int MinimumExtrasCooldownMs = 5000;
+    private const int MaximumExtrasCooldownMs = 600000;
+    private const int MaximumExtrasPerAction = 4;
     private const int LegacyTargetCycleMs = 1000;
     private const int MaximumFramesPerClip = 240;
     private const int MaximumFramesPerManifest = 1024;
@@ -137,7 +148,11 @@ public sealed class PetAnimationManifest
                         ResolveClips(current, transition.ClipIds, isFrameAvailable)))
                     .Where(transition => !transition.Clips.IsEmpty)
                     .ToImmutableArray();
-                return new ResolvedStateProgram(current, enter, loop, transitions, program.LoopRepeats);
+                return new ResolvedStateProgram(current, enter, loop, transitions, program.LoopRepeats)
+                {
+                    Extras = ResolveClips(current, action.Extras, isFrameAvailable),
+                    ExtrasCooldownMs = action.ExtrasCooldownMs,
+                };
             }
             if (action.Fallback is not { } fallback) break;
             current = fallback;
@@ -148,10 +163,12 @@ public sealed class PetAnimationManifest
     private ImmutableArray<ResolvedClip> ResolveClips(
         PetAnimationKey key,
         ImmutableArray<string> clipIds,
-        Func<string, bool> isFrameAvailable) => clipIds
-        .Where(clipId => clips[clipId].Frames.All(isFrameAvailable))
-        .Select(clipId => ToResolvedClip(key, clipId, clips[clipId]))
-        .ToImmutableArray();
+        Func<string, bool> isFrameAvailable) => clipIds.IsDefaultOrEmpty
+        ? ImmutableArray<ResolvedClip>.Empty
+        : clipIds
+            .Where(clipId => clips[clipId].Frames.All(isFrameAvailable))
+            .Select(clipId => ToResolvedClip(key, clipId, clips[clipId]))
+            .ToImmutableArray();
 
     private static ResolvedClip ToResolvedClip(PetAnimationKey key, string id, ClipDefinition clip) => new(
         key,
@@ -331,7 +348,13 @@ public sealed class PetAnimationManifest
         var childJson = actionManifestReader(expectedPath);
         if (childJson is null) throw InvalidManifest();
         var state = ParseStructuredStateManifest(actionName, childJson, clips, allFrames, ref totalFrames, versionFive);
-        return new ActionDefinition(state.ClipIds, fallback, state.Program, state.Transitions);
+        return new ActionDefinition(
+            state.ClipIds,
+            fallback,
+            state.Program,
+            state.Transitions,
+            state.Extras,
+            state.ExtrasCooldownMs);
     }
 
     private static StateManifestDefinition ParseStructuredStateManifest(
@@ -349,9 +372,11 @@ public sealed class PetAnimationManifest
             JsonElement clipsElement = default;
             JsonElement programElement = default;
             JsonElement transitionsElement = default;
+            JsonElement extrasElement = default;
             var hasClips = false;
             var hasProgram = false;
             var hasTransitions = false;
+            var hasExtras = false;
             var seenRootFields = new HashSet<string>(StringComparer.Ordinal);
             foreach (var field in document.RootElement.EnumerateObject())
             {
@@ -361,6 +386,7 @@ public sealed class PetAnimationManifest
                     case "clips": clipsElement = field.Value; hasClips = true; break;
                     case "program": programElement = field.Value; hasProgram = true; break;
                     case "transitions": transitionsElement = field.Value; hasTransitions = true; break;
+                    case "extras" when versionFive: extrasElement = field.Value; hasExtras = true; break;
                     default: throw InvalidManifest();
                 }
             }
@@ -389,11 +415,30 @@ public sealed class PetAnimationManifest
 
             var program = hasProgram
                 ? ParseProgram(programElement, localIds, clips)
-                : new ProgramDefinition(ImmutableArray<string>.Empty, clipIds.ToImmutable(), false);
+                : null;
             var transitions = hasTransitions
                 ? ParseTransitions(transitionsElement, localIds, clips)
                 : ImmutableArray<TransitionDefinition>.Empty;
-            return new StateManifestDefinition(clipIds.ToImmutable(), program, transitions);
+            ImmutableArray<string> extras = ImmutableArray<string>.Empty;
+            var cooldownMs = DefaultExtrasCooldownMs;
+            if (hasExtras)
+            {
+                (extras, cooldownMs) = ParseExtras(extrasElement, localIds, clips, program, transitions);
+            }
+            // Without an explicit program the implicit loop list is every declared clip minus the
+            // extras, in declaration order, so one-shot extras stay out of the rotation.
+            var loopIds = extras.IsEmpty
+                ? clipIds.ToImmutable()
+                : clipIds.Where(id => !extras.Contains(id, StringComparer.Ordinal)).ToImmutableArray();
+            // Removing the extras must never leave a state that declared clips without a primary
+            // action; a state that declares no clips at all keeps falling back exactly as before.
+            if (program is null && clipIds.Count > 0 && loopIds.IsEmpty) throw InvalidManifest();
+            return new StateManifestDefinition(
+                loopIds,
+                program ?? new ProgramDefinition(ImmutableArray<string>.Empty, loopIds, false),
+                transitions,
+                extras,
+                cooldownMs);
         }
         catch (JsonException exception)
         {
@@ -468,6 +513,56 @@ public sealed class PetAnimationManifest
             transitions.Add(new TransitionDefinition(targets.ToImmutable(), transitionClips));
         }
         return transitions.ToImmutable();
+    }
+
+    private static (ImmutableArray<string> ClipIds, int CooldownMs) ParseExtras(
+        JsonElement element,
+        IReadOnlyDictionary<string, string> localIds,
+        ImmutableDictionary<string, ClipDefinition>.Builder clips,
+        ProgramDefinition? program,
+        ImmutableArray<TransitionDefinition> transitions)
+    {
+        if (element.ValueKind != JsonValueKind.Object) throw InvalidManifest();
+        JsonElement clipsElement = default;
+        var hasClips = false;
+        var cooldownMs = DefaultExtrasCooldownMs;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in element.EnumerateObject())
+        {
+            if (!seen.Add(field.Name)) throw InvalidManifest();
+            switch (field.Name)
+            {
+                case "clips": clipsElement = field.Value; hasClips = true; break;
+                case "cooldownMs":
+                    if (field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt32(out cooldownMs) ||
+                        cooldownMs < MinimumExtrasCooldownMs || cooldownMs > MaximumExtrasCooldownMs) throw InvalidManifest();
+                    break;
+                default: throw InvalidManifest();
+            }
+        }
+        if (!hasClips || clipsElement.ValueKind != JsonValueKind.Array) throw InvalidManifest();
+        // Enter, loop and transition clips are all part of the declared program, so none of them may
+        // also be declared as an extra.
+        var programClips = (program is null
+                ? ImmutableArray<string>.Empty
+                : program.Enter.AddRange(program.Loop))
+            .AddRange(transitions.SelectMany(transition => transition.ClipIds));
+        var ids = ImmutableArray.CreateBuilder<string>();
+        foreach (var item in clipsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String ||
+                !localIds.TryGetValue(item.GetString() ?? string.Empty, out var id) ||
+                ids.Contains(id, StringComparer.Ordinal) ||
+                ids.Count >= MaximumExtrasPerAction ||
+                clips[id].Playback != PetClipPlaybackMode.Once ||
+                programClips.Contains(id, StringComparer.Ordinal))
+            {
+                throw InvalidManifest();
+            }
+            ids.Add(id);
+        }
+        if (ids.Count == 0) throw InvalidManifest();
+        return (ids.ToImmutable(), cooldownMs);
     }
 
     private static ImmutableArray<string> ParseLocalClipIds(
@@ -912,7 +1007,9 @@ public sealed class PetAnimationManifest
         ImmutableArray<string> ClipIds,
         PetAnimationKey? Fallback,
         ProgramDefinition? Program = null,
-        ImmutableArray<TransitionDefinition>? Transitions = null);
+        ImmutableArray<TransitionDefinition>? Transitions = null,
+        ImmutableArray<string> Extras = default,
+        int ExtrasCooldownMs = DefaultExtrasCooldownMs);
     private sealed record ProgramDefinition(
         ImmutableArray<string> Enter,
         ImmutableArray<string> Loop,
@@ -923,7 +1020,9 @@ public sealed class PetAnimationManifest
     private sealed record StateManifestDefinition(
         ImmutableArray<string> ClipIds,
         ProgramDefinition Program,
-        ImmutableArray<TransitionDefinition> Transitions);
+        ImmutableArray<TransitionDefinition> Transitions,
+        ImmutableArray<string> Extras,
+        int ExtrasCooldownMs);
     private sealed record LegacyActionDefinition(ImmutableArray<string> Frames, PetAnimationKey? Fallback);
     private sealed record ClipDefinition(
         ImmutableArray<string> Frames,
