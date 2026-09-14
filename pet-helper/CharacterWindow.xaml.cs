@@ -88,6 +88,13 @@ public partial class CharacterWindow : Window
 
     internal void ShowNotice(string text) => Notice.Text = text;
 
+    internal void ShowOrRestore()
+    {
+        if (WindowState == WindowState.Minimized) SystemCommands.RestoreWindow(this);
+        Show();
+        Activate();
+    }
+
     /// <summary>
     /// Releases the staged action together with the facts a save reads from it, so a draft and the
     /// role it was staged with never disagree.

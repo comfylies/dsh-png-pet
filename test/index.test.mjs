@@ -9,7 +9,7 @@ test('keeps the production plugin entrypoint to one context argument', () => {
 })
 
 test('declares the services DSH exposes on the restricted plugin context', () => {
-  assert.deepEqual(inject, ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'])
+  assert.deepEqual(inject, ['agents', 'typertGateway', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'])
 })
 
 test('keeps prototype-backed DSH services reachable through the dialogue context adapter', () => {

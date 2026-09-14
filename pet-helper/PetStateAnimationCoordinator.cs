@@ -17,6 +17,7 @@ public sealed class PetStateAnimationCoordinator
     private readonly Func<PetAnimationKey, Func<string, bool>, ResolvedStateProgram> resolveProgram;
     private readonly Func<string, bool> isFrameAvailable;
     private readonly Func<int, int> nextExtraIndex;
+    private readonly bool useRandomExtraSelection;
     private readonly PetClipPlayback clipPlayback = new();
     private ResolvedStateProgram? currentProgram;
     private ResolvedTransition? currentTransition;
@@ -31,6 +32,7 @@ public sealed class PetStateAnimationCoordinator
     private AnimationPhase phase;
     private int clipIndex;
     private int extraElapsedMs;
+    private int lastRandomExtraIndex = -1;
     private bool reducedMotion;
     private bool clipCompleted;
     private bool finished;
@@ -54,6 +56,7 @@ public sealed class PetStateAnimationCoordinator
     {
         this.resolveProgram = resolveProgram;
         this.isFrameAvailable = isFrameAvailable ?? throw new ArgumentNullException(nameof(isFrameAvailable));
+        useRandomExtraSelection = nextExtraIndex is null;
         this.nextExtraIndex = nextExtraIndex ?? (count => Random.Shared.Next(count));
         clipPlayback.Completed += (_, _) =>
         {
@@ -179,6 +182,7 @@ public sealed class PetStateAnimationCoordinator
         this.reducedMotion = reducedMotion;
         currentExtra = null;
         extraElapsedMs = 0;
+        lastRandomExtraIndex = -1;
         finished = false;
         phase = AnimationPhase.Looping;
         clipIndex = 0;
@@ -188,7 +192,13 @@ public sealed class PetStateAnimationCoordinator
     private void StartExtra()
     {
         var extras = CurrentProgram.Extras;
-        currentExtra = extras[nextExtraIndex(extras.Length)];
+        var index = nextExtraIndex(extras.Length);
+        // A random idle action should not immediately repeat itself when alternatives exist.
+        // The injected selector remains untouched for deterministic tests and previews.
+        if (useRandomExtraSelection && extras.Length > 1 && index == lastRandomExtraIndex)
+            index = (index + 1 + Random.Shared.Next(extras.Length - 1)) % extras.Length;
+        if (useRandomExtraSelection) lastRandomExtraIndex = index;
+        currentExtra = extras[index];
         phase = AnimationPhase.Looping;
         clipIndex = 0;
         StartClip(currentExtra);
@@ -202,6 +212,7 @@ public sealed class PetStateAnimationCoordinator
         transitionAfterEnter = null;
         currentExtra = null;
         extraElapsedMs = 0;
+        lastRandomExtraIndex = -1;
         requested = target;
         if (!useEnter || reducedMotion || currentProgram.Enter.IsEmpty)
         {

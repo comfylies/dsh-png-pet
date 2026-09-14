@@ -11,6 +11,35 @@ namespace PetHelper.Tests;
 
 public sealed class CharacterWindowTests
 {
+    [Fact]
+    public void Character_window_minimizes_to_taskbar_and_can_be_restored()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            CharacterWindow? window = null;
+            try
+            {
+                window = new CharacterWindow(new CharacterLibrary(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+                    _ => Task.FromResult(true), () => null);
+                Assert.True(window.ShowInTaskbar);
+                Assert.False(window.Topmost);
+                Assert.Null(window.Owner);
+                window.Show();
+                window.WindowState = WindowState.Minimized;
+                window.ShowOrRestore();
+                WaitFor(window.Dispatcher, () => window.WindowState != WindowState.Minimized, "restoring the window");
+                Assert.Equal(WindowState.Normal, window.WindowState);
+                Assert.True(window.IsVisible);
+            }
+            catch (Exception error) { failure = error; }
+            finally { window?.Close(); }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start(); thread.Join();
+        if (failure is not null) throw failure;
+    }
+
     /// <summary>An imported character whose idle state holds a looping primary and one named extra.</summary>
     private static (CharacterLibrary Library, string Id, string Root) ImportCharacterWithAnExtra()
     {
@@ -102,6 +131,13 @@ public sealed class CharacterWindowTests
                 content.UpdateLayout();
                 Assert.True(((Button)window.FindName("ApplyButton")).ActualWidth > 70);
                 Assert.True(image.ActualWidth >= 200);
+                foreach (var name in new[] { "PreviewState", "PreviewAction", "StaticPreview" })
+                {
+                    var control = (FrameworkElement)window.FindName(name);
+                    var bounds = control.TransformToAncestor(content).TransformBounds(new Rect(control.RenderSize));
+                    Assert.True(bounds.Left >= 0 && bounds.Right <= content.ActualWidth,
+                        $"{name} must fit inside the narrow window.");
+                }
                 // The built-in idle state has one action, so there is nothing to choose between.
                 var actions = (ComboBox)window.FindName("PreviewAction");
                 Assert.Single(actions.Items);

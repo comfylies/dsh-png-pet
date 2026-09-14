@@ -17,8 +17,10 @@ public partial class MainWindow
 
     private void CharacterMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (characterWindow is not null) { characterWindow.Activate(); return; }
-        characterWindow = new CharacterWindow(characterLibrary, id => UseCharacterAsync(id), () => currentCharacterId) { Owner = this };
+        if (characterWindow is not null) { characterWindow.ShowOrRestore(); return; }
+        // Ownership by the topmost pet also pins this window above other applications.
+        // CloseCharacterLibrary already closes it explicitly when the pet shuts down.
+        characterWindow = new CharacterWindow(characterLibrary, id => UseCharacterAsync(id), () => currentCharacterId);
         characterWindow.Closed += (_, _) => characterWindow = null;
         characterWindow.Show();
     }

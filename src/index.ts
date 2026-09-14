@@ -17,7 +17,7 @@ export const name = 'dsh-png-pet'
  * restricted context: services used through `ctx.*` MUST be declared here or
  * property access throws "cannot get property ... without inject".
  */
-export const inject = ['agents', 'apiProxy', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'] as const
+export const inject = ['agents', 'typertGateway', 'attachments', 'sessionQuery', 'agentDefaultModel', 'webServer'] as const
 
 export type SessionObserverContext = {
   on(name: 'session/event', listener: (session: unknown, event: unknown) => void): unknown
@@ -26,7 +26,9 @@ export type SessionObserverContext = {
 }
 
 type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings'> & {
-  apiProxy: TargetApi
+  typertGateway: {
+    invoke(request: { namespace: string, method: string, args: Record<string, unknown>, signal?: AbortSignal }): Promise<unknown>
+  }
   webServer: { port: number }
   effect(factory: () => () => void): void
   inject(services: readonly ['settings'], callback: (ctx: { settings: DshSettingsProvider }) => void): void
@@ -182,13 +184,13 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
     )
     registerApprovalAnswerer(ctx, approvalController)
     targetController = new TargetController(
-      ctx.apiProxy,
+      createTargetApi(ctx.typertGateway),
       scope,
       (message) => helper?.send(message),
       (sessionId, workspaceId) => controller?.setTemporaryTarget(sessionId, workspaceId),
     )
     randomChatController = new RandomChatController(
-      ctx.apiProxy,
+      createTargetApi(ctx.typertGateway),
       scope,
       controller,
       (message) => helper?.send(message),
@@ -225,6 +227,32 @@ export function createDialogueContext(
       return ctx.agentDefaultModel
     },
     settings,
+  }
+}
+
+/**
+ * DSH 0.1.5 replaced the legacy apiProxy service with the Typert gateway.
+ * Keep the target controllers on their small, testable RPC-shaped contract
+ * while adapting calls at the plugin boundary.
+ */
+function createTargetApi(gateway: PluginContext['typertGateway']): TargetApi {
+  const invoke = async <T>(namespace: string, method: string, request: { rpcId: string, payload: Record<string, unknown> }) => {
+    try {
+      const value = await gateway.invoke({ namespace, method, args: request.payload })
+      return { result: { ok: true as const, value: value as T } }
+    } catch (error) {
+      return { result: { ok: false as const, error: { message: error instanceof Error ? error.message : 'gateway invocation failed' } } }
+    }
+  }
+  return {
+    workspace: {
+      list: (request) => invoke('workspace', 'list', request),
+      create: (request) => invoke('workspace', 'create', request),
+    },
+    sessions: {
+      list: (request) => invoke('session', 'list', request),
+      create: (request) => invoke('session', 'create', request),
+    },
   }
 }
 

@@ -1,91 +1,197 @@
 <Window x:Class="PetHelper.CharacterWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="人物形象" Width="720" Height="780" MinWidth="680" MinHeight="630"
-        WindowStartupLocation="CenterScreen" Background="#F7F8FC" Foreground="#273449"
-        FontFamily="Microsoft YaHei UI" FontSize="13" ShowInTaskbar="False">
+        Title="人物形象" Width="820" Height="760" MinWidth="760" MinHeight="630"
+        WindowStartupLocation="CenterScreen" Background="#F8F9FA" Foreground="#1F2329"
+        FontFamily="Microsoft YaHei UI" FontSize="13" ShowInTaskbar="True" Topmost="False"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
   <Window.Resources>
     <Style TargetType="Button">
-      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="Padding" Value="14,9" />
       <Setter Property="Margin" Value="0,0,8,0" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#D8DFEA" />
+      <Setter Property="BorderBrush" Value="#DDE0E3" />
+      <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" CornerRadius="9" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.82" /></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.65" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#4D6BFE" /></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="Padding" Value="8,6" />
-      <Setter Property="BorderBrush" Value="#D8DFEA" />
+      <Setter Property="BorderBrush" Value="#DDE0E3" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="Surface" CornerRadius="8" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#4D6BFE" /></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="Margin" Value="0,2" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="Surface" CornerRadius="8" Background="Transparent" BorderBrush="Transparent" BorderThickness="1">
+              <ContentPresenter Margin="{TemplateBinding Padding}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#F3F4F5" /></Trigger>
+              <Trigger Property="IsSelected" Value="True"><Setter TargetName="Surface" Property="Background" Value="#ECEDEF" /></Trigger>
+              <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#4D6BFE" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Foreground" Value="#1F2329" />
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Surface" Background="White" BorderBrush="#DDE0E3" BorderThickness="1" CornerRadius="8">
+                      <Path Data="M0,0 L4,4 L8,0" Stroke="#737780" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#F8F9FA" /></Trigger>
+                      <Trigger Property="IsChecked" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#4D6BFE" /></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                Margin="10,6,32,6" VerticalAlignment="Center" IsHitTestVisible="False" />
+              <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False">
+                <Border Background="White" BorderBrush="#DDE0E3" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,3,0,0"
+                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                  <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" /></ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <DrawingBrush x:Key="Checker" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
       <DrawingBrush.Drawing>
         <DrawingGroup>
           <GeometryDrawing Brush="#FFFFFF" Geometry="M0,0 H20 V20 H0Z" />
-          <GeometryDrawing Brush="#E9EDF3" Geometry="M0,0 H10 V10 H0Z M10,10 H20 V20 H10Z" />
+          <GeometryDrawing Brush="#F1F2F3" Geometry="M0,0 H10 V10 H0Z M10,10 H20 V20 H10Z" />
         </DrawingGroup>
       </DrawingBrush.Drawing>
     </DrawingBrush>
   </Window.Resources>
-  <Grid Margin="22" Background="#F7F8FC">
+  <Grid Margin="28" Background="#F8F9FA">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
     <StackPanel>
-      <TextBlock Text="选择你的桌面伙伴" FontSize="23" FontWeight="SemiBold" />
-      <TextBlock Text="本机保存，即时切换。人物形象不改变当前会话。" Foreground="#66758A" Margin="0,7,0,16" />
+      <TextBlock Text="人物形象" FontSize="25" FontWeight="SemiBold" />
+      <TextBlock Text="选择一个桌面伙伴，或从本机导入新的形象。" Foreground="#737780" Margin="0,6,0,18" />
     </StackPanel>
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
-      <Button x:Name="AddImageButton" Content="添加 GIF / PNG" Click="AddImage_Click" />
+    <Border Grid.Row="1" Background="White" BorderBrush="#E2E3E5" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,18">
+      <WrapPanel>
+      <Button x:Name="AddImageButton" Content="添加 GIF / PNG" Click="AddImage_Click" Background="#4D6BFE" Foreground="White" BorderBrush="#4D6BFE" />
       <Button x:Name="AddDirectoryButton" Content="添加角色目录" Click="AddDirectory_Click" />
       <Button x:Name="AddActionButton" Content="添加动作…" Click="AddAction_Click" IsEnabled="False" />
       <Button x:Name="CancelImportButton" Content="取消导入" Click="CancelImport_Click" Visibility="Collapsed" />
-    </StackPanel>
+      <TextBlock Text="素材仅保存在本机" Foreground="#737780" VerticalAlignment="Center" Margin="8,0,0,0" />
+      </WrapPanel>
+    </Border>
     <Grid Grid.Row="2">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <ListBox x:Name="Characters" SelectionChanged="Characters_SelectionChanged"
-               BorderBrush="#DEE4ED" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="235"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Background="White" BorderBrush="#E2E3E5" BorderThickness="1" CornerRadius="10" Padding="8">
+      <ListBox x:Name="Characters" SelectionChanged="Characters_SelectionChanged" BorderThickness="0"
+               Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
         <ListBox.ItemTemplate>
           <DataTemplate>
-            <StackPanel Orientation="Horizontal" Margin="3,8">
-              <Image Source="{Binding Thumbnail}" Width="38" Height="38" Margin="0,0,8,0"/>
-              <TextBlock Text="{Binding Label}" Width="110" TextWrapping="Wrap" VerticalAlignment="Center"/>
-            </StackPanel>
+            <Grid Margin="0,6">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <Border Width="46" Height="46" Background="#F5F6F7" CornerRadius="8" Margin="0,0,10,0">
+                <Image Source="{Binding Thumbnail}" Width="42" Height="42" Stretch="Uniform"/>
+              </Border>
+              <TextBlock Grid.Column="1" Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="13"/>
+            </Grid>
           </DataTemplate>
         </ListBox.ItemTemplate>
-      </ListBox>
-      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+      </ListBox></Border>
+      <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
-          <TextBlock x:Name="PreviewTitle" Text="默认人物" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,10"/>
-          <Border Background="{StaticResource Checker}" BorderBrush="#DEE4ED" BorderThickness="1" HorizontalAlignment="Center">
+          <Border Background="White" BorderBrush="#E2E3E5" BorderThickness="1" CornerRadius="10" Padding="18">
+          <StackPanel>
+          <TextBlock x:Name="PreviewTitle" Text="默认人物" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,14"/>
+          <Border Background="{StaticResource Checker}" BorderBrush="#E2E3E5" BorderThickness="1" HorizontalAlignment="Center" CornerRadius="8">
             <Grid Width="240" Height="240">
               <Image x:Name="PreviewImage" Stretch="Uniform" />
               <Canvas IsHitTestVisible="False">
-                <Ellipse x:Name="HeadMarker" Width="10" Height="10" Stroke="White" StrokeThickness="2" Fill="#536FE8"/>
+                <Ellipse x:Name="HeadMarker" Width="10" Height="10" Stroke="White" StrokeThickness="2" Fill="#4D6BFE"/>
                 <Line x:Name="FootMarker" X1="0" X2="240" Stroke="#E99836" StrokeThickness="1.5" StrokeDashArray="4,3"/>
               </Canvas>
             </Grid>
           </Border>
-          <StackPanel Orientation="Horizontal" Margin="0,10,0,8">
-            <TextBlock Text="预览状态" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <ComboBox x:Name="PreviewState" Width="120" SelectionChanged="PreviewState_Changed"/>
-            <TextBlock Text="预览动作" VerticalAlignment="Center" Margin="14,0,10,0"/>
-            <ComboBox x:Name="PreviewAction" Width="160" SelectionChanged="PreviewAction_Changed"/>
-            <CheckBox x:Name="StaticPreview" Content="静态预览" Margin="14,0,0,0" VerticalAlignment="Center"
+          <Grid Margin="0,16,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="预览状态" Foreground="#737780" Margin="0,0,0,6"/>
+            <ComboBox x:Name="PreviewState" Grid.Row="1" SelectionChanged="PreviewState_Changed"/>
+            <TextBlock Text="预览动作" Grid.Column="2" Foreground="#737780" Margin="0,0,0,6"/>
+            <ComboBox x:Name="PreviewAction" Grid.Column="2" Grid.Row="1" SelectionChanged="PreviewAction_Changed"/>
+            <CheckBox x:Name="StaticPreview" Grid.Row="2" Grid.ColumnSpan="3" Content="静态预览" Margin="0,14,0,0" VerticalAlignment="Center"
                       Checked="PreviewMotion_Changed" Unchecked="PreviewMotion_Changed"/>
-          </StackPanel>
-          <StackPanel x:Name="ActionSettings" Visibility="Collapsed">
+          </Grid>
+          </StackPanel></Border>
+          <StackPanel x:Name="ActionSettings" Visibility="Collapsed" Margin="0,14,0,0"><Border Background="White" BorderBrush="#E2E3E5" BorderThickness="1" CornerRadius="10" Padding="18">
+          <StackPanel>
             <TextBlock Text="目标状态" Margin="0,4,0,5"/>
-            <ComboBox x:Name="ActionState" Width="300" HorizontalAlignment="Left" SelectionChanged="ActionSettings_Changed"/>
+            <ComboBox x:Name="ActionState" SelectionChanged="ActionSettings_Changed"/>
             <TextBlock Text="动作角色" Margin="0,10,0,5"/>
-            <ComboBox x:Name="ActionRole" Width="180" HorizontalAlignment="Left" SelectionChanged="ActionSettings_Changed"/>
+            <ComboBox x:Name="ActionRole" SelectionChanged="ActionSettings_Changed"/>
             <TextBlock Text="动作名称（附加动作必填）" Margin="0,10,0,5"/>
             <TextBox x:Name="ActionName" MaxLength="40"/>
             <Button x:Name="PickActionSourceButton" Content="选择素材…" Click="PickActionSource_Click" Margin="0,10,0,0"/>
             <TextBlock Text="该状态已有的附加动作" Margin="0,12,0,5"/>
-            <ListBox x:Name="ActionExtras" Height="80" BorderBrush="#DEE4ED"/>
+            <Border BorderBrush="#DDE0E3" BorderThickness="1" CornerRadius="8" Padding="4"><ListBox x:Name="ActionExtras" Height="80" BorderThickness="0"/></Border>
             <Button x:Name="RemoveActionButton" Content="移除所选附加动作" Click="RemoveAction_Click" Margin="0,8,0,0"/>
-          </StackPanel>
-          <StackPanel x:Name="ImportSettings" Visibility="Collapsed">
+          </StackPanel></Border></StackPanel>
+          <StackPanel x:Name="ImportSettings" Visibility="Collapsed"><Border Background="White" BorderBrush="#E2E3E5" BorderThickness="1" CornerRadius="10" Padding="18" Margin="0,14,0,0">
+          <StackPanel>
             <TextBlock Text="人物名称" Margin="0,4,0,5"/>
             <TextBox x:Name="CharacterName" MaxLength="40"/>
             <TextBlock Text="头顶位置（蓝点）：水平 / 垂直" Margin="0,10,0,4"/>
@@ -93,16 +199,16 @@
             <Slider x:Name="AnchorY" Minimum="0" Maximum="1" Value="0.12" SmallChange="0.01" ValueChanged="Anchor_Changed"/>
             <TextBlock Text="脚底基线（橙线）" Margin="0,7,0,4"/>
             <Slider x:Name="Baseline" Minimum="0" Maximum="1" Value="0.95" SmallChange="0.01" ValueChanged="Anchor_Changed"/>
-          </StackPanel>
+          </StackPanel></Border></StackPanel>
         </StackPanel>
       </ScrollViewer>
     </Grid>
-    <TextBlock x:Name="Notice" Grid.Row="3" TextWrapping="Wrap" Foreground="#66758A" Margin="0,14,0,14"
+    <TextBlock x:Name="Notice" Grid.Row="3" TextWrapping="Wrap" Foreground="#737780" Margin="0,14,0,14"
                Text="GIF 按当前状态循环；缺少状态动作时使用该人物的待机动画。" />
-    <DockPanel Grid.Row="4" LastChildFill="False">
+    <DockPanel Grid.Row="4" LastChildFill="False" Margin="0,4,0,0">
       <Button x:Name="DeleteButton" Content="移除人物" Click="Delete_Click" DockPanel.Dock="Left"/>
       <Button x:Name="ApplyButton" Content="使用此人物" Click="Apply_Click" DockPanel.Dock="Right"
-              Background="#536FE8" Foreground="White" BorderBrush="#536FE8" Margin="0"/>
+              Background="#4D6BFE" Foreground="White" BorderBrush="#4D6BFE" Margin="0"/>
       <Button x:Name="DefaultButton" Content="恢复默认" Click="Default_Click" DockPanel.Dock="Right"/>
     </DockPanel>
   </Grid>
