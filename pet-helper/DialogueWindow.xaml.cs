@@ -42,6 +42,7 @@ public partial class DialogueWindow : Window
     private string petStatusText = string.Empty;
     private bool atBottom = true;
     private long? pendingApprovalRequestId;
+    private long? displayedApprovalRequestId;
 
     private bool inSystemDrag;
     private bool residentReplyExpanded;
@@ -53,12 +54,24 @@ public partial class DialogueWindow : Window
     public event EventHandler<HistoryRequestedEventArgs>? HistoryRequested;
     public event EventHandler<StopRequestedEventArgs>? StopRequested;
     public event EventHandler<ApprovalAnsweredEventArgs>? ApprovalAnswered;
+    public event EventHandler<QuestionAnsweredEventArgs>? QuestionAnswered;
+    public event EventHandler<QuestionCancelledEventArgs>? QuestionCancelled;
+    public event EventHandler? HarnessOpenRequested;
     public event EventHandler? HiddenToTray;
     public event EventHandler? DialogueClosed;
 
     public DialogueWindow(IScreenLayout screenLayout)
     {
         InitializeComponent();
+        QuestionCard.Answered += (_, answer) => QuestionAnswered?.Invoke(this, answer);
+        QuestionCard.Cancelled += (_, cancel) => QuestionCancelled?.Invoke(this, cancel);
+        QuestionCard.OpenHarness += (_, _) => HarnessOpenRequested?.Invoke(this, EventArgs.Empty);
+        QuestionCard.Changed += (_, _) =>
+        {
+            UpdateReplyVisibility();
+            InputComposer.IsEnabled = !QuestionCard.HasPending;
+            if (IsResidentMode) Height = ResidentHeight();
+        };
         this.screenLayout = screenLayout;
         RestoreState();
         restoringState = false;
@@ -103,12 +116,13 @@ public partial class DialogueWindow : Window
     }
 
     private double ResidentHeight() => Math.Min(MaxHeight,
-        residentReplyExpanded ? 520 : 120);
+        residentReplyExpanded || QuestionCard.HasPending ? 520 : 120);
 
     private void UpdateReplyVisibility()
     {
-        var collapsed = IsResidentMode && !residentReplyExpanded;
-        MessageScroll.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        var collapsed = IsResidentMode && !residentReplyExpanded && !QuestionCard.HasPending;
+        MessageScroll.Visibility = collapsed || QuestionCard.HasPending ? Visibility.Collapsed : Visibility.Visible;
+        QuestionViewport.Visibility = QuestionCard.HasPending ? Visibility.Visible : Visibility.Collapsed;
         DialogueContent.RowDefinitions[1].Height = collapsed ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         MinHeight = IsResidentMode ? 60 : DialogueWindowState.MinHeight;
         // Fit only the composer (including multiline input, attachments and approval when present).
@@ -275,6 +289,7 @@ public partial class DialogueWindow : Window
             lastDefaultSessionId = configMessage.DefaultSessionId;
             if (sessionChanged)
             {
+                QuestionCard.CancelAndClear();
                 messages.Clear();
                 pendingAttachments.Clear();
                 RefreshPendingAttachments();
@@ -297,13 +312,16 @@ public partial class DialogueWindow : Window
         switch (message)
         {
             case ApprovalRequestMessage request:
-                pendingApprovalRequestId = request.RequestId;
+                pendingApprovalRequestId = request.Answerable ? request.RequestId : null;
+                displayedApprovalRequestId = request.RequestId;
                 ApprovalCard.Visibility = Visibility.Visible;
-                ApprovalRejectButton.IsEnabled = true;
-                ApprovalAllowButton.IsEnabled = true;
+                ApprovalRejectButton.IsEnabled = request.Answerable;
+                ApprovalAllowButton.IsEnabled = request.Answerable;
+                ApprovalHint.Text = request.Answerable ? "此授权仅对此次操作有效。详情请打开 DSH 查看。" : "请在 DSH Web 批准，结果将同步到这里。";
                 break;
-            case ApprovalResolvedMessage resolved when pendingApprovalRequestId == resolved.RequestId:
+            case ApprovalResolvedMessage resolved when displayedApprovalRequestId == resolved.RequestId:
                 pendingApprovalRequestId = null;
+                displayedApprovalRequestId = null;
                 ApprovalCard.Visibility = Visibility.Collapsed;
                 break;
         }
@@ -332,11 +350,22 @@ public partial class DialogueWindow : Window
 
     public void CloseToHidden()
     {
+        QuestionCard.CancelAndClear();
         AnswerPendingApproval("rejected");
         SaveState();
         Hide();
         DialogueClosed?.Invoke(this, EventArgs.Empty);
         HiddenToTray?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ApplyQuestionMessage(ProtocolMessage message)
+    {
+        QuestionCard.Apply(message);
+        if (IsResidentMode)
+        {
+            Height = ResidentHeight();
+            if (IsVisible) ClampDialogueOnScreen();
+        }
     }
 
     public void SaveState()

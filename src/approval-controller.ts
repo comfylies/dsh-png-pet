@@ -29,11 +29,25 @@ export class ApprovalController {
     private readonly isHelperAvailable: () => boolean,
     private readonly send: (message: HostOutboundMessage) => void,
     private readonly isPetApprovalEnabled: () => boolean = () => true,
+    private readonly isApprovalNotificationEnabled: () => boolean = () => false,
   ) {}
 
   public request(request: DshApprovalRequest, next: () => Promise<ApprovalOutcome>): Promise<ApprovalOutcome> {
     const sessionId = readSessionId(request)
-    if (this.pending.size !== 0 || !this.isPetApprovalEnabled() || sessionId === undefined || !this.isSelectedSession(sessionId)) return next()
+    if (this.pending.size !== 0 || sessionId === undefined || !this.isSelectedSession(sessionId)) return next()
+    if (!this.isPetApprovalEnabled()) {
+      if (!this.isApprovalNotificationEnabled() || !this.isHelperAvailable()) return next()
+      const requestId = this.nextRequestId + 1
+      this.nextRequestId = requestId
+      this.send({ kind: 'approval-request', requestId, answerable: false })
+      return next().then((outcome) => {
+        this.send({ kind: 'approval-resolved', requestId, outcome })
+        return outcome
+      }, () => {
+        this.send({ kind: 'approval-resolved', requestId, outcome: 'unavailable' })
+        return 'unavailable'
+      })
+    }
     if (!this.isHelperAvailable()) return Promise.resolve('unavailable')
     if (request.signal?.aborted) return Promise.resolve('cancelled')
 
@@ -47,7 +61,7 @@ export class ApprovalController {
       }
       this.pending.set(requestId, pending)
       // No tool arguments, paths, reasons, or DSH IDs cross the Helper boundary.
-      this.send({ kind: 'approval-request', requestId })
+      this.send({ kind: 'approval-request', requestId, answerable: true })
     })
   }
 

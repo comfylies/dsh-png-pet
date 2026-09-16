@@ -17,7 +17,7 @@ DSH Host / Web profile
               └─ 保存窗口布局及用户导入的纯展示人物资源/选择；不保存对话内容
 ```
 
-当前源码版本为 `dsh-png-pet@0.2.11`，JSON Lines 协议为 **v17**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
+当前源码版本为 `dsh-png-pet@0.2.13`，JSON Lines 协议为 **v18**（以 `package.json` 和 `src/protocol.ts` 为准）。已运行的 DSH Harness 必须重启才会加载新安装的包。
 
 ## 绝不能突破的边界
 
@@ -57,7 +57,7 @@ DSH Host / Web profile
 | 目标 | 入口文件 |
 | --- | --- |
 | 插件装配、Helper 启动、DSH service 注入 | `src/index.ts` |
-| JSON Lines 类型、v17 校验与安全上限 | `src/protocol.ts` |
+| JSON Lines 类型、v18 校验与安全上限 | `src/protocol.ts` |
 | Helper 子进程启动/握手/发送/停止 | `src/helper-process.ts` |
 | DSH 事件 → 安全事实 → 桌宠状态 | `src/dsh-event-adapter.ts`、`src/companion-reducer.ts`、`src/companion-bridge.ts` |
 | 会话输入、流式回复、取消与历史投影 | `src/dialogue-controller.ts`、`src/dialogue-history.ts` |

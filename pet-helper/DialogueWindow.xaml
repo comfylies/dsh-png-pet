@@ -220,12 +220,16 @@
             </ItemsControl.ItemsPanel>
           </ItemsControl>
         </ScrollViewer>
+        <ScrollViewer x:Name="QuestionViewport" Grid.Row="1" Visibility="Collapsed"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,8">
+          <local:QuestionnaireCard x:Name="QuestionCard" />
+        </ScrollViewer>
         <StackPanel Grid.Row="2">
           <Border x:Name="ApprovalCard" Visibility="Collapsed" Background="#FFFDF5E6" CornerRadius="14"
                   BorderBrush="#D09A6700" BorderThickness="1" Padding="12" Margin="0,0,0,8">
             <StackPanel>
               <TextBlock Text="需要你的权限确认" Foreground="#7A4B00" FontWeight="SemiBold" />
-              <TextBlock Text="智能体请求执行一项受限操作。此授权仅对此次操作有效。"
+              <TextBlock x:Name="ApprovalHint" Text="智能体请求执行一项受限操作。此授权仅对此次操作有效。"
                          Foreground="#5D4037" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,8" />
               <UniformGrid Columns="2">
                 <Button x:Name="ApprovalRejectButton" Content="拒绝" Margin="0,0,4,0"

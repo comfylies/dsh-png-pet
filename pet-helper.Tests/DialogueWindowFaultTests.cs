@@ -269,6 +269,64 @@ public sealed class DialogueWindowFaultTests
         Assert.Null(failure);
     }
 
+    [Fact]
+    public void Questionnaire_is_scrollable_in_small_and_resident_windows_and_clears_on_target_change()
+    {
+        RunWindowFlow(window =>
+        {
+            window.ApplyConversationMessage(new ConversationConfigMessage(true, 2000, "s-1", null));
+            window.Width = 320; window.Height = 520;
+            window.Show();
+            window.ApplyQuestionMessage(new QuestionRequestMessage(100, true,
+                [new QuestionView("q1", "这次开发优先完成哪一部分？", ["问卷填写与回复", "界面布局与可读性", "取消和异常处理"], false),
+                 new QuestionView("q2", "还有哪些补充要求？", [], false)]));
+            window.UpdateLayout();
+            var card = (QuestionnaireCard)window.FindName("QuestionCard");
+            var viewport = (System.Windows.Controls.ScrollViewer)window.FindName("QuestionViewport");
+            Assert.True(card.HasPending);
+            Assert.True(viewport.IsVisible);
+            Assert.False(((System.Windows.Controls.Border)window.FindName("InputComposer")).IsEnabled);
+            var qaDirectory = Environment.GetEnvironmentVariable("DSH_PET_QA_DIR");
+            if (!string.IsNullOrEmpty(qaDirectory))
+            {
+                System.IO.Directory.CreateDirectory(qaDirectory);
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                bitmap.Render(window);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using var file = System.IO.File.Create(System.IO.Path.Combine(qaDirectory, "questionnaire.png"));
+                encoder.Save(file);
+            }
+            window.Width = 220; window.Height = 240; window.UpdateLayout();
+            Assert.True(viewport.ActualHeight > 0);
+            Assert.True(viewport.ScrollableHeight > 0);
+            window.SetResidentMode(true); window.UpdateLayout();
+            Assert.True(viewport.IsVisible);
+            Assert.True(window.ActualHeight > 120);
+            window.ApplyConversationMessage(new ConversationConfigMessage(true, 2000, "s-2", null));
+            Assert.False(card.HasPending);
+            Assert.True(((System.Windows.Controls.Border)window.FindName("InputComposer")).IsEnabled);
+            Assert.Empty(card.OptionsPanel.Children.Cast<object>());
+        });
+    }
+
+    [Fact]
+    public void Mirrored_approval_disables_local_decisions_and_resolves_by_display_id()
+    {
+        RunWindowFlow(window =>
+        {
+            int answered = 0;
+            window.ApprovalAnswered += (_, _) => answered++;
+            window.ApplyApprovalMessage(new ApprovalRequestMessage(10, false));
+            var allow = (System.Windows.Controls.Button)window.FindName("ApprovalAllowButton");
+            Assert.False(allow.IsEnabled);
+            allow.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Assert.Equal(0, answered);
+            window.ApplyApprovalMessage(new ApprovalResolvedMessage(10, "rejected"));
+            Assert.Equal(Visibility.Collapsed, ((FrameworkElement)window.FindName("ApprovalCard")).Visibility);
+        });
+    }
+
     /// <summary>Runs a window flow on its own STA thread with clean composition teardown.</summary>
     private static void RunWindowFlow(Action<DialogueWindow> action)
     {

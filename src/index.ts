@@ -1,6 +1,7 @@
 import { CompanionBridge, createSessionObservers } from './companion-bridge.js'
 import open from 'open'
 import { ApprovalController, type ApprovalOutcome, type DshApprovalRequest } from './approval-controller.js'
+import { QuestionnaireController, type DshQuestionRequest, type DshQuestionAnswer } from './questionnaire-controller.js'
 import { DialogueController } from './dialogue-controller.js'
 import { dialogueSettingsSchema, type DialogueSettings } from './dialogue-settings.js'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -23,6 +24,7 @@ export type SessionObserverContext = {
   on(name: 'session/event', listener: (session: unknown, event: unknown) => void): unknown
   on(name: 'session/disposed', listener: (session: unknown) => void): unknown
   on(name: 'approval/request', listener: (request: DshApprovalRequest, next: () => Promise<ApprovalOutcome>) => Promise<ApprovalOutcome>, options?: boolean): unknown
+  on(name: 'user-questions/request', listener: (request: DshQuestionRequest, next: () => Promise<DshQuestionAnswer>) => Promise<DshQuestionAnswer>, options?: boolean): unknown
 }
 
 type PluginContext = SessionObserverContext & Omit<DshDialogueContext, 'settings'> & {
@@ -58,6 +60,7 @@ export function applyWithHelper(ctx: PluginContext, createHelper: HelperFactory,
 function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, lifecycleOptions: HelperLifecycleOptions): void {
   let controller: DialogueController | undefined
   let approvalController: ApprovalController | undefined
+  let questionnaireController: QuestionnaireController | undefined
   let targetController: TargetController | undefined
   let randomChatController: RandomChatController | undefined
   let settingsScope: DshDialogueSettingsScope | undefined
@@ -115,7 +118,9 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
           clearRestartTimer()
           clearStableRunTimer()
         }
-        void routeHelperMessage(message, controller, targetController, randomChatController, openHarness, approvalController)
+        void routeHelperMessage(message, controller, targetController, randomChatController, openHarness, approvalController, questionnaireController)
+        if (message.kind === 'closed' || message.kind === 'close-requested') questionnaireController?.helperUnavailable()
+        if (message.kind === 'dialogue-closed') questionnaireController?.dialogueClosed()
       },
       onExit: () => handleTermination(),
     })
@@ -128,6 +133,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
       helper = undefined
       helperReady = false
       approvalController?.helperUnavailable()
+      questionnaireController?.helperUnavailable()
       clearStableRunTimer()
 
       if (disposed || restartSuppressed) return
@@ -167,6 +173,8 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
     clearRestartTimer()
     clearStableRunTimer()
     controller?.dispose()
+    approvalController?.helperUnavailable()
+    questionnaireController?.helperUnavailable()
     unwatchSettings()
     void helper?.stop()
   })
@@ -181,13 +189,24 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
       () => helperReady && helper !== undefined,
       (message) => helper?.send(message),
       () => settingsScope?.get().approvalSurface === 'pet',
+      () => settingsScope?.get().approvalSurface === 'both',
     )
     registerApprovalAnswerer(ctx, approvalController)
+    questionnaireController = new QuestionnaireController(
+      (sessionId) => controller?.isSelectedSession(sessionId) ?? false,
+      () => helperReady && helper !== undefined,
+      (message) => helper?.send(message),
+      () => settingsScope?.get().approvalSurface ?? 'web',
+    )
+    registerQuestionnaireAnswerer(ctx, questionnaireController)
     targetController = new TargetController(
       createTargetApi(ctx.typertGateway),
       scope,
       (message) => helper?.send(message),
-      (sessionId, workspaceId) => controller?.setTemporaryTarget(sessionId, workspaceId),
+      (sessionId, workspaceId) => {
+        controller?.setTemporaryTarget(sessionId, workspaceId)
+        questionnaireController?.selectionChanged()
+      },
     )
     randomChatController = new RandomChatController(
       createTargetApi(ctx.typertGateway),
@@ -196,6 +215,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
       (message) => helper?.send(message),
     )
     unwatchSettings = watchDialogueSettings(scope, controller, (settings, previous) => {
+      questionnaireController?.selectionChanged()
       const shouldTestRandomChat = settings.randomChatTestNonce !== previous.randomChatTestNonce
       if (!helperReady) {
         pendingRandomChatTest ||= shouldTestRandomChat
@@ -204,7 +224,7 @@ function startDialogueHost(ctx: PluginContext, createHelper: HelperFactory, life
       if (helperConfigChanged(settings, previous)) helper?.send(helperConfig(settings))
       if (shouldTestRandomChat) helper?.send({ kind: 'random-chat-test' })
     })
-    registerSessionObservers(ctx, bridge, controller)
+    registerSessionObservers(ctx, bridge, controller, questionnaireController)
     publishWhenReady()
   })
 }
@@ -263,6 +283,7 @@ export function routeHelperMessage(
   randomChatController?: Pick<RandomChatController, 'open' | 'dialogueClosed'>,
   openHarness?: () => void,
   approvalController?: Pick<ApprovalController, 'answer'>,
+  questionnaireController?: Pick<QuestionnaireController, 'answer' | 'cancel'>,
 ): Promise<void> {
   if (message.kind === 'open-harness') {
     try {
@@ -278,6 +299,14 @@ export function routeHelperMessage(
     } catch {
       // A stale or malformed local decision must fail closed inside the controller.
     }
+    return Promise.resolve()
+  }
+  if (message.kind === 'question-answer') {
+    try { questionnaireController?.answer(message) } catch { /* stale answer */ }
+    return Promise.resolve()
+  }
+  if (message.kind === 'question-cancel') {
+    try { questionnaireController?.cancel(message.requestId) } catch { /* stale cancel */ }
     return Promise.resolve()
   }
   if (message.kind === 'input' || message.kind === 'request-history' || message.kind === 'stop') {
@@ -337,6 +366,10 @@ export function registerApprovalAnswerer(
   ctx.on('approval/request', (request, next) => controller.request(request, next), true)
 }
 
+export function registerQuestionnaireAnswerer(ctx: SessionObserverContext, controller: Pick<QuestionnaireController, 'request'>): void {
+  ctx.on('user-questions/request', (request, next) => controller.request(request, next), true)
+}
+
 export function watchDialogueSettings(
   settings: Pick<DshDialogueContext['settings'], 'watch'>,
   controller: Pick<DialogueController, 'settingsChanged'>,
@@ -377,6 +410,7 @@ export function registerSessionObservers(
   ctx: SessionObserverContext,
   bridge: CompanionBridge,
   controller?: Pick<DialogueController, 'observeEvent' | 'sessionUnavailable'>,
+  questions?: Pick<QuestionnaireController, 'sessionUnavailable'>,
 ): void {
   const observers = createSessionObservers(bridge)
 
@@ -393,6 +427,7 @@ export function registerSessionObservers(
     try {
       const sessionId = readSessionId(session)
       if (sessionId !== undefined) controller?.sessionUnavailable(sessionId)
+      if (sessionId !== undefined) questions?.sessionUnavailable(sessionId)
       observers.sessionDisposed(session)
     } catch {
       console.error('dsh-png-pet session disposal ignored')

@@ -4,7 +4,7 @@ import readline from 'node:readline'
 
 import { encodeHostMessage, parseHelperMessage, type HelperApprovalAnswerMessage, type HelperCloseRequestedMessage, type HelperDialogueClosedMessage, type HelperHistoryRequest, type HelperInputMessage, type HelperMessage, type HelperOpenHarnessMessage, type HelperRandomChatOpenMessage, type HelperStopMessage, type HelperTargetAnswerMessage, type HelperTargetOpenMessage, type HostOutboundMessage } from './protocol.js'
 
-export type HelperProcessMessage = HelperApprovalAnswerMessage | HelperCloseRequestedMessage | HelperOpenHarnessMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
+export type HelperProcessMessage = HelperApprovalAnswerMessage | import('./protocol.js').HelperQuestionAnswerMessage | import('./protocol.js').HelperQuestionCancelMessage | HelperCloseRequestedMessage | HelperOpenHarnessMessage | HelperInputMessage | HelperStopMessage | HelperHistoryRequest | HelperTargetOpenMessage | HelperTargetAnswerMessage | HelperRandomChatOpenMessage | HelperDialogueClosedMessage | (Pick<HelperMessage, 'version'> & { kind: 'closed' })
 export type HelperProcessExit = Readonly<{ code: number | null, wasReady: boolean, closed: boolean }>
 
 export type HelperProcessOptions = {
@@ -141,7 +141,7 @@ export class HelperProcess {
             // Ignore consumer failures so a validated stop can be retried.
           }
         }
-        if (message.kind === 'approval-answer') {
+        if (message.kind === 'approval-answer' || message.kind === 'question-answer' || message.kind === 'question-cancel') {
           try {
             this.options.onMessage(message)
           } catch {

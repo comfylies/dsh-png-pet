@@ -174,9 +174,10 @@ test('keeps random chat disabled until browsing consent and workspace choices ar
   assert.throws(() => validateDialogueSettings({ randomChatCustomPrompts: ['x'.repeat(121)] }))
 })
 
-test('defaults approval requests to Web and accepts only the two approved surfaces', () => {
+test('defaults approval requests to Web and accepts the dual notification surface', () => {
   assert.equal(validateDialogueSettings({}).approvalSurface, 'web')
   assert.equal(validateDialogueSettings({ approvalSurface: 'pet' }).approvalSurface, 'pet')
+  assert.equal(validateDialogueSettings({ approvalSurface: 'both' }).approvalSurface, 'both')
   assert.throws(() => validateDialogueSettings({ approvalSurface: 'browser' }))
 })
 

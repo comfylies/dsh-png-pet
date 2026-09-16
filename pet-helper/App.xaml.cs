@@ -38,6 +38,9 @@ public partial class App : System.Windows.Application
         dialogueWindow.HistoryRequested += (_, request) => WriteHistoryRequest(request);
         dialogueWindow.StopRequested += (_, stop) => WriteStop(stop);
         dialogueWindow.ApprovalAnswered += (_, answer) => WriteApprovalAnswer(answer);
+        dialogueWindow.QuestionAnswered += (_, answer) => WriteQuestionAnswer(answer);
+        dialogueWindow.QuestionCancelled += (_, cancel) => WriteQuestionCancel(cancel.RequestId);
+        dialogueWindow.HarnessOpenRequested += (_, _) => WriteOpenHarness();
         dialogueWindow.DialogueClosed += (_, _) => WriteDialogueClosed();
         window.AttachDialogueWindow(dialogueWindow);
         window.RandomChatRequested += (_, request) => WriteRandomChatOpen(request);
@@ -138,6 +141,16 @@ public partial class App : System.Windows.Application
                         continue;
                     case ApprovalResolvedMessage resolved:
                         await Dispatcher.InvokeAsync(() => dialogue?.ApplyApprovalMessage(resolved));
+                        continue;
+                    case QuestionRequestMessage question:
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            ((MainWindow)MainWindow!).ShowDialogueForApproval();
+                            dialogue?.ApplyQuestionMessage(question);
+                        });
+                        continue;
+                    case QuestionResolvedMessage questionResolved:
+                        await Dispatcher.InvokeAsync(() => dialogue?.ApplyQuestionMessage(questionResolved));
                         continue;
                     case TargetRequestMessage target:
                         await Dispatcher.InvokeAsync(() => targetWindow?.ApplyTargetRequest(target));
@@ -268,6 +281,30 @@ public partial class App : System.Windows.Application
             requestId = answer.RequestId,
             outcome = answer.Outcome,
         }));
+        Console.Out.Flush();
+    }
+
+    public static string SerializeQuestionAnswer(QuestionAnsweredEventArgs answer) => JsonSerializer.Serialize(new
+    {
+        version = ProtocolMessage.ProtocolVersion,
+        kind = "question-answer",
+        requestId = answer.RequestId,
+        answers = answer.Answers.Select(item =>
+        {
+            var value = new Dictionary<string, object> { ["id"] = item.Id, ["selected"] = item.Selected };
+            if (item.Custom is not null) value["custom"] = item.Custom;
+            return value;
+        }).ToArray(),
+    });
+
+    private static void WriteQuestionAnswer(QuestionAnsweredEventArgs answer)
+    {
+        Console.Out.WriteLine(SerializeQuestionAnswer(answer));
+        Console.Out.Flush();
+    }
+    private static void WriteQuestionCancel(long requestId)
+    {
+        Console.Out.WriteLine(JsonSerializer.Serialize(new { version = ProtocolMessage.ProtocolVersion, kind = "question-cancel", requestId }));
         Console.Out.Flush();
     }
 

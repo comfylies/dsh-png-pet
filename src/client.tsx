@@ -171,10 +171,10 @@ function DesktopPetSettingsSection({ sessions, workspaces, settings }: { session
     createElement('h2', null, '会话'),
     createElement('p', null, '默认会话会优先于右键菜单中的临时选择；右键选择仅在本次桌宠运行期间有效。'),
     createElement(DefaultSessionPicker, { tree, selectedSessionId: pendingDefaultSessionId === undefined ? (selectedSessionUnavailable ? null : value.defaultSessionId) : pendingDefaultSessionId, disabled: listUnavailable || pendingDefaultSessionId !== undefined, onSelect: (session) => { void selectDefaultSession(session) } }),
-    createElement('h2', { style: sectionHeadingStyle }, '权限请求'),
-    createElement('p', null, '选择未来的权限请求由哪里回答。选择 Web 时，桌宠的“等待你的操作”气泡可点击打开 DSH。'),
-    createElement(SettingCard, { title: '请求批准的位置', description: '默认使用 DSH Web；桌宠模式只接管桌宠当前选中的会话。切换不会改变已经等待回答的请求。' },
-      createElement(ChoiceCards, { value: value.approvalSurface, disabled: settingsUnavailable, name: 'approval-surface', options: [{ value: 'web', label: 'Web（默认）' }, { value: 'pet', label: '桌宠' }], onChange: (surface) => { void update('approvalSurface', surface) } })),
+    createElement('h2', { style: sectionHeadingStyle }, '权限请求与问卷'),
+    createElement('p', null, '桌宠模式可直接批准和填写兼容问卷；Web + 桌宠同时显示提示，在 Web 回答后同步结果。'),
+    createElement(SettingCard, { title: '请求批准的位置', description: '默认使用 DSH Web；桌宠模式仅处理当前选中会话。双端模式的桌宠卡只读，复杂问卷保留在 Web。切换不会改变已经等待回答的请求。' },
+      createElement(ChoiceCards, { value: value.approvalSurface, disabled: settingsUnavailable, name: 'approval-surface', options: [{ value: 'web', label: 'Web（默认）' }, { value: 'pet', label: '桌宠' }, { value: 'both', label: 'Web + 桌宠' }], onChange: (surface) => { void update('approvalSurface', surface) } })),
     createElement('h2', { style: sectionHeadingStyle }, '外观'),
     createElement('p', null, '这些默认值会在桌宠启动时恢复；当前拖拽位置不会被覆盖。'),
     createElement(SettingCard, { title: '默认位置', description: '九宫格代表屏幕；右键“重置位置”将回到选中的位置。', flush: true },
@@ -317,7 +317,7 @@ const placementOptions: ReadonlyArray<{ value: DialogueSettings['petPlacement'],
 ]
 function isPetPlacement(value: unknown): value is DialogueSettings['petPlacement'] { return placementOptions.some((option) => option.value === value) }
 function isDialoguePlacement(value: unknown): value is DialogueSettings['dialoguePlacement'] { return value === 'near-pet' || isPetPlacement(value) }
-function isApprovalSurface(value: unknown): value is DialogueSettings['approvalSurface'] { return value === 'web' || value === 'pet' }
+function isApprovalSurface(value: unknown): value is DialogueSettings['approvalSurface'] { return value === 'web' || value === 'pet' || value === 'both' }
 function isDialogueFontSize(value: unknown): value is DialogueSettings['dialogueFontSize'] { return value === 12 || value === 14 || value === 16 || value === 18 }
 function isIntegerIn(value: unknown, min: number, max: number): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max }
 

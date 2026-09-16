@@ -51,6 +51,8 @@ public static class ProtocolReader
                     "conversation-history" => ParseHistory(root),
                     "approval-request" => ParseApprovalRequest(root),
                     "approval-resolved" => ParseApprovalResolved(root),
+                    "question-request" => ParseQuestionRequest(root),
+                    "question-resolved" => ParseQuestionResolved(root),
                     "target-request" => ParseTargetRequest(root),
                     "random-chat-ready" => ParseRandomChatReady(root),
                     "random-chat-error" => ParseRandomChatError(root),
@@ -398,9 +400,11 @@ public static class ProtocolReader
 
     private static ApprovalRequestMessage? ParseApprovalRequest(JsonElement root)
     {
-        return HasExactlyProperties(root, "version", "kind", "requestId")
+        return HasExactlyProperties(root, "version", "kind", "requestId", "answerable")
             && TryGetRequestId(root, out var requestId)
-            ? new ApprovalRequestMessage(requestId)
+            && root.TryGetProperty("answerable", out var answerable)
+            && answerable.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? new ApprovalRequestMessage(requestId, answerable.GetBoolean())
             : null;
     }
 
@@ -486,6 +490,45 @@ public static class ProtocolReader
             && value.TryGetInt64(out requestId)
             && requestId is > 0 and <= MaxSafeSequence;
     }
+
+    private static QuestionRequestMessage? ParseQuestionRequest(JsonElement root)
+    {
+        if (!HasExactlyProperties(root, "version", "kind", "requestId", "answerable", "questions") || !TryGetRequestId(root, out var id)
+            || !root.TryGetProperty("answerable", out var answerable) || answerable.ValueKind is not JsonValueKind.True and not JsonValueKind.False
+            || !root.TryGetProperty("questions", out var questions) || questions.ValueKind != JsonValueKind.Array) return null;
+        var result = new List<QuestionView>();
+        foreach (var q in questions.EnumerateArray())
+        {
+            if (result.Count >= 8 || q.ValueKind != JsonValueKind.Object || !HasExactlyProperties(q, "id", "question", "options", "multiSelect")
+                || q.GetProperty("id").ValueKind != JsonValueKind.String || q.GetProperty("question").ValueKind != JsonValueKind.String
+                || q.GetProperty("multiSelect").ValueKind is not JsonValueKind.True and not JsonValueKind.False
+                || q.GetProperty("id").GetString() is not { Length: > 0 and <= 100 } qid
+                || q.GetProperty("question").GetString() is not { Length: > 0 and <= 2000 } text
+                || q.GetProperty("options").ValueKind != JsonValueKind.Array) return null;
+            if (!ValidQuestionText(qid, 100) || !ValidQuestionText(text, 2000) || result.Any(item => item.Id == qid)) return null;
+            var options = new List<string>();
+            foreach (var option in q.GetProperty("options").EnumerateArray())
+            {
+                if (options.Count >= 8 || option.ValueKind != JsonValueKind.String || option.GetString() is not { Length: > 0 and <= 200 } label || options.Contains(label, StringComparer.Ordinal)) return null;
+                if (!ValidQuestionText(label, 200)) return null;
+                options.Add(label);
+            }
+            if (options.Count > 8 || options.Distinct(StringComparer.Ordinal).Count() != options.Count) return null;
+            result.Add(new QuestionView(qid, text, options.ToImmutableArray(), q.GetProperty("multiSelect").GetBoolean()));
+        }
+        return result.Count is > 0 ? new QuestionRequestMessage(id, answerable.GetBoolean(), result.ToImmutableArray()) : null;
+    }
+
+    private static QuestionResolvedMessage? ParseQuestionResolved(JsonElement root)
+    {
+        if (!HasExactlyProperties(root, "version", "kind", "requestId", "outcome") || !TryGetRequestId(root, out var id)
+            || !root.TryGetProperty("outcome", out var outcome) || outcome.ValueKind != JsonValueKind.String || outcome.GetString() is not string value
+            || value is not ("answered" or "cancelled" or "unavailable")) return null;
+        return new QuestionResolvedMessage(id, value);
+    }
+
+    private static bool ValidQuestionText(string text, int limit) => !string.IsNullOrWhiteSpace(text) && text.Length <= limit
+        && !text.Any(c => c < 32 && c is not ('\t' or '\r' or '\n') || c == 127);
 
     private static RandomChatReadyMessage? ParseRandomChatReady(JsonElement root)
     {

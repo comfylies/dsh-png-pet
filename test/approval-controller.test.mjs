@@ -12,13 +12,13 @@ test('projects a selected-session approval without exposing its DSH payload and 
   const controller = new ApprovalController((id) => id === 's-1', () => true, (message) => sent.push(message))
   const result = controller.request(request(), async () => 'unavailable')
 
-  assert.deepEqual(sent, [{ kind: 'approval-request', requestId: 1 }])
+  assert.deepEqual(sent, [{ kind: 'approval-request', requestId: 1, answerable: true }])
   controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'allowed-once' })
   controller.answer({ version: 16, kind: 'approval-answer', requestId: 1, outcome: 'rejected' })
 
   assert.equal(await result, 'allowed-once')
   assert.deepEqual(sent, [
-    { kind: 'approval-request', requestId: 1 },
+    { kind: 'approval-request', requestId: 1, answerable: true },
     { kind: 'approval-resolved', requestId: 1, outcome: 'allowed-once' },
   ])
 })
@@ -39,6 +39,19 @@ test('delegates to Web when the Web approval surface is selected', async () => {
 
   assert.equal(await controller.request(request(), async () => 'rejected'), 'rejected')
   assert.deepEqual(sent, [])
+})
+
+test('mirrors a Web-owned approval to the pet when the both surface is selected', async () => {
+  const sent = []
+  const controller = new ApprovalController(() => true, () => true, (message) => sent.push(message), () => false, () => true)
+  const result = controller.request(request(), async () => 'rejected')
+
+  assert.deepEqual(sent, [{ kind: 'approval-request', requestId: 1, answerable: false }])
+  assert.equal(await result, 'rejected')
+  assert.deepEqual(sent, [
+    { kind: 'approval-request', requestId: 1, answerable: false },
+    { kind: 'approval-resolved', requestId: 1, outcome: 'rejected' },
+  ])
 })
 
 test('delegates a second concurrent request so one desktop card cannot orphan another', async () => {
@@ -64,7 +77,7 @@ test('fails closed when the Helper is absent or stops while an approval is pendi
   controller.helperUnavailable()
   assert.equal(await result, 'unavailable')
   assert.deepEqual(sent, [
-    { kind: 'approval-request', requestId: 1 },
+    { kind: 'approval-request', requestId: 1, answerable: true },
     { kind: 'approval-resolved', requestId: 1, outcome: 'unavailable' },
   ])
 })
@@ -79,7 +92,7 @@ test('withdraws an aborted approval and ignores a late Helper answer', async () 
 
   assert.equal(await result, 'cancelled')
   assert.deepEqual(sent, [
-    { kind: 'approval-request', requestId: 1 },
+    { kind: 'approval-request', requestId: 1, answerable: true },
     { kind: 'approval-resolved', requestId: 1, outcome: 'cancelled' },
   ])
 })

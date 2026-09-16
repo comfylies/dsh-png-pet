@@ -6,7 +6,7 @@ export const dialoguePlacements = ['near-pet', ...petPlacements] as const
 
 export type PetPlacement = typeof petPlacements[number]
 export type DialoguePlacement = typeof dialoguePlacements[number]
-export type ApprovalSurface = 'web' | 'pet'
+export type ApprovalSurface = 'web' | 'pet' | 'both'
 export type DialogueFontSize = 12 | 14 | 16 | 18
 
 export type DialogueSettings = {
@@ -15,7 +15,7 @@ export type DialogueSettings = {
   defaultWorkspaceId: string | null
   previewEnabled: boolean
   previewMaxChars: number
-  /** The sole UI allowed to answer future DSH permission requests. */
+  /** Answering surface for future approvals/questions; both mirrors the Web in the pet. */
   approvalSurface: ApprovalSurface
   /** Explicitly opt-in; without it the Helper never schedules a random invitation. */
   randomChatEnabled: boolean
@@ -74,7 +74,7 @@ export const dialogueSettingsSchema = z.transform(
     defaultWorkspaceId: z.union([z.string().min(1), z.const(null)]).default(null),
     previewEnabled: z.boolean().default(true),
     previewMaxChars: z.number().step(1).min(80).max(8000).default(2000),
-    approvalSurface: z.union([z.const('web'), z.const('pet')]).default('web'),
+    approvalSurface: z.union([z.const('web'), z.const('pet'), z.const('both')]).default('web'),
     randomChatEnabled: z.boolean().default(false),
     randomChatBrowseOnOpen: z.boolean().default(false),
     randomChatWorkspaceIds: z.array(z.string().min(1).max(200)).max(8).default([]),
